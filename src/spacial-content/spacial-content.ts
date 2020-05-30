@@ -7,14 +7,10 @@ export interface SpacialContent {
   readonly type: 'spacial-content';
   readonly display: DisplayData;
 
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   points: Strand;
 
-  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> | null;
-  getPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint;
+  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> | null;
+  getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[];
   transform(op: Strand): void;
   loadFullResource?(): Promise<void>;
 }

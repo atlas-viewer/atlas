@@ -1,6 +1,8 @@
-yarn.lock
 node_modules
 lib
 dist
 *.log
-tsconfig.tsbuildinfo
+*.tsbuildinfo
+notes.md
+.jest-cache
+stats.html

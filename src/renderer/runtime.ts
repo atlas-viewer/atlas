@@ -1,8 +1,32 @@
-import { Projection, Viewer } from '../types';
+import { Projection, RuntimeController, Viewer } from '../types';
 import { World } from '../world';
-import { DnaFactory, mutate, scale, scaleAtOrigin, transform, Strand, dna } from '@atlas-viewer/dna';
+import {
+  DnaFactory,
+  mutate,
+  scale,
+  scaleAtOrigin,
+  transform,
+  Strand,
+  dna,
+  hidePointsOutsideRegion,
+  translate,
+  compose,
+} from '@atlas-viewer/dna';
 import { EventSubscription, supportedEvents } from './dispatcher';
 import { Renderer } from './renderer';
+import { Paint } from '../world-objects/paint';
+
+export type RuntimeHooks = {
+  useFrame: Array<(time: number) => void>;
+  useBeforeFrame: Array<(time: number) => void>;
+  useAfterFrame: Array<(time: number) => void>;
+  useAfterPaint: Array<(paint: Paint) => void>;
+};
+
+type UnwrapHook<T> = T extends Array<infer R> ? R : never;
+type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
+
+type useFrame = UnwrapHook<RuntimeHooks['useFrame']>;
 
 export class Runtime {
   // Helper getters.
@@ -61,12 +85,21 @@ export class Runtime {
   scaleFactor: number;
   transformBuffer = dna(500);
   lastTarget = dna(5);
+  logNextRender = false;
   pendingUpdate = false;
   firstRender = true;
   lastTime: number;
   stopId?: number;
+  controllers: RuntimeController[] = [];
+  controllersRunning = false;
+  hooks: RuntimeHooks = {
+    useFrame: [],
+    useBeforeFrame: [],
+    useAfterPaint: [],
+    useAfterFrame: [],
+  };
 
-  constructor(renderer: Renderer, world: World, target: Viewer) {
+  constructor(renderer: Renderer, world: World, target: Viewer, controllers: RuntimeController[] = []) {
     this.renderer = renderer;
     this.world = world;
     this.target = DnaFactory.projection(target);
@@ -78,7 +111,35 @@ export class Runtime {
       }
     });
     this.lastTime = performance.now();
+    this.controllers = controllers;
     this.render(this.lastTime);
+    this.startControllers();
+  }
+
+  startControllers() {
+    if (this.controllersRunning) {
+      return;
+    }
+    for (const controller of this.controllers) {
+      controller.start(this);
+    }
+    this.controllersRunning = true;
+  }
+
+  stopControllers() {
+    if (!this.controllersRunning) {
+      return;
+    }
+    for (const controller of this.controllers) {
+      controller.stop(this);
+    }
+  }
+
+  addController(controller: RuntimeController) {
+    this.controllers.push(controller);
+    if (this.controllersRunning) {
+      controller.start(this);
+    }
   }
 
   /**
@@ -146,10 +207,26 @@ export class Runtime {
    * a "home" view  that will fit the content to the view.
    */
   getBounds(padding: number) {
-    if (this.renderer.hasActiveZone()) {
-      const bounds = this.renderer.getViewportBounds(this.world, this.target, padding);
-      if (bounds) {
-        return bounds;
+    if (this.world.hasActiveZone()) {
+      const zone = this.world.getActiveZone();
+
+      if (zone) {
+        const xCon = this.target[3] - this.target[1] < zone.points[3] - zone.points[1];
+        const yCon = this.target[4] - this.target[2] < zone.points[4] - zone.points[2];
+        return {
+          x1: xCon
+            ? zone.points[1] - padding
+            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (this.target[3] - this.target[1]) / 2,
+          y1: yCon
+            ? zone.points[2] - padding
+            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (this.target[4] - this.target[2]) / 2,
+          x2: xCon
+            ? zone.points[3] + padding
+            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (this.target[3] - this.target[1]) / 2,
+          y2: yCon
+            ? zone.points[4] + padding
+            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (this.target[4] - this.target[2]) / 2,
+        };
       }
     }
 
@@ -160,59 +237,6 @@ export class Runtime {
       y1: -deltaY,
       x2: this.world.width - (this.target[3] - this.target[1]) + deltaX,
       y2: this.world.height - (this.target[4] - this.target[2]) + deltaY,
-    };
-  }
-
-  /**
-   * Get minimum viewport position
-   *
-   * This needs to be removed, and replaced with the getBounds.
-   *
-   * @deprecated
-   * @param padding
-   * @param devicePixelRatio
-   */
-  getMinViewportPosition(padding: number, devicePixelRatio: number = 1) {
-    if (this.renderer.hasActiveZone()) {
-      const bounds = this.renderer.getViewportBounds(this.world, this.target, padding);
-      if (bounds) {
-        return {
-          x: bounds.x1,
-          y: bounds.y1,
-        };
-      }
-    }
-    const deltaX = this.scaleFactor < 1 ? this.world.width / this.scaleFactor / 2 : padding;
-    const deltaY = this.scaleFactor < 1 ? this.world.height / this.scaleFactor / 2 : padding;
-    return {
-      x: -deltaX,
-      y: -deltaY,
-    };
-  }
-
-  /**
-   * Get maximum viewport position
-   *
-   * This also needs to be removed, and replaced with getBounds.
-   *
-   * @deprecated
-   * @param padding
-   */
-  getMaxViewportPosition(padding: number) {
-    if (this.renderer.hasActiveZone()) {
-      const bounds = this.renderer.getViewportBounds(this.world, this.target, padding);
-      if (bounds) {
-        return {
-          x: bounds.x2,
-          y: bounds.y2,
-        };
-      }
-    }
-    const deltaX = this.scaleFactor < 1 ? this.world.width / this.scaleFactor / 2 : padding;
-    const deltaY = this.scaleFactor < 1 ? this.world.height / this.scaleFactor / 2 : padding;
-    return {
-      x: this.world.width - (this.target[3] - this.target[1]) + deltaX,
-      y: this.world.height - (this.target[4] - this.target[2]) + deltaY,
     };
   }
 
@@ -228,6 +252,31 @@ export class Runtime {
     return {
       x: this.target[1] + x / this.scaleFactor,
       y: this.target[2] + y / this.scaleFactor,
+    };
+  }
+
+  /**
+   * Converts units from the viewer to the world.
+   *
+   * Needs to be tested, as this will become more important with the event system.
+   *
+   * @param x
+   * @param y
+   * @param width
+   * @param height
+   */
+  worldToViewer(x: number, y: number, width: number, height: number) {
+    const strand = DnaFactory.singleBox(width, height, x, y);
+
+    mutate(strand, compose(scale(this.scaleFactor), translate(-this.target[1], -this.target[2])));
+
+    return {
+      // visible: visible[0] !== 0,
+      x: strand[1],
+      y: strand[2],
+      width: strand[3] - strand[1],
+      height: strand[4] - strand[2],
+      strand,
     };
   }
 
@@ -301,6 +350,32 @@ export class Runtime {
     // new Dispatcher(this.world).registerEventListener(eventName, subscription);
   }
 
+  selectZone(zone: number | string) {
+    this.world.selectZone(zone);
+    this.pendingUpdate = true;
+  }
+
+  deselectZone() {
+    this.world.deselectZone();
+    this.pendingUpdate = true;
+  }
+
+  hook<Name extends keyof RuntimeHooks, Arg = UnwrapHookArg<Name>>(name: keyof RuntimeHooks, arg: Arg) {
+    const len = this.hooks[name].length;
+    if (len !== 0) {
+      for (let x = 0; x < len; x++) {
+        this.hooks[name][x](arg as any);
+      }
+    }
+  }
+
+  registerHook<Name extends keyof RuntimeHooks, Hook = UnwrapHook<Name>>(name: Name, hook: Hook) {
+    this.hooks[name].push(hook as any);
+    return () => {
+      this.hooks[name] = (this.hooks[name] as any[]).filter(e => e !== (hook as any));
+    };
+  }
+
   /**
    * Render
    *
@@ -311,8 +386,13 @@ export class Runtime {
   render = (t: number) => {
     const delta = t - this.lastTime;
     this.lastTime = t;
+    // First flush
+    this.world.flushSubscriptions();
     // Set up our loop.
     this.stopId = window.requestAnimationFrame(this.render);
+    // Called every frame.
+    this.hook('useFrame', delta);
+
     if (
       !this.firstRender &&
       !this.pendingUpdate &&
@@ -330,6 +410,7 @@ export class Runtime {
       return;
     }
 
+    this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
     this.renderer.beforeFrame(this.world, delta, this.target);
     // Calculate a scale factor by passing in the height and width of the target.
@@ -375,25 +456,33 @@ export class Runtime {
           position[key + 3] - position[key + 1],
           position[key + 4] - position[key + 2]
         );
+        this.hook('useAfterPaint', paint);
       }
-      // Another hook after painting each layer.
-      this.renderer.afterPaintLayer(paint);
     }
     // A final hook after the entire frame is complete.
     this.renderer.afterFrame(this.world, delta, this.target);
+    this.hook('useAfterFrame', delta);
     // Finally at the end, we set up the frame we just rendered.
     this.lastTarget.set([this.target[0], this.target[1], this.target[2], this.target[3], this.target[4]]);
     // We've just finished our first render.
     this.firstRender = false;
     this.pendingUpdate = false;
+    this.logNextRender = false;
+    // Flush world subscriptions.
+    this.world.flushSubscriptions();
     // @todo this could be improved, but will work for now.
     const updates = this.world.getScheduledUpdates(this.target, this.scaleFactor);
     const len = updates.length;
     if (len > 0) {
       for (let i = 0; i < len; i++) {
-        updates[i]().then(() => {
+        const update = updates[len - i]();
+        if (update) {
+          update.then(() => {
+            this.pendingUpdate = true;
+          });
+        } else {
           this.pendingUpdate = true;
-        });
+        }
       }
     }
   };
