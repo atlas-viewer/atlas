@@ -34,8 +34,8 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     this.eventHandlers = {
       onClick: [],
       onPointerDown: [],
-      onPointerLeave: [],
-      onPointerMove: [],
+      onMouseLeave: [],
+      onMouseMove: [],
       onPointerUp: [],
       onWheel: [],
     };

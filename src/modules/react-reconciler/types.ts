@@ -11,6 +11,7 @@ declare namespace JSX {
       onClick?: (e: any) => void;
     };
     worldObject: {
+      ref?: any;
       key?: string | number;
       children?: React.ReactNode;
       height: number;
@@ -20,6 +21,8 @@ declare namespace JSX {
       x?: number;
       y?: number;
       onClick?: (e: any) => void;
+      onMouseMove?: (e: any) => void;
+      onMouseLeave?: (e: any) => void;
     };
     worldImage: { key?: string | number; uri: string; target: any; display: any; onClick?: (e: any) => void };
     compositeImage: { key?: string | number; id: string; width: number; height: number; children?: React.ReactNode };

@@ -1,8 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { render } from 'react-dom';
-import { Atlas, useAfterFrame, useAfterPaint, useCanvas, useRuntime } from '../../src/modules/react-reconciler/Atlas';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal, render } from 'react-dom';
+import {
+  Atlas,
+  useAfterFrame,
+  useAfterPaint,
+  useBeforeFrame,
+  useCanvas,
+  useFrame,
+  useRuntime,
+} from '../../src/modules/react-reconciler/Atlas';
 import { GetTile, getTiles } from './get-tiles';
 import { WorldObject } from '../../src/world-objects/world-object';
+import usePortal from './use-portal';
 
 const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
   const [tiles, setTiles] = useState<GetTile[]>([]);
@@ -106,14 +115,121 @@ const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
   );
 };
 
-const TestImage: React.FC = () => {
+const TestVideo: React.FC = () => {
+  const target = usePortal('test');
+  const ref = useRef<HTMLVideoElement>();
+  const [ready, setReady] = useState(false);
+  const [counter, setCounter] = useState(0);
+  const worldObject = useRef<WorldObject>();
+  const runtime = useRuntime();
+  const canvas = useCanvas();
+  const playing = useRef(false);
+
+  useFrame(() => {
+    if (ref.current && playing.current) {
+      runtime.pendingUpdate = true;
+    }
+  });
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.addEventListener('play', () => {
+        console.log('play');
+        playing.current = true;
+      });
+      ref.current.addEventListener('pause', () => {
+        console.log('pause');
+        playing.current = false;
+      });
+    }
+  });
+
+  useAfterFrame(() => {
+    const ctx = canvas.getContext('2d');
+    if (ref.current && worldObject.current && ctx) {
+      const { x, y, width, height } = runtime.worldToViewer(
+        worldObject.current.x,
+        worldObject.current.y,
+        worldObject.current.width,
+        worldObject.current.height
+      );
+      ctx.drawImage(ref.current, x, y, width, height);
+    }
+  });
+
+  useEffect(() => {
+    render(<video ref={ref as any} />, target);
+    setReady(true);
+  }, [counter]);
+
+  useLayoutEffect(() => {
+    if (ref.current) {
+      console.log(ref);
+      ref.current.style.opacity = '0';
+      ref.current.src = 'https://assets.mixkit.co/videos/preview/mixkit-lake-full-of-boats-3423-large.mp4';
+    }
+  }, [ready]);
+
   return (
     <worldObject
-      width={800}
-      height={600}
-      id={'test-2'}
+      ref={worldObject as any}
+      x={100}
+      y={50}
+      width={320}
+      height={180}
+      id={'test-video'}
       onClick={e => {
-        console.log('World object click');
+        e.stopPropagation();
+        console.log('====> Click video');
+
+        if (ref.current) {
+          ref.current.play();
+        }
+      }}
+    >
+      <paragraph id="video-text" target={{ x: 0, y: 0, width: 320, height: 180 }}>
+        {' '}
+      </paragraph>
+    </worldObject>
+  );
+};
+
+const TestImage: React.FC = () => {
+  const position = useRef<any>();
+  const runtime = useRuntime();
+  const canvas = useCanvas();
+
+  useFrame(() => {
+    if (position.current && !runtime.firstRender) {
+      runtime.pendingUpdate = true;
+    }
+  });
+
+  useAfterFrame(() => {
+    const ctx = canvas.getContext('2d');
+    if (ctx && position.current) {
+      const { x, y, width, height } = runtime.worldToViewer(position.current.x, position.current.y, 20, 20);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'white';
+      ctx.drawImage(canvas, x, y, width, height, x - width, y - height, width * 2, height * 2);
+      ctx.strokeRect(x - width, y - height, width * 2, height * 2);
+    }
+  });
+
+  return (
+    <worldObject
+      width={400}
+      height={300}
+      id={'test-2'}
+      onMouseMove={e => {
+        position.current = e.atlas;
+      }}
+      onMouseLeave={() => {
+        position.current = undefined;
+        runtime.pendingUpdate = true;
+      }}
+      onClick={e => {
+        console.log('====> Click top left image');
       }}
     >
       <worldImage
@@ -124,7 +240,15 @@ const TestImage: React.FC = () => {
           console.log('Image click');
         }}
       />
-      <paragraph id="1" fontSize={12} target={{ x: 20, y: 40, width: 300, height: 80 }}>
+      <paragraph
+        backgroundColor="#000"
+        color="#fff"
+        paddingX={10}
+        paddingY={10}
+        id="1"
+        fontSize={12}
+        target={{ x: 20, y: 40, width: 300, height: 35 }}
+      >
         Testing everything about this worksTesting everything about this works.
       </paragraph>
     </worldObject>
@@ -169,18 +293,13 @@ const ExampleText: React.FC = () => {
   );
 };
 
-const TestVideo: React.FC = () => {
-  // @todo
-  // https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4
-  return null;
-};
-
 render(
   <Atlas width={800} height={600}>
     <world onClick={e => console.log('Clicked whole world.', e.atlasTarget)}>
       <TestImage />
       <ExampleText />
       <TiledImage x={400} />
+      <TestVideo />
     </world>
   </Atlas>,
   document.getElementById('root')

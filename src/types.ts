@@ -16,6 +16,6 @@ export type PointerEvents = {
   onWheel(e: any): void;
   onPointerDown(e: any): void;
   onPointerUp(e: any): void;
-  onPointerLeave(e: any): void;
-  onPointerMove(e: any): void;
+  onMouseLeave(e: any): void;
+  onMouseMove(e: any): void;
 };

@@ -30,11 +30,13 @@ function applyProps(instance: BaseObject<any, any>, oldProps: any, newProps: any
     instance.applyProps(newProps);
   }
   if (instance instanceof BaseObject) {
-    if (newProps.onClick !== oldProps.onClick) {
-      if (oldProps.onClick) {
-        instance.removeEventListener('onClick', oldProps.onClick);
+    for (const event of ['onClick', 'onMouseMove', 'onMouseLeave']) {
+      if (newProps[event] !== oldProps[event]) {
+        if (oldProps[event]) {
+          instance.removeEventListener(event as any, oldProps[event]);
+        }
+        instance.addEventListener(event as any, newProps[event]);
       }
-      instance.addEventListener('onClick', newProps.onClick);
     }
   }
 }
@@ -75,7 +77,9 @@ const reconciler = createReconciler({
         (instance as Text).text = props.children;
         break;
       default:
-        throw new Error(`Element <${type} /> not found`);
+        // throw new Error(`Element <${type} /> not found`);
+        return;
+        break;
     }
 
     applyProps(instance, {}, props);
@@ -90,7 +94,7 @@ const reconciler = createReconciler({
       runtime.world = world;
     } else if (world instanceof WorldObject) {
       runtime.world.appendChild(world);
-    } else {
+    } else if (world) {
       throw new Error('Invalid root');
     }
   },
@@ -131,15 +135,7 @@ const reconciler = createReconciler({
   },
   commitUpdate(instance: any, updatePayload: any, type: any, oldProps: any, newProps: any, finishedWork: any) {
     if (instance.applyProps) {
-      instance.applyProps(updatePayload);
-    }
-    if (instance instanceof BaseObject) {
-      if (newProps.onClick !== oldProps.onClick) {
-        if (oldProps.onClick) {
-          instance.removeEventListener('onClick', oldProps.onClick);
-        }
-        instance.addEventListener('onClick', newProps.onClick);
-      }
+      applyProps(instance, oldProps, updatePayload);
     }
   },
 
@@ -149,8 +145,8 @@ const reconciler = createReconciler({
   getChildHostContext(...args: any[]) {
     // console.log('getChildHostContext', args);
   },
-  getPublicInstance(...args: any[]) {
-    // console.log('getPublicInstance', args);
+  getPublicInstance(obj: any) {
+    return obj;
   },
   getRootHostContext() {
     // console.log('getPublicInstance');
@@ -161,7 +157,6 @@ const reconciler = createReconciler({
   resetAfterCommit(runtime: Runtime) {
     runtime.pendingUpdate = true;
     if (runtime.world) {
-      console.log(runtime.world);
       runtime.world.recalculateWorldSize();
     }
   },

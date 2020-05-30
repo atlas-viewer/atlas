@@ -28,6 +28,9 @@ module.exports = {
       inject: false,
       templateContent: ({ htmlWebpackPlugin }) => `
         <html>
+          <style>
+            body, html { overflow: hidden; }
+          </style>
           <head>
             ${htmlWebpackPlugin.tags.headTags}
           </head>
@@ -44,6 +47,7 @@ module.exports = {
   },
   devServer: {
     stats: 'errors-only',
+    host: '0.0.0.0',
     contentBase: path.resolve('../static'),
   },
 };

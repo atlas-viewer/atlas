@@ -8,6 +8,7 @@ import { popmotionController } from '../popmotion-controller/popmotion-controlle
 import { CanvasRenderer } from '../canvas-renderer/canvas-renderer';
 import { Runtime } from '../../renderer/runtime';
 import { Paintable } from '../../world-objects/paint';
+import { BaseObject } from '../../objects/base-object';
 
 const AtlasContext = React.createContext<
   | {
@@ -95,6 +96,7 @@ export const useCanvas = () => {
 
 export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps }) => {
   const canvasRef = useRef<HTMLCanvasElement>();
+  const mousedOver = useRef<any[]>([]);
   const [ready, setReady] = useState(false);
   const state: React.MutableRefObject<RuntimeContext> = useRef<any>({
     ready: ready,
@@ -117,32 +119,74 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
     return props.children;
   }, []);
 
-  const handleClick = useCallback(e => {
-    const { pageX, pageY } = e;
-    if (state.current.click) {
-      const { x, y } = state.current.runtime.viewerToWorld(
-        pageX - state.current.canvasPosition.left,
-        pageY - state.current.canvasPosition.top
-      );
-      e.atlas = { x, y };
+  const propagateEvent = useCallback((eventName: string, e: any, x: number, y: number) => {
+    const targets: Array<BaseObject> = [];
+    const point = DnaFactory.singleBox(1, 1, x, y);
+    let stopped = false;
+    e.stopPropagation = () => {
+      stopped = true;
+    };
 
-      const point = DnaFactory.singleBox(1, 1, x, y);
-      e.atlasTarget = state.current.runtime.world;
-      state.current.runtime.world.dispatchEvent('onClick', e);
-      const worldObjects = state.current.runtime.world.getObjectsAt(point, true);
-      if (worldObjects.length) {
-        for (const [obj, images] of worldObjects) {
-          e.atlasTarget = obj;
-          obj.dispatchEvent('onClick', e);
-          if (images.length) {
-            for (const image of images) {
-              e.atlasTarget = image;
-              image.dispatchEvent('onClick', e);
+    e.atlasTarget = state.current.runtime.world;
+    state.current.runtime.world.dispatchEvent(eventName, e);
+    const worldObjects = state.current.runtime.world.getObjectsAt(point, true).reverse();
+    if (worldObjects.length && !stopped) {
+      for (const [obj, images] of worldObjects) {
+        if (stopped) {
+          return targets;
+        }
+        e.atlasTarget = obj;
+        targets.push(obj);
+        obj.dispatchEvent(eventName, e);
+        if (images.length) {
+          for (const image of images) {
+            if (stopped) {
+              return targets;
             }
+            e.atlasTarget = image;
+            targets.push(image);
+            image.dispatchEvent(eventName, e);
           }
         }
       }
     }
+    return targets;
+  }, []);
+
+  const handleClick = useCallback((e: any) => {
+    if (state.current.click) {
+      const { x, y } = state.current.runtime.viewerToWorld(
+        e.pageX - state.current.canvasPosition.left,
+        e.pageY - state.current.canvasPosition.top
+      );
+
+      e.atlas = { x, y };
+
+      propagateEvent('onClick', e, x, y);
+    }
+  }, []);
+
+  const handlePointMove = useCallback((e: any) => {
+    const { x, y } = state.current.runtime.viewerToWorld(
+      e.pageX - state.current.canvasPosition.left,
+      e.pageY - state.current.canvasPosition.top
+    );
+
+    e.atlas = { x, y };
+    const newList = propagateEvent('onMouseMove', e, x, y);
+    const newIds = [];
+    const newItems = [];
+    for (const item of newList) {
+      newIds.push(item.id);
+      newItems.push(item);
+    }
+    for (const oldItem of mousedOver.current) {
+      if (newIds.indexOf(oldItem.id) === -1) {
+        oldItem.dispatchEvent('onMouseLeave', e);
+      }
+    }
+
+    mousedOver.current = newItems;
   }, []);
 
   const handleMouseDown = useCallback(e => {
@@ -176,5 +220,13 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
     );
   }, []);
 
-  return <canvas {...restProps} onClick={handleClick} onMouseDown={handleMouseDown} ref={canvasRef as any} />;
+  return (
+    <canvas
+      {...restProps}
+      onMouseMove={handlePointMove}
+      onClick={handleClick}
+      onMouseDown={handleMouseDown}
+      ref={canvasRef as any}
+    />
+  );
 };
