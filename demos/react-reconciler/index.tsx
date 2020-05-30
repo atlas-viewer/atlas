@@ -173,8 +173,8 @@ const TestVideo: React.FC = () => {
   return (
     <worldObject
       ref={worldObject as any}
-      x={100}
-      y={50}
+      x={450}
+      y={200}
       width={320}
       height={180}
       id={'test-video'}
