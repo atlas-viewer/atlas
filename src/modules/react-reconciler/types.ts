@@ -38,6 +38,8 @@ declare namespace JSX {
       key?: string | number;
       id: string;
       color?: string;
+      textAlign?: string;
+      lineHeight?: number;
       backgroundColor?: string;
       target?: { x: number; y: number; width: number; height: number };
       children?: string;

@@ -130,6 +130,9 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
     e.atlasTarget = state.current.runtime.world;
     state.current.runtime.world.dispatchEvent(eventName, e);
     const worldObjects = state.current.runtime.world.getObjectsAt(point, true).reverse();
+    if (eventName === 'onClick') {
+      console.log(worldObjects);
+    }
     if (worldObjects.length && !stopped) {
       for (const [obj, images] of worldObjects) {
         if (stopped) {

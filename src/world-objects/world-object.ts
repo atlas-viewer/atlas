@@ -72,7 +72,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const y = props.y || 0;
 
     this.id = props.id;
-    const s = props.scale && props.scale !== 1 ? props.scale : 1;
+    const s = typeof props.scale !== 'undefined' ? props.scale : this.scale;
 
     this.points = dna([1, x, y, x + props.width, y + props.height]);
 
@@ -80,8 +80,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.worldPoints[4] = this.worldPoints[2] + props.height * s;
 
     if (props.scale && props.scale !== 1) {
-      this.atScale(props.scale / this.scale);
+      this.atScale(s);
     }
+
+    this.scale = s;
 
     // @todo this will be a bit tricky as we have to use the translate
     //   function to update the props. It will be a case of checking

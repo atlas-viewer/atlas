@@ -15,7 +15,7 @@ import usePortal from './use-portal';
 
 const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
   const [tiles, setTiles] = useState<GetTile[]>([]);
-  const [index] = useState(0);
+  const [index, setIndex] = useState(0);
   const shouldLogPaint = useRef(false);
   const canvas = useCanvas();
   const runtime = useRuntime();
@@ -65,38 +65,39 @@ const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
 
   const service = first.imageService;
 
+  const scale = 400 / first.width;
+
   return (
-    <worldObject
-      key={index}
-      scale={400 / first.width}
-      height={first.height}
-      width={first.width}
-      x={props.x}
-      y={props.y}
-      id={'test-3'}
-      onClick={e => {
-        if (selected.current) {
-          selected.current = undefined;
-        } else {
-          selected.current = e.atlasTarget;
-        }
-        console.log('Click world object');
-        shouldLogPaint.current = true;
-        runtime.pendingUpdate = true;
-      }}
-    >
-      <compositeImage id={service.id} width={first.width} height={first.height}>
-        <worldImage
-          uri={first.thumbnail.id}
-          target={{ width: first.width, height: first.height }}
-          display={{ width: first.thumbnail.width, height: first.thumbnail.height }}
-          onClick={e => {
-            console.log('Image click');
-          }}
-        />
-        {(service.tiles || []).map(tile => (
-          <>
-            {(tile.scaleFactors || []).map(size => (
+    <>
+      <worldObject
+        scale={scale}
+        height={first.height}
+        width={first.width}
+        x={props.x}
+        y={props.y}
+        id={'test-3'}
+        onClick={e => {
+          if (selected.current) {
+            selected.current = undefined;
+          } else {
+            selected.current = e.atlasTarget;
+          }
+          console.log('Click wunder');
+          shouldLogPaint.current = true;
+          runtime.pendingUpdate = true;
+        }}
+      >
+        <compositeImage key={service.id} id={service.id} width={first.width} height={first.height}>
+          <worldImage
+            uri={first.thumbnail.id}
+            target={{ width: first.width, height: first.height }}
+            display={{ width: first.thumbnail.width, height: first.thumbnail.height }}
+            onClick={e => {
+              console.log('Image click');
+            }}
+          />
+          {(service.tiles || []).map(tile =>
+            (tile.scaleFactors || []).map(size => (
               <tiledImage
                 onClick={e => {
                   console.log('Tile click', size, tile);
@@ -107,10 +108,71 @@ const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
                 tile={tile}
                 scaleFactor={size}
               />
-            ))}
-          </>
-        ))}
-      </compositeImage>
+            ))
+          )}
+        </compositeImage>
+      </worldObject>
+      {index > 0 ? (
+        <Button
+          onClick={e => {
+            e.stopPropagation();
+            setIndex(i => i - 1);
+          }}
+          id="prev-button"
+          x={props.x || 0}
+          y={0}
+          height={30}
+          width={100}
+          lineHeight={1.3}
+          textAlign="center"
+        >
+          prev
+        </Button>
+      ) : null}
+      {index < tiles.length ? (
+        <Button
+          onClick={e => {
+            e.stopPropagation();
+            console.log('next..');
+            setIndex(i => i + 1);
+          }}
+          id="next-button"
+          x={(props.x || 0) + 300}
+          y={0}
+          height={30}
+          width={100}
+          lineHeight={1.3}
+          textAlign="center"
+        >
+          next
+        </Button>
+      ) : null}
+      {index === 0 ? <TestVideo /> : null}
+    </>
+  );
+};
+
+const Button: React.FC<{
+  x: number;
+  y: number;
+  height: number;
+  width: number;
+  id: string;
+  lineHeight?: number;
+  textAlign?: string;
+  onClick?: (e: any) => void;
+}> = ({ children, x, y, width, height, onClick, ...props }) => {
+  return (
+    <worldObject x={x} y={y} height={height} width={width} id={props.id} onClick={onClick}>
+      <paragraph
+        {...props}
+        textAlign="center"
+        target={{ x: 0, y: 0, width, height }}
+        backgroundColor="cornflowerblue"
+        color="white"
+      >
+        {children as any}
+      </paragraph>
     </worldObject>
   );
 };
@@ -146,7 +208,7 @@ const TestVideo: React.FC = () => {
 
   useAfterFrame(() => {
     const ctx = canvas.getContext('2d');
-    if (ref.current && worldObject.current && ctx) {
+    if (ref.current && worldObject.current && ctx && playing.current) {
       const { x, y, width, height } = runtime.worldToViewer(
         worldObject.current.x,
         worldObject.current.y,
@@ -164,33 +226,36 @@ const TestVideo: React.FC = () => {
 
   useLayoutEffect(() => {
     if (ref.current) {
-      console.log(ref);
       ref.current.style.opacity = '0';
       ref.current.src = 'https://assets.mixkit.co/videos/preview/mixkit-lake-full-of-boats-3423-large.mp4';
     }
   }, [ready]);
 
   return (
-    <worldObject
-      ref={worldObject as any}
-      x={450}
-      y={200}
-      width={320}
-      height={180}
-      id={'test-video'}
-      onClick={e => {
-        e.stopPropagation();
-        console.log('====> Click video');
-
-        if (ref.current) {
-          ref.current.play();
-        }
-      }}
-    >
-      <paragraph id="video-text" target={{ x: 0, y: 0, width: 320, height: 180 }}>
-        {' '}
-      </paragraph>
-    </worldObject>
+    <>
+      <worldObject ref={worldObject as any} x={450} y={200} width={320} height={180} id={'test-video'}>
+        <paragraph id="video-text" target={{ x: 0, y: 0, width: 320, height: 180 }}>
+          {' '}
+        </paragraph>
+      </worldObject>
+      <Button
+        id="play-video"
+        x={550}
+        y={300}
+        width={100}
+        height={30}
+        lineHeight={1.4}
+        textAlign="center"
+        onClick={e => {
+          e.stopPropagation();
+          if (ref.current) {
+            ref.current.play();
+          }
+        }}
+      >
+        Play
+      </Button>
+    </>
   );
 };
 
@@ -295,11 +360,14 @@ const ExampleText: React.FC = () => {
 
 render(
   <Atlas width={800} height={600}>
-    <world onClick={e => console.log('Clicked whole world.', e.atlasTarget)}>
+    <world
+      onClick={e => {
+        //console.log('Clicked whole world.', e.atlasTarget)
+      }}
+    >
       <TestImage />
       <ExampleText />
       <TiledImage x={400} />
-      <TestVideo />
     </world>
   </Atlas>,
   document.getElementById('root')
