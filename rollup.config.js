@@ -19,10 +19,12 @@ export default [
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM',
+          'react-reconciler': 'ReactReconciler',
+          scheduler: 'Scheduler',
         },
       },
     ],
-    external: ['react', 'react-dom'],
+    external: ['react', 'react-dom', 'react-reconciler', 'scheduler'],
     plugins: [
       typescript({ target: 'es5' }),
       resolve(), // so Rollup can find `ms`
@@ -32,6 +34,7 @@ export default [
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
       terser(),
       compiler(),
+      visualizer(),
     ],
   },
   {
@@ -56,7 +59,6 @@ export default [
       }),
       resolve(), // so Rollup can find `ms`
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
-      visualizer(),
     ],
   },
 ];
