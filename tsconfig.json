@@ -5,9 +5,9 @@
     "esModuleInterop": true,
     "allowJs": false,
     "checkJs": false,
-    "declaration": true,
-    "declarationDir": "./lib",
+    "declaration": false,
     "emitDecoratorMetadata": true,
+    "downlevelIteration": true,
     "experimentalDecorators": true,
     "forceConsistentCasingInFileNames": true,
     "importHelpers": true,
@@ -19,7 +19,6 @@
     ],
     "jsx": "react",
     "target": "es2015",
-    "incremental": true,
     "module": "es2015",
     "moduleResolution": "node",
     "noEmitOnError": true,
@@ -34,9 +33,7 @@
     "pretty": false,
     "removeComments": true,
     "sourceMap": true,
-    "resolveJsonModule": true,
-    "composite": true,
-    "declarationMap": true
+    "resolveJsonModule": true
   },
   "include": [
     "./src/**/*",
