@@ -16,8 +16,13 @@ export default [
         name: 'Atlas',
         format: 'umd',
         sourcemap: true,
+        globals: {
+          react: 'React',
+          'react-dom': 'ReactDOM',
+        },
       },
     ],
+    external: ['react', 'react-dom'],
     plugins: [
       typescript({ target: 'es5' }),
       resolve(), // so Rollup can find `ms`
@@ -35,13 +40,15 @@ export default [
       {
         file: pkg.main,
         format: 'cjs',
+        sourcemap: true,
       },
       {
         file: pkg.module,
         format: 'es',
+        sourcemap: true,
       },
     ],
-    external: ['@atlas-viewer/dna'],
+    external: [...Object.keys(pkg.dependencies)],
     plugins: [
       typescript(),
       replace({
