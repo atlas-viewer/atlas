@@ -21,9 +21,15 @@
     "@hyperion-framework/vault": "^0.4.6",
     "canvas-text-wrapper": "^0.10.2",
     "framesync": "^4.0.2",
+    "@popmotion/popcorn": "^0.4.4",
     "popmotion": "^8.6.8",
     "stats.js": "^0.17.0",
-    "typescript-memoize": "^1.0.0-alpha.3"
+    "typescript-memoize": "^1.0.0-alpha.3",
+    "react": "^16.12.0",
+    "react-dom": "^16.12.0",
+    "react-reconciler": "^0.25.1",
+    "scheduler": "^0.19.1",
+    "style-value-types": "^3.1.7"
   },
   "publishConfig": {
     "access": "public"
@@ -53,9 +59,6 @@
     "html-webpack-plugin": "^4.3.0",
     "jest": "^25.1.0",
     "prettier": "^1.19.1",
-    "react": "^16.12.0",
-    "react-dom": "^16.12.0",
-    "react-reconciler": "^0.25.1",
     "rollup": "^2.11.2",
     "rollup-plugin-terser": "^6.1.0",
     "rollup-plugin-visualizer": "^4.0.4",

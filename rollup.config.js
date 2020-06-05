@@ -34,7 +34,6 @@ export default [
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
       terser(),
       compiler(),
-      visualizer(),
     ],
   },
   {
@@ -59,6 +58,7 @@ export default [
       }),
       resolve(), // so Rollup can find `ms`
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
+      visualizer(),
     ],
   },
 ];
