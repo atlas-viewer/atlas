@@ -17,6 +17,7 @@ export type TextProps = CanvasTextWrapperOptions & {
   backgroundColor: string;
   fontSize: number;
   fontFamily: string;
+  interactive?: boolean;
 };
 
 export class Text extends BaseObject<TextProps> implements SpacialContent {
@@ -36,6 +37,7 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     height: 100,
     points: dna(5),
   };
+  interactive: boolean;
   props: CanvasTextWrapperOptions = {
     font: '18px Arial, sans-serif',
     lineHeight: 1,
@@ -60,7 +62,7 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     this.points = dna(5);
   }
 
-  getAllPointsAt(target: Strand, aggregate: Strand, scale: number): Paint[] {
+  getAllPointsAt(target: Strand, aggregate: Strand): Paint[] {
     return [[this as any, this.points, aggregate]];
   }
 
@@ -71,10 +73,13 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     color,
     backgroundColor,
     fontSize = 18,
+    interactive,
     fontFamily = 'Arial, sans-serif',
     ...props
   }: Partial<TextProps>) {
-    props.font = `${fontSize * 2}px ${fontFamily}`;
+    props.font = `${fontSize}px ${fontFamily}`;
+
+    this.interactive = interactive || false;
 
     if (typeof text !== 'undefined') {
       this.text = text || '';
@@ -90,9 +95,9 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     }
     if (target) {
       this.points = DnaFactory.singleBox(target.width, target.height, target.x, target.y);
-      this.display.points.set(transform(this.points, scale(2)));
-      this.display.width = target.width * 2;
-      this.display.height = target.height * 2;
+      this.display.points = this.points;
+      this.display.width = target.width;
+      this.display.height = target.height;
     }
     this.props = { ...this.props, ...props };
     // Bump revision.

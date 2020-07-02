@@ -10,13 +10,14 @@ import {
   translate,
   dna,
   Strand,
-  transform,
 } from '@atlas-viewer/dna';
 import { WorldObject } from './world-objects/world-object';
 import { AbstractObject } from './world-objects/abstract-object';
 import { Paint, Paintable } from './world-objects/paint';
 import { ZoneInterface } from './world-objects/zone';
 import { BaseObject } from './objects/base-object';
+import { SpacialContent } from './spacial-content/spacial-content';
+import { SupportedEvents } from './events';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
@@ -38,6 +39,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   filteredPointsBuffer: Strand;
   selectedZone?: number;
   triggerQueue: Array<[string, any]> = [];
+  activatedEvents: string[] = [];
+  _updatedList = [];
+  translationBuffer = dna(9);
+  needsRecalculate = true;
 
   get x(): number {
     return 0;
@@ -94,6 +99,75 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       this.viewingDirection = props.viewingDirection;
       this.triggerRepaint();
     }
+  }
+
+  propagateTouchEvent(eventName: string, e: TouchEvent, touchTargets: Array<{ x: number; y: number }>) {
+    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+
+    const targets = [];
+    for (const touch of touchTargets) {
+      if (touch.x && touch.y) {
+        const point = DnaFactory.singleBox(1, 1, touch.x, touch.y);
+        targets.push(this.getObjectsAt(point, true).reverse());
+      }
+    }
+
+    return targets.map(target => this.propagateEvent(eventName, e, target, { bubbles: true, cancelable: true }));
+  }
+
+  propagatePointerEvent<Name extends keyof SupportedEvents>(
+    eventName: Name,
+    e: any,
+    x: number,
+    y: number,
+    opts: { bubbles?: boolean; cancelable?: boolean } = {}
+  ) {
+    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    const point = DnaFactory.singleBox(1, 1, x, y);
+    const worldObjects = this.getObjectsAt(point, true).reverse();
+    return this.propagateEvent(eventName, e, worldObjects, opts);
+  }
+
+  _propagateEventTargets: any[] = [];
+  propagateEvent(
+    eventName: string,
+    e: any,
+    worldObjects: [WorldObject, SpacialContent[]][],
+    { bubbles = false, cancelable = false }: { bubbles?: boolean; cancelable?: boolean } = {}
+  ) {
+    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    // Modify event if we need to.
+    e.atlasTarget = this;
+
+    // Store the stack of targets.
+    this._propagateEventTargets.length = 1;
+    this._propagateEventTargets[0] = this;
+
+    // Set up a stop propagation
+    let stopped = false;
+    e.stopPropagation = () => {
+      stopped = true;
+    };
+
+    const woLen = worldObjects.length;
+    for (let w = 0; w < woLen; w++) {
+      if (w === 1) break;
+      this._propagateEventTargets.unshift(worldObjects[w][0]);
+      const len = worldObjects[w][1].length;
+      if (len) {
+        for (let i = 0; i < len; i++) {
+          this._propagateEventTargets.unshift(worldObjects[w][1][i]);
+        }
+      }
+    }
+    const len = this._propagateEventTargets.length;
+    for (let i = 0; i < len; i++) {
+      e.atlasTarget = this._propagateEventTargets[i];
+      e.atlasWorld = this;
+      this._propagateEventTargets[i].dispatchEvent(eventName as any, e);
+      if (stopped) break;
+    }
+    return this._propagateEventTargets;
   }
 
   appendChild(item: WorldObject) {
@@ -197,26 +271,34 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   appendWorldObject(object: WorldObject) {
     this.checkResizeInternalBuffer();
 
-    this.points.set(DnaFactory.singleBox(object.width, object.height, object.x, object.y), this.objects.length * 5);
-    object.worldPoints = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
+    const pointValues = object.points;
+    object.points = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
+    object.points[1] = pointValues[1];
+    object.points[2] = pointValues[2];
+    object.points[3] = pointValues[3];
+    object.points[4] = pointValues[4];
 
     this.objects.push(object);
     this.filteredPointsBuffer = dna(this.objects.length * 5);
     this.recalculateWorldSize();
+    this.needsRecalculate = true;
 
     this.triggerRepaint();
   }
 
   recalculateWorldSize() {
-    const wBuffer = new Int32Array(this.objects.length);
-    const hBuffer = new Int32Array(this.objects.length);
-    const totalObjects = this.objects.length;
-    for (let x = 0; x < totalObjects; x++) {
-      wBuffer[x] = this.points[x * 5 + 3];
-      hBuffer[x] = this.points[x * 5 + 4];
+    if (this.needsRecalculate) {
+      const wBuffer = new Int32Array(this.objects.length);
+      const hBuffer = new Int32Array(this.objects.length);
+      const totalObjects = this.objects.length;
+      for (let x = 0; x < totalObjects; x++) {
+        wBuffer[x] = this.points[x * 5 + 3];
+        hBuffer[x] = this.points[x * 5 + 4];
+      }
+      this._width = Math.max(...wBuffer);
+      this._height = Math.max(...hBuffer);
+      this.needsRecalculate = false;
     }
-    this._width = Math.max(...wBuffer);
-    this._height = Math.max(...hBuffer);
   }
 
   /**
@@ -250,7 +332,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     const worldObject = new WorldObject(object);
 
-    worldObject.worldPoints = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
+    worldObject.points = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
     // worldObject.atScale(scaleFactor);
     // worldObject.translate(x, y);
     this.objects.push(worldObject);
@@ -259,6 +341,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.filteredPointsBuffer = dna(this.points.length * 2);
 
     this.triggerRepaint();
+    this.needsRecalculate = true;
 
     return worldObject;
   }
@@ -314,21 +397,22 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
+    return [];
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
     const len = this.objects.length;
-    const list = [];
+    this._updatedList = [];
     for (let index = 0; index < len; index++) {
       if (filteredPoints[index * 5] !== 0) {
-        list.push(...this.objects[index].getScheduledUpdates(target, scaleFactor));
+        this._updatedList.push(...this.objects[index].getScheduledUpdates(target, scaleFactor));
       }
     }
-    return list;
+    return this._updatedList;
   }
 
   getObjectsAt(target: Strand, all = false): Array<[WorldObject, Paintable[]]> {
     const zone = this.getActiveZone();
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
-    const transformer = translate(-target[1], -target[2]);
+    // const transformer = translate(-target[1], -target[2]);
 
     const len = this.objects.length;
     const objects: Array<[WorldObject, Paintable[]]> = [];
@@ -341,7 +425,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         const object = this.objects[index];
 
         if (all) {
-          objects.push([object, object.getObjectsAt(transform(target, transformer))]);
+          objects.push([object, object.getObjectsAt(target)]);
         } else {
           objects.push([object, []]);
         }
@@ -352,7 +436,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1): Paint[] {
     const objects = this.getObjectsAt(target);
-    const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]));
+    const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
     const layers: Paint[] = [];
@@ -362,19 +446,21 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return layers;
   }
 
+  _alreadyFlushed: any = [];
   flushSubscriptions() {
     if (this.triggerQueue.length) {
-      const alreadyFlushed = [];
-      for (const [type, data] of this.triggerQueue) {
-        if (alreadyFlushed.indexOf(type) !== -1) {
+      this._alreadyFlushed = [];
+      const queueLen = this.triggerQueue.length;
+      for (let x = 0; x < queueLen; x++) {
+        if (this._alreadyFlushed.indexOf(this.triggerQueue[x][0]) !== -1) {
           continue;
         }
-        if (typeof data === 'undefined') {
-          alreadyFlushed.push(type);
+        if (typeof this.triggerQueue[x][1] === 'undefined') {
+          this._alreadyFlushed.push(this.triggerQueue[x][0]);
         }
         const len = this.subscriptions.length;
         for (let i = 0; i < len; i++) {
-          this.subscriptions[i](type, data);
+          this.subscriptions[i].apply(this.triggerQueue[x]);
         }
       }
       this.triggerQueue = [];

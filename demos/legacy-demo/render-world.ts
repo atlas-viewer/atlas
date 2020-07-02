@@ -31,7 +31,7 @@ export function renderWorld(world: World, viewport: any) {
   });
 
   // Create a renderer for our work, add it to a runtime.
-  const renderer = new CanvasRenderer(canvas, { debug: false });
+  const renderer = new CanvasRenderer(canvas, undefined, { debug: false });
   const runtime = new Runtime(renderer, world, viewport, [controller]);
 
   window.addEventListener('resize', () => {

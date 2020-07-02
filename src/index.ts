@@ -9,3 +9,4 @@ export * from './modules/debug-renderer/debug-renderer';
 export * from './modules/grid-builder/grid-builder';
 export * from './modules/popmotion-controller/popmotion-controller';
 export * from './modules/react-reconciler';
+export * from './modules/iiif';

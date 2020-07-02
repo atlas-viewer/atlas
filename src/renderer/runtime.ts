@@ -27,6 +27,7 @@ type UnwrapHook<T> = T extends Array<infer R> ? R : never;
 type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
 
 type useFrame = UnwrapHook<RuntimeHooks['useFrame']>;
+export type ViewerMode = 'static' | 'explore' | 'sketch';
 
 export class Runtime {
   // Helper getters.
@@ -90,8 +91,11 @@ export class Runtime {
   firstRender = true;
   lastTime: number;
   stopId?: number;
+  mode: ViewerMode = 'explore';
   controllers: RuntimeController[] = [];
   controllersRunning = false;
+  maxScaleFactor = 1;
+  _viewerToWorld = { x: 0, y: 0 };
   hooks: RuntimeHooks = {
     useFrame: [],
     useBeforeFrame: [],
@@ -135,11 +139,50 @@ export class Runtime {
     }
   }
 
+  updateControllerPosition() {
+    for (const controller of this.controllers) {
+      controller.updatePosition(this.x, this.y, this.width, this.height);
+    }
+  }
+
   addController(controller: RuntimeController) {
     this.controllers.push(controller);
     if (this.controllersRunning) {
       controller.start(this);
     }
+  }
+
+  goHome() {
+    if (this.world.width <= 0 || this.world.height <= 0) return;
+
+    const width = this.width * this.scaleFactor;
+    const height = this.height * this.scaleFactor;
+
+    const widthScale = this.world.width / width;
+    const heightScale = this.world.height / height;
+    const ar = width / height;
+
+    if (widthScale < heightScale) {
+      const fullWidth = ar * this.world.height;
+      const space = (fullWidth - this.world.width) / 2;
+
+      this.target[1] = -space;
+      this.target[2] = 0;
+      this.target[3] = fullWidth - space;
+      this.target[4] = this.world.height;
+      this.maxScaleFactor = heightScale;
+    } else {
+      const fullHeight = this.world.width / ar;
+      const space = (fullHeight - this.world.height) / 2;
+
+      this.target[1] = 0;
+      this.target[2] = -space;
+      this.target[3] = this.world.width;
+      this.target[4] = fullHeight - space;
+      this.maxScaleFactor = widthScale;
+    }
+
+    this.updateControllerPosition();
   }
 
   /**
@@ -159,6 +202,8 @@ export class Runtime {
     this.target[4] = this.target[2] + (this.target[4] - this.target[2]) / (fromHeight / toHeight);
   }
 
+  _viewport = { x: 0, y: 0, width: 0, height: 0 };
+
   /**
    * Get Viewport
    *
@@ -168,12 +213,11 @@ export class Runtime {
    * @todo evaluate if we actually need this.
    */
   getViewport(): Projection {
-    return {
-      x: this.target[1],
-      y: this.target[2],
-      width: this.target[3] - this.target[1],
-      height: this.target[4] - this.target[2],
-    };
+    this._viewport.x = this.target[1];
+    this._viewport.y = this.target[2];
+    this._viewport.width = this.target[3] - this.target[1];
+    this._viewport.height = this.target[4] - this.target[2];
+    return this._viewport;
   }
 
   /**
@@ -184,19 +228,22 @@ export class Runtime {
    *
    * @param data
    */
-  setViewport = (data: { x: number; y: number; width?: number; height?: number }) => {
+  setViewport = (data: { x?: number; y?: number; width?: number; height?: number }) => {
+    const x = typeof data.x === 'undefined' ? this.target[1] : data.x;
+    const y = typeof data.y === 'undefined' ? this.target[2] : data.y;
+
     if (data.width) {
-      this.target[3] = data.x + data.width;
+      this.target[3] = x + data.width;
     } else {
-      this.target[3] = this.target[3] - this.target[1] + data.x;
+      this.target[3] = this.target[3] - this.target[1] + x;
     }
     if (data.height) {
-      this.target[4] = data.y + data.height;
+      this.target[4] = y + data.height;
     } else {
-      this.target[4] = this.target[4] - this.target[2] + data.y;
+      this.target[4] = this.target[4] - this.target[2] + y;
     }
-    this.target[1] = data.x;
-    this.target[2] = data.y;
+    this.target[1] = x;
+    this.target[2] = y;
   };
 
   /**
@@ -230,14 +277,48 @@ export class Runtime {
       }
     }
 
-    const deltaX = this.scaleFactor < 1 ? this.world.width / this.scaleFactor / 2 : padding;
-    const deltaY = this.scaleFactor < 1 ? this.world.height / this.scaleFactor / 2 : padding;
-    return {
-      x1: -deltaX,
-      y1: -deltaY,
-      x2: this.world.width - (this.target[3] - this.target[1]) + deltaX,
-      y2: this.world.height - (this.target[4] - this.target[2]) + deltaY,
-    };
+    // world.width = 200
+    // world.height = 400
+    // viewer.width = 800
+    // viewer.height = 400
+    // x1 = -300
+    // x2 = 600
+    // y1 = 0
+    // y2 = 400
+    // width/2 = 400
+    // world.width/2 = 100
+    // width/2 - world.width/2 = -300
+    // world.height/2 = 200
+    // height/2 = 200
+    // height/2 - world.height/2 = 0
+
+    // Is it constrained horizontally?
+
+    // @todo we need to return max and min X and Y
+    // minX = -300
+    // maxX = 0
+
+    // x1 = correct but needs scale
+    // x2 = 0 +
+
+    const visRatio = 1;
+    const wt = this.target[3] - this.target[1];
+    const ww = this.world.width;
+
+    const addConstraintPaddingX = ww < wt;
+
+    const minX = addConstraintPaddingX ? ww - wt : 0;
+    const maxX = addConstraintPaddingX ? 0 : ww - this.width;
+
+    const ht = this.target[4] - this.target[2];
+    const hw = this.world.height;
+
+    const addConstraintPaddingY = hw < ht;
+
+    const minY = addConstraintPaddingY ? hw - ht : 0;
+    const maxY = addConstraintPaddingY ? 0 : hw - this.height;
+
+    return { x1: minX, x2: maxX, y1: minY, y2: maxY };
   }
 
   /**
@@ -249,10 +330,9 @@ export class Runtime {
    * @param y
    */
   viewerToWorld(x: number, y: number) {
-    return {
-      x: this.target[1] + x / this.scaleFactor,
-      y: this.target[2] + y / this.scaleFactor,
-    };
+    this._viewerToWorld.x = this.target[1] + x / this.scaleFactor;
+    this._viewerToWorld.y = this.target[2] + y / this.scaleFactor;
+    return this._viewerToWorld;
   }
 
   /**
@@ -376,6 +456,9 @@ export class Runtime {
     };
   }
 
+  static USE_FRAME = 'useFrame';
+  static USE_BEFORE_FRAME = 'useBeforeFrame';
+
   /**
    * Render
    *
@@ -463,7 +546,11 @@ export class Runtime {
     this.renderer.afterFrame(this.world, delta, this.target);
     this.hook('useAfterFrame', delta);
     // Finally at the end, we set up the frame we just rendered.
-    this.lastTarget.set([this.target[0], this.target[1], this.target[2], this.target[3], this.target[4]]);
+    this.lastTarget[0] = this.target[0];
+    this.lastTarget[1] = this.target[1];
+    this.lastTarget[2] = this.target[2];
+    this.lastTarget[3] = this.target[3];
+    this.lastTarget[4] = this.target[4];
     // We've just finished our first render.
     this.firstRender = false;
     this.pendingUpdate = false;

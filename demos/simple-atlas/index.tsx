@@ -1,6 +1,6 @@
 import React from 'react';
 import { render } from 'react-dom';
-import { Atlas } from 'src/modules/react-reconciler/Atlas';
+import { Atlas } from '../../src/modules/react-reconciler/Atlas';
 
 render(
   <Atlas width={800} height={600}>

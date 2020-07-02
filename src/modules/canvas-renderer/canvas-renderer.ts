@@ -4,16 +4,17 @@ import { Paint } from '../../world-objects';
 import { PositionPair } from '../../types';
 import { distance } from '@popmotion/popcorn';
 import { Text } from '../../objects/text';
-import { CanvasTextWrapper } from 'canvas-text-wrapper';
 import { SingleImage } from '../../spacial-content/single-image';
 import { SpacialContent } from '../../spacial-content/spacial-content';
 import { TiledImage } from '../../spacial-content/tiled-image';
 import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
+import { Box } from '../../objects/box';
 
 export type CanvasRendererOptions = {
   beforeFrame?: (delta: number) => void;
   debug?: boolean;
+  htmlContainer?: HTMLDivElement;
 };
 
 export type ImageBuffer = {
@@ -21,28 +22,24 @@ export type ImageBuffer = {
   indices: number[];
   loaded: number[];
   fallback?: ImageBuffer;
+  loading: boolean;
 };
 
 export class CanvasRenderer implements Renderer {
   canvas: HTMLCanvasElement;
+  htmlContainer?: HTMLDivElement;
   ctx: CanvasRenderingContext2D;
   imageCache: { [url: string]: HTMLImageElement } = {};
-  localCanvases: { [id: string]: HTMLCanvasElement } = {};
   options: CanvasRendererOptions;
   hasPendingUpdate = false;
   imagesPending = 0;
   imagesLoaded = 0;
   frameIsRendering = false;
   firstMeaningfulPaint = false;
-  parallelTasks = 5; // @todo configuration.
+  parallelTasks = 3; // @todo configuration.
   readonly configuration = {
     segmentRendering: true,
   };
-  imageBuffers: {
-    [id: string]: {
-      [scale: string]: ImageBuffer;
-    };
-  } = {};
   loadingQueueOrdered = true;
   loadingQueue: Array<{
     id: string;
@@ -52,15 +49,19 @@ export class CanvasRenderer implements Renderer {
   currentTask: Promise<any> = Promise.resolve();
   tasksRunning = 0;
   stats?: Stats;
-  visibleIds: string[] = [];
+
+  visible: Array<Text | Box | SpacialContent> = [];
+  previousVisible: Array<Text | Box | SpacialContent> = [];
+  htmlIds: string[] = [];
 
   averageJobTime = 1000; // ms
 
-  constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
+  constructor(canvas: HTMLCanvasElement, htmlContainer?: HTMLDivElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
+    this.htmlContainer = htmlContainer;
     // Testing fade in.
     // @todo definitely make this config.
     this.canvas.style.opacity = '0';
@@ -102,6 +103,15 @@ export class CanvasRenderer implements Renderer {
       });
       this.loadingQueueOrdered = true;
     }
+    for (const prev of this.previousVisible) {
+      if (this.visible.indexOf(prev) === -1) {
+        if (this.htmlContainer && this.htmlIds.indexOf(prev.__id) !== -1) {
+          this.htmlContainer.removeChild(prev.__host.element);
+        }
+      }
+    }
+    // Set them.
+    this.previousVisible = this.visible;
     // Some off-screen work might need done, like loading new images in.
     this.doOffscreenWork();
     // Stats
@@ -114,44 +124,47 @@ export class CanvasRenderer implements Renderer {
     // This is our worker. It is called every 1ms (roughly) and will usually be
     // an async task that can run without blocking the frame. Because of
     // there is a configuration for parallel task count.
-    const worker = () => {
-      // First we check if there is work to do.
-      if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
-        // Let's pop something off the loading queue.
-        const next = this.loadingQueue.pop();
-        if (next) {
-          const startTime = performance.now();
-          // We will increment the task count
-          this.tasksRunning++;
-          // And kick it off. We don't care if it succeeded or not.
-          // A task that needs to retry should just add a new task.
-          this.currentTask = next
-            .task()
-            .then(() => {
-              this.averageJobTime = Math.min((this.averageJobTime + performance.now() / startTime) / 2, 2000);
-              this.tasksRunning--;
-            })
-            .catch(() => {
-              this.tasksRunning--;
-            });
-        }
-      }
-    };
     if (this.loadingQueue.length) {
       // First call immediately.
-      worker();
+      this._worker();
       // Here's our clock for scheduling tasks, every 1ms it will try to call.
-      const scheduled = setInterval(() => {
-        // Here is the shut down, no more work to do.
-        if (this.frameIsRendering || (this.loadingQueue.length === 0 && this.tasksRunning === 0)) {
-          clearInterval(scheduled);
-        }
-        // And here's our working being called. Since JS is blocking, this will complete
-        // before the next tick, so its possible that this could be more than 1ms.
-        worker();
-      }, this.averageJobTime);
+      this._scheduled = setInterval(this._doWork, 3);
     }
   }
+
+  _worker = () => {
+    // First we check if there is work to do.
+    if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
+      // Let's pop something off the loading queue.
+      const next = this.loadingQueue.pop();
+      if (next) {
+        const startTime = performance.now();
+        // We will increment the task count
+        this.tasksRunning++;
+        // And kick it off. We don't care if it succeeded or not.
+        // A task that needs to retry should just add a new task.
+        this.currentTask = next
+          .task()
+          .then(() => {
+            this.averageJobTime = Math.min((this.averageJobTime + (performance.now() - startTime)) / 2, 2000);
+            this.tasksRunning--;
+          })
+          .catch(() => {
+            this.tasksRunning--;
+          });
+      }
+    }
+  };
+  _scheduled: any = 0;
+  _doWork = () => {
+    // Here is the shut down, no more work to do.
+    if (this.frameIsRendering || (this.loadingQueue.length === 0 && this.tasksRunning === 0)) {
+      clearInterval(this._scheduled);
+    }
+    // And here's our working being called. Since JS is blocking, this will complete
+    // before the next tick, so its possible that this could be more than 1ms.
+    this._worker();
+  };
 
   getScale(width: number, height: number): number {
     // It shouldn't happen, but it will. If the canvas is a different shape
@@ -161,12 +174,15 @@ export class CanvasRenderer implements Renderer {
     return w < h ? h : w;
   }
 
-  beforeFrame(world: World, delta: number): void {
+  beforeFrame(world: World, delta: number, target: Strand): void {
+    // const scale = this.getScale(target[3] - target[1], target[4] - target[1]);
+    // this.ctx.setTransform(scale, 0, 0, scale, -target[1], -target[2]);
+
     if (this.options.debug && this.stats) {
       this.stats.begin();
     }
     this.frameIsRendering = true;
-    this.visibleIds = [];
+    this.visible = [];
     // User-facing hook for before frame, contains timing information for
     // animations that might be happening, such as pan/drag.
     if (this.options.beforeFrame) {
@@ -176,33 +192,44 @@ export class CanvasRenderer implements Renderer {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  paint(paint: SpacialContent | Text, index: number, x: number, y: number, width: number, height: number): void {
+  paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
+    // Push visible items.
+    this.visible.push(paint);
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
-      this.visibleIds.push(`${paint.id}--${paint.display.scale}`);
       try {
-        // More complex draw here.
-
-        // @todo larger rough pass in the runtime.
-        // @todo outer edge rough pass
-        //
-        // So the viewport (plus some padding) is loaded at full quality
-        // and in an outer ring lower quality is pre-loaded.
-        //   +---------------------------------+
-        //   |       Low quality loaded        |
-        //   |    +-----------------------+    |
-        //   |    |                       |    |
-        //   |    |     high quality      |    |
-        //   |    |       loaded          |    |
-        //   |    |                       |    |
-        //   |    +-----------------------+    |
-        //   |                                 |
-        //   +---------------------------------+
-        // The low quality would be accessible as a cache before high quality
-        // images are loaded.
-
         // 1) Find cached image buffer.
-        const imageBuffer = this.getImageBuffer(paint);
+        const imageBuffer: ImageBuffer = paint.__host;
+
+        if (imageBuffer.loaded.indexOf(index) === -1 && paint.__parent) {
+          let done = false;
+          let current = paint.__parent.images.indexOf(paint);
+          while (!done) {
+            current++;
+            const fallback = paint.__parent.images[current];
+            if (!fallback) {
+              break;
+            }
+            const fallbackHost: ImageBuffer = fallback.__host;
+            const adjustedScale = paint.display.scale / fallback.display.scale;
+            if (fallbackHost && fallbackHost.indices.length) {
+              if (!fallbackHost.loading) {
+                done = true;
+              }
+              this.ctx.drawImage(
+                fallbackHost.canvas,
+                paint.display.points[index * 5 + 1] * adjustedScale,
+                paint.display.points[index * 5 + 2] * adjustedScale,
+                (paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1) * adjustedScale,
+                (paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1) * adjustedScale,
+                x,
+                y,
+                width + 0.8,
+                height + 0.8
+              );
+            }
+          }
+        }
 
         // 2) Schedule paint onto local buffer (async, yay!)
         if (imageBuffer.indices.indexOf(index) === -1) {
@@ -221,13 +248,6 @@ export class CanvasRenderer implements Renderer {
           return;
         }
 
-        // 3) Paint the current buffer onto the target, this probably
-        //  won't have an image on the first frame, unless the buffer pulled
-        // from a previously loaded image, but once an image is there, it will
-        // start loading it.
-        // @todo once these are fixed tiles (say 512 or 1024) paint the entire tile and skip over
-        //       any additional tile calls. Should reduce the paint count to 9 or less, more likely 4.
-
         this.ctx.drawImage(
           imageBuffer.canvas,
           paint.display.points[index * 5 + 1],
@@ -239,67 +259,43 @@ export class CanvasRenderer implements Renderer {
           width + 0.8,
           height + 0.8
         );
-
-        // Simple draw of the (hopefully cached) image.
-        // Ignore this for now.
-        // this.ctx.drawImage(this.getImage(paint, index), x, y, width + 0.5, height + 0.5);
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
       }
     }
 
-    if (paint instanceof Text) {
-      if (!this.textCache[paint.id]) {
-        const canvas = document.createElement('canvas');
-        canvas.width = paint.display.width;
-        canvas.height = paint.display.height;
-        this.textCache[paint.id] = {
-          revision: -1,
-          canvas,
-        };
-      }
+    if (paint instanceof Text || paint instanceof Box) {
+      if (this.htmlContainer) {
+        this.updateHtmlHost(paint);
 
-      if (paint.__revision !== this.textCache[paint.id].revision) {
-        const canvas = this.textCache[paint.id].canvas;
-        const ctx = canvas.getContext('2d');
-        if (paint.backgroundColor) {
-          ctx.fillStyle = paint.backgroundColor;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        } else {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const scale = width / paint.width;
+        const element: HTMLDivElement = paint.__host.element;
+
+        element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        element.style.transformOrigin = `0px 0px`;
+
+        if (this.previousVisible.indexOf(paint) === -1) {
+          this.htmlContainer.appendChild(element);
         }
-        ctx.fillStyle = paint.color;
-        CanvasTextWrapper(canvas, paint.text, paint.props);
+        this.htmlIds.push(paint.__id);
       }
-
-      // do nothing.
-      this.ctx.drawImage(
-        this.textCache[paint.id].canvas,
-        0,
-        0,
-        paint.display.width,
-        paint.display.height,
-        x,
-        y,
-        width + 0.8,
-        height + 0.8
-      );
-      // CanvasTextWrapper(this.canvas, paint.text, paint.props);
     }
   }
 
-  textCache: any = {};
-
-  loadImage(url: string): Promise<HTMLImageElement> {
-    return new Promise(resolve => {
+  loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void): void {
+    try {
       const image = document.createElement('img');
       image.style.transform = 'translate3d(0,0,0)';
       image.decoding = 'async';
       image.src = url;
-      image.addEventListener('load', () => {
-        resolve(image);
-      });
-    });
+      const listener = () => {
+        callback(image);
+        image.removeEventListener('load', listener);
+      };
+      image.addEventListener('load', listener);
+    } catch (e) {
+      err(e);
+    }
   }
 
   schedulePaintToCanvas(imageBuffer: ImageBuffer, paint: SingleImage | TiledImage, index: number, priority: number) {
@@ -309,6 +305,8 @@ export class CanvasRenderer implements Renderer {
     this.imagesPending++;
     // We push the index we want to load onto the image buffer.
     imageBuffer.indices.push(index);
+    // Mark as loading.
+    paint.__host.loading = true;
     // Unique id for paint.
     const id = `${paint.id}--${paint.display.scale}`;
     // Set loading queue ordering to false to trigger re-order.
@@ -320,7 +318,7 @@ export class CanvasRenderer implements Renderer {
       task: () =>
         // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
         new Promise(resolve => {
-          if (this.visibleIds.indexOf(id) === -1) {
+          if (this.visible.indexOf(paint) === -1) {
             this.imagesPending--;
             imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
             resolve();
@@ -329,67 +327,28 @@ export class CanvasRenderer implements Renderer {
           // When this is task is finally chosen to be done, we
           const url = paint.getImageUrl(index);
           // Load our image.
-          this.loadImage(url)
-            .then(image => {
+          this.loadImage(
+            url,
+            image => {
               this.imagesLoaded++;
               imageBuffer.loaded.push(index);
+              if (imageBuffer.loaded.length === imageBuffer.indices.length) {
+                imageBuffer.loading = false;
+              }
               const points = paint.display.points.slice(index * 5, index * 5 + 5);
               const ctx = imageBuffer.canvas.getContext('2d') as CanvasRenderingContext2D;
               ctx.drawImage(image, points[1], points[2], points[3] - points[1], points[4] - points[2]);
               resolve();
-            })
-            .catch(err => {
+            },
+            err => {
               this.imagesPending--;
               imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
               console.log('Error loading image', err);
               resolve();
-            });
+            }
+          );
         }),
     });
-  }
-
-  getImageBuffer(paint: SpacialContent): ImageBuffer {
-    // Okay, so an image buffer, in this instance, is an offscreen canvas that contains
-    // the image, at the specific scale. So for each image in the world, there will be
-    // a buffer for each size.
-    if (!this.imageBuffers[paint.id] || !this.imageBuffers[paint.id][paint.display.scale]) {
-      // Fallback buffers are the siblings of the image at different levels. They are used to
-      // create a fallback to view when the image is not yet ready to view.
-      const fallbackBuffers = this.imageBuffers[paint.id] ? Object.keys(this.imageBuffers[paint.id]) : [];
-      // If the family of buffers doesn't exist, i.e. this is the first paint, then we wait. In the future
-      // we wil need to purge these from memory, as they are large. A few options:
-      // - purge based on distance
-      // - purge based on count
-      // - purge based on access frequency
-      // - combination of the above
-      // For now, all of the images buffers are stored.
-      this.imageBuffers[paint.id] = this.imageBuffers[paint.id] ? this.imageBuffers[paint.id] : {};
-      // We'll create our canvas element, this can be simply appended onto the end of the document
-      // to see the cache in action.
-      const canvas = document.createElement('canvas');
-      canvas.width = paint.display.width;
-      canvas.height = paint.display.height;
-      // document.body.appendChild(canvas);
-      // We'll add our canvas to the list of buffers, adding empty lists of image indices and loaded image indices.
-      this.imageBuffers[paint.id][paint.display.scale] = { canvas, indices: [], loaded: [] };
-      // Now we have a blank canvas, with nothing on it. We'll look to see if there are any existing buffers
-      // that have scaled up or scaled down versions of our buffer.
-      if (fallbackBuffers.length) {
-        // We will find the largest, this could be smarter to find the closest size.
-        const largestBuffer = fallbackBuffers[0];
-        // We grab that buffer.
-        const toPaint = this.imageBuffers[paint.id][`${largestBuffer}`];
-        this.imageBuffers[paint.id][paint.display.scale].fallback = toPaint;
-        // And paint the whole thing on, this may have empty white spots where no image
-        // has been loaded in this buffer either. A more aggressive fallback could find these gaps
-        // and fill them with other buffers, but that's overkill of the interactions typical in a viewer.
-        const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-        // @todo need to render this better. The fallback should be drawn in the main render perhaps. Using a fallback
-        //      if the specific tile isn't loaded. This does not scale and performs terribly at deeper zooms.
-        ctx.drawImage(toPaint.canvas, 0, 0, paint.display.width, paint.display.height);
-      }
-    }
-    return this.imageBuffers[paint.id][paint.display.scale];
   }
 
   getImage(paint: SingleImage | TiledImage, index: number) {
@@ -414,8 +373,71 @@ export class CanvasRenderer implements Renderer {
   }
 
   prepareLayer(paint: SpacialContent): void {
-    // create it if it does not exist.
-    this.getImageBuffer(paint);
+    if (!paint.__host) {
+      if (paint instanceof SingleImage || paint instanceof TiledImage) {
+        // create it if it does not exist.
+        this.createImageHost(paint);
+      }
+      if (paint instanceof Text || paint instanceof Box) {
+        this.createHtmlHost(paint);
+      }
+    }
+  }
+
+  createImageHost(paint: SingleImage | TiledImage) {
+    const canvas = document.createElement('canvas');
+    canvas.width = paint.display.width;
+    canvas.height = paint.display.height;
+    paint.__host = { canvas, indices: [], loaded: [], loading: false };
+  }
+
+  createHtmlHost(paint: Text | Box) {
+    if (this.htmlContainer) {
+      const div = document.createElement('div');
+      paint.__host = { element: div, revision: null };
+      this.updateHtmlHost(paint);
+    }
+  }
+
+  updateHtmlHost(paint: Text | Box) {
+    if (paint.__revision !== paint.__host.revision) {
+      const div = paint.__host.element;
+
+      div.style.overflow = 'hidden';
+      div.style.position = 'absolute';
+      div.style.width = `${paint.width}px`;
+      div.style.height = `${paint.height}px`;
+      if (paint.props.interactive) {
+        div.style.pointerEvents = 'all';
+      }
+
+      if (paint instanceof Text) {
+        if (paint.text) {
+          div.innerText = paint.text;
+        }
+        if (paint.backgroundColor) {
+          div.style.backgroundColor = paint.backgroundColor;
+        }
+        if (paint.color) {
+          div.style.color = paint.color;
+        }
+        if (paint.props.font) {
+          div.style.font = paint.props.font;
+        }
+        if (paint.props.textAlign) {
+          div.style.textAlign = paint.props.textAlign;
+        }
+        paint.__host.revision = paint.__revision;
+      }
+      if (paint instanceof Box) {
+        if (paint.props.backgroundColor) {
+          div.style.backgroundColor = paint.props.backgroundColor;
+        }
+        if (paint.props.border) {
+          div.style.backgroundColor = paint.props.border;
+        }
+      }
+    }
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {

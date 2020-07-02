@@ -1,3 +1,4 @@
+// @ts-ignore
 import createReconciler from 'react-reconciler';
 import { Runtime } from '../../renderer/runtime';
 import { SingleImage } from '../../spacial-content/single-image';
@@ -8,8 +9,8 @@ import { BaseObject } from '../../objects/base-object';
 import { TiledImage } from '../../spacial-content/tiled-image';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { Text } from '../../objects/text';
-
-export const supportedEvents = ['onClick', 'onMouseEnter', 'onMouseLeave', 'onMouse'];
+import { Box } from '../../objects/box';
+import { supportedEvents } from '../../events';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (child) {
@@ -25,12 +26,12 @@ function insertBefore(parent: AtlasObjectModel<any, any>, child: any, before: an
   parent.insertBefore(child, before);
 }
 
-function applyProps(instance: BaseObject<any, any>, oldProps: any, newProps: any) {
+function applyProps(instance: any, oldProps: any, newProps: any) {
   if (instance.applyProps) {
     instance.applyProps(newProps);
   }
   if (instance instanceof BaseObject) {
-    for (const event of ['onClick', 'onMouseMove', 'onMouseLeave']) {
+    for (const event of supportedEvents) {
       if (newProps[event] !== oldProps[event]) {
         if (oldProps[event]) {
           instance.removeEventListener(event as any, oldProps[event]);
@@ -41,19 +42,34 @@ function applyProps(instance: BaseObject<any, any>, oldProps: any, newProps: any
   }
 }
 
+function activateEvents(world: World, props: any) {
+  const keys = Object.keys(props);
+  for (const key of keys) {
+    if (supportedEvents.indexOf(key) !== -1) {
+      if (world.activatedEvents.indexOf(key) !== -1) continue;
+      world.activatedEvents.push(key);
+    }
+  }
+}
+
+const roots = new Map<any, any>();
+
 const reconciler = createReconciler({
   supportsMutation: true,
 
-  createInstance(type: string, props: any) {
-    // Our types
-    // - World
-    // - WorldObject
-
+  createInstance(type: string, props: any, runtime: Runtime) {
     let instance: BaseObject<any, any>;
-
+    let world: World = runtime.world;
     switch (type) {
       case 'world':
         instance = new World(props.width, props.height);
+        (instance as World).activatedEvents = world.activatedEvents;
+        (instance as World).eventHandlers = world.eventHandlers;
+        world = instance as World;
+        runtime.visible = false;
+        break;
+      case 'box':
+        instance = new Box();
         break;
       case 'worldObject':
         instance = new WorldObject();
@@ -62,6 +78,7 @@ const reconciler = createReconciler({
         instance = new SingleImage();
         break;
       case 'compositeImage':
+        // @todo switch to applyProps
         instance = new CompositeResource({
           id: props.id,
           width: props.width,
@@ -79,15 +96,15 @@ const reconciler = createReconciler({
       default:
         // throw new Error(`Element <${type} /> not found`);
         return;
-        break;
     }
 
-    applyProps(instance, {}, props);
+    activateEvents(world, props);
+    applyProps(instance as any, {}, props);
 
     return instance;
   },
   createTextInstance() {
-    // console.log('createTextInstance');
+    // no-op
   },
   appendChildToContainer(runtime: Runtime, world: any) {
     if (world instanceof World) {
@@ -104,33 +121,11 @@ const reconciler = createReconciler({
   removeChild,
   insertInContainerBefore: insertBefore,
   insertBefore: insertBefore,
-  prepareUpdate(
-    instance: any,
-    type: any,
-    oldProps: any,
-    newProps: any,
-    rootContainerInstance: Runtime,
-    currentHostContext: any
-  ) {
+  prepareUpdate(instance: any, type: any, oldProps: any, newProps: any, runtime: Runtime) {
+    activateEvents(runtime.world, newProps);
     if (instance instanceof Text) {
       return { ...newProps, text: newProps.children };
     }
-    // switch (type) {
-    //   case 'worldImage': {
-    //     const { id, uri, display, target } = newProps;
-    //     const width = display ? display.width : target.width;
-    //     const scale = target.width / width;
-    //
-    //     return {
-    //       id,
-    //       uri,
-    //       width: target.width,
-    //       height: target.height,
-    //       scale,
-    //     };
-    //   }
-    // }
-
     return newProps;
   },
   commitUpdate(instance: any, updatePayload: any, type: any, oldProps: any, newProps: any, finishedWork: any) {
@@ -140,24 +135,27 @@ const reconciler = createReconciler({
   },
 
   finalizeInitialChildren() {
-    // console.log('finalizeInitialChildren');
+    // no-op
   },
   getChildHostContext(...args: any[]) {
-    // console.log('getChildHostContext', args);
+    // no-op
   },
   getPublicInstance(obj: any) {
     return obj;
   },
   getRootHostContext() {
-    // console.log('getPublicInstance');
+    // no-op
   },
   prepareForCommit() {
-    // console.log('prepareForCommit');
+    // no-op
   },
   resetAfterCommit(runtime: Runtime) {
     runtime.pendingUpdate = true;
     if (runtime.world) {
-      runtime.world.recalculateWorldSize();
+      if (runtime.world.needsRecalculate) {
+        runtime.world.recalculateWorldSize();
+        runtime.goHome();
+      }
     }
   },
   shouldSetTextContent() {
@@ -165,9 +163,21 @@ const reconciler = createReconciler({
   },
 });
 
+reconciler.injectIntoDevTools({
+  bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
+  version: '0.0.0',
+  rendererPackageName: 'atlas',
+});
+
 export const ReactAtlas = {
   render(whatToRender: any, runtime: any) {
-    const container = reconciler.createContainer(runtime, false, false);
-    reconciler.updateContainer(whatToRender, container, null, null);
+    const root = roots.get(runtime);
+    if (root) {
+      reconciler.updateContainer(whatToRender, root, null, null);
+    } else {
+      const newRoot = reconciler.createContainer(runtime, false, false);
+      reconciler.updateContainer(whatToRender, newRoot, null, null);
+      roots.set(runtime, newRoot);
+    }
   },
 };

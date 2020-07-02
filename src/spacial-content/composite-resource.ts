@@ -77,6 +77,9 @@ export class CompositeResource extends AbstractContent
   }
 
   addImages(images: SpacialContent[]) {
+    for (const image of images) {
+      image.__parent = this;
+    }
     this.images.push(...images.filter(Boolean));
     this.sortByScales();
   }
@@ -99,12 +102,14 @@ export class CompositeResource extends AbstractContent
     }
   };
 
+  fallback = [this.loadFullResource];
+
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> | null {
     if (this.isFullyLoaded) {
       return null;
     }
     if (scaleFactor > 1 / this.maxScaleFactor) {
-      return [this.loadFullResource];
+      return this.fallback;
     }
     return null;
   }

@@ -1,15 +1,19 @@
 import { AtlasObjectModel } from '../aom';
-import { PointerEvents, WorldTime } from '../types';
+import { WorldTime } from '../types';
 import { mutate, scaleAtOrigin, Strand, translate } from '@atlas-viewer/dna';
 import { Paint } from '../world-objects/paint';
+import { nanoid } from 'nanoid';
+import { CompositeResource } from '../spacial-content/composite-resource';
+import { createDefaultEventMap, SupportedEventMap, supportedEventMap, SupportedEvents } from '../events';
 
 export abstract class BaseObject<Props = any, SupportedChildElements = never>
   implements AtlasObjectModel<Props, SupportedChildElements> {
+  __id: string;
   __revision = 0;
+  __host: any;
+  __parent?: CompositeResource;
   // Base properties.
-  eventHandlers: {
-    [Name in keyof PointerEvents]: Array<PointerEvents[Name]>;
-  };
+  eventHandlers: SupportedEventMap;
   scale = 1;
   layers: SupportedChildElements[] = [];
   time: WorldTime[] = [];
@@ -31,29 +35,43 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   }
 
   protected constructor() {
-    this.eventHandlers = {
-      onClick: [],
-      onPointerDown: [],
-      onMouseLeave: [],
-      onMouseMove: [],
-      onPointerUp: [],
-      onWheel: [],
-    };
+    this.id = this.__id = nanoid();
+    this.eventHandlers = createDefaultEventMap();
   }
 
-  addEventListener<Name extends keyof PointerEvents>(name: Name, cb: PointerEvents[Name]) {
+  addEventListener = <Name extends keyof SupportedEvents>(
+    name: Name,
+    cb: SupportedEvents[Name],
+    options?: { capture: boolean; passive: boolean }
+  ) => {
+    let event = name;
+    if (!this.eventHandlers[name]) {
+      event = supportedEventMap[name];
+      if (!this.eventHandlers[event]) {
+        throw new Error(`Unknown event ${event}`);
+      }
+    }
+
     if (this.eventHandlers[name].indexOf(cb) === -1) {
       this.eventHandlers[name].push(cb);
     }
-  }
+  };
 
-  removeEventListener<Name extends keyof PointerEvents>(name: Name, cb: PointerEvents[Name]) {
-    if (this.eventHandlers[name].indexOf(cb) !== -1) {
-      this.eventHandlers[name] = this.eventHandlers[name].filter(e => e !== cb);
+  removeEventListener = <Name extends keyof SupportedEvents>(name: Name, cb: SupportedEvents[Name]) => {
+    let event = name;
+    if (!this.eventHandlers[name]) {
+      event = supportedEventMap[name];
+      if (!this.eventHandlers[event]) {
+        console.warn(`Unknown event ${event}`);
+        return;
+      }
     }
-  }
+    if (this.eventHandlers[name].indexOf(cb) !== -1) {
+      this.eventHandlers[name] = (this.eventHandlers[name] as any).filter(e => e !== cb);
+    }
+  };
 
-  dispatchEvent<Name extends keyof PointerEvents>(name: Name, e: any) {
+  dispatchEvent<Name extends keyof SupportedEvents>(name: Name, e: any) {
     const listeners = this.eventHandlers[name];
     const len = listeners ? listeners.length : 0;
     if (len) {

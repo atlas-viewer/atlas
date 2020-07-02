@@ -74,7 +74,11 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.id = props.id;
     const s = typeof props.scale !== 'undefined' ? props.scale : this.scale;
 
-    this.points = dna([1, x, y, x + props.width, y + props.height]);
+    this.points[0] = 1;
+    this.points[1] = x;
+    this.points[2] = y;
+    this.points[3] = x + props.width;
+    this.points[4] = y + props.height;
 
     this.worldPoints[3] = this.worldPoints[1] + props.width * s;
     this.worldPoints[4] = this.worldPoints[2] + props.height * s;
@@ -123,23 +127,36 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
 
   getObjectsAt(target: Strand): Paintable[] {
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
+    if (filteredPoints[0] === 0) {
+      return [];
+    }
 
     const len = this.layers.length;
     const objects: Paintable[] = [];
     for (let index = 0; index < len; index++) {
-      if (filteredPoints[index * 5] !== 0) {
-        objects.push(this.layers[index]);
+      const layer = this.layers[index];
+
+      const filter = hidePointsOutsideRegion(
+        transform(layer.points, translate(this.x, this.y)),
+        target,
+        this.filteredPointsBuffer
+      );
+
+      if (filter[0] !== 0) {
+        objects.push(layer);
       }
     }
     return objects;
   }
 
   getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
+    // console.log(this.scale, scaleFactor);
+
     const transformer = compose(translate(this.x, this.y), scale(this.scale), this.aggregateBuffer);
 
     const inter = getIntersection(target, this.points, this.intersectionBuffer);
     const len = this.layers.length;
-    const arr = [];
+    const arr: Paint[] = [];
 
     const t = transform(inter, compose(scale(1 / this.scale), translate(-this.x, -this.y), this.invertedBuffer));
     const agg = aggregate ? compose(aggregate, transformer, this.aggregateBuffer) : transformer;
@@ -157,16 +174,17 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
 
+  _updatedList = [];
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
     const len = this.layers.length;
-    const list = [];
+    this._updatedList = [];
     const s = scaleFactor * this.scale;
     for (let i = 0; i < len; i++) {
       const updates = this.layers[i].getScheduledUpdates(target, s);
       if (updates) {
-        list.push(...updates);
+        this._updatedList.push(...updates);
       }
     }
-    return list;
+    return this._updatedList;
   }
 }
