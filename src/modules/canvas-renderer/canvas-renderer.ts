@@ -58,7 +58,7 @@ export class CanvasRenderer implements Renderer {
 
   constructor(canvas: HTMLCanvasElement, htmlContainer?: HTMLDivElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
+    this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
     this.htmlContainer = htmlContainer;
@@ -76,22 +76,6 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  createImage(url: string) {
-    // This is part of the alternative rendering pipeline.
-    // Create an image tag.
-    const image = document.createElement('img');
-    // Keep track of pending images, so we can continue the render loop.
-    this.imagesPending++;
-    image.addEventListener('load', () => {
-      this.imagesLoaded++;
-    });
-    image.addEventListener('error', () => {
-      this.imagesLoaded++;
-    });
-    image.src = url;
-    return image;
-  }
-
   afterFrame(world: World): void {
     this.frameIsRendering = false;
     // After we've rendered, we'll set the pending and loading to correct values.
@@ -105,7 +89,7 @@ export class CanvasRenderer implements Renderer {
     }
     for (const prev of this.previousVisible) {
       if (this.visible.indexOf(prev) === -1) {
-        if (this.htmlContainer && this.htmlIds.indexOf(prev.__id) !== -1) {
+        if (this.htmlContainer && prev.__id && this.htmlIds.indexOf(prev.__id) !== -1) {
           this.htmlContainer.removeChild(prev.__host.element);
         }
       }
@@ -128,7 +112,7 @@ export class CanvasRenderer implements Renderer {
       // First call immediately.
       this._worker();
       // Here's our clock for scheduling tasks, every 1ms it will try to call.
-      this._scheduled = setInterval(this._doWork, 3);
+      this._scheduled = setInterval(this._doWork, 6);
     }
   }
 
@@ -288,11 +272,10 @@ export class CanvasRenderer implements Renderer {
       image.style.transform = 'translate3d(0,0,0)';
       image.decoding = 'async';
       image.src = url;
-      const listener = () => {
+      image.onload = function() {
         callback(image);
-        image.removeEventListener('load', listener);
+        image.onload = null;
       };
-      image.addEventListener('load', listener);
     } catch (e) {
       err(e);
     }
@@ -330,14 +313,23 @@ export class CanvasRenderer implements Renderer {
           this.loadImage(
             url,
             image => {
-              this.imagesLoaded++;
-              imageBuffer.loaded.push(index);
-              if (imageBuffer.loaded.length === imageBuffer.indices.length) {
-                imageBuffer.loading = false;
-              }
-              const points = paint.display.points.slice(index * 5, index * 5 + 5);
-              const ctx = imageBuffer.canvas.getContext('2d') as CanvasRenderingContext2D;
-              ctx.drawImage(image, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+              this.loadingQueue.push({
+                id,
+                distance: priority,
+                task: () => {
+                  return new Promise(innerResolve => {
+                    this.imagesLoaded++;
+                    imageBuffer.loaded.push(index);
+                    if (imageBuffer.loaded.length === imageBuffer.indices.length) {
+                      imageBuffer.loading = false;
+                    }
+                    const points = paint.display.points.slice(index * 5, index * 5 + 5);
+                    const ctx = imageBuffer.canvas.getContext('2d') as CanvasRenderingContext2D;
+                    ctx.drawImage(image, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+                    innerResolve();
+                  });
+                },
+              });
               resolve();
             },
             err => {
@@ -349,23 +341,6 @@ export class CanvasRenderer implements Renderer {
           );
         }),
     });
-  }
-
-  getImage(paint: SingleImage | TiledImage, index: number) {
-    // This is an alternative rendering pipeline, much simpler.
-    // It may be good to switch to this one for very very large
-    // worlds, or worlds without any deep zoom.
-    const url = paint.getImageUrl(index);
-    // Very simple image cache wrapper.
-    if (!this.imageCache[url]) {
-      this.imageCache[url] = this.createImage(url);
-    }
-
-    // We could make this into a fixed size, with least-accessed items
-    // removed, allowing them to be GC'd. Can be configurable,
-    // but will act like a disk-flush, falling back to the browsers
-    // image cache, which itself might be flushed.
-    return this.imageCache[url];
   }
 
   afterPaintLayer(paint: SpacialContent, transform: Strand): void {
