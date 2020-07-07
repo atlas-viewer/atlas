@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { render } from 'react-dom';
 import { Atlas } from '../../src/modules/react-reconciler/Atlas';
 import { GetTile, getTileFromImageService } from '../../src/modules/iiif/get-tiles';
-import { TiledImage } from '../../src/modules/react-reconciler/TiledImage';
+import { TileSet } from '../../src/modules/react-reconciler/components/TileSet';
 import { DrawBox } from '../../src/modules/react-reconciler/components/BoxDraw';
 import { RegionHighlight } from '../../src/modules/react-reconciler/components/RegionHighlight';
 import { useControlledAnnotationList } from '../../src/modules/react-reconciler/hooks/use-controlled-annotation-list';
@@ -50,7 +50,7 @@ import { useControlledAnnotationList } from '../../src/modules/react-reconciler/
 // }
 
 const Wunder = () => {
-  const [tile, setTile] = useState<GetTile | undefined>();
+  const [tiles, setTile] = useState<GetTile | undefined>();
 
   useEffect(() => {
     getTileFromImageService(
@@ -62,7 +62,7 @@ const Wunder = () => {
     });
   }, []);
 
-  if (!tile) {
+  if (!tiles) {
     return (
       <worldObject height={2743} width={4093}>
         <box target={{ x: 0, y: 0, width: 4093, height: 2743 }} id="123" backgroundColor="#000" />
@@ -70,7 +70,7 @@ const Wunder = () => {
     );
   }
 
-  return <TiledImage tile={tile} x={0} y={0} width={4093} height={2743} />;
+  return <TileSet tiles={tiles} x={0} y={0} width={4093} height={2743} />;
 };
 
 const Demo = () => {

@@ -4,6 +4,7 @@ export * from './components/ResizeWorldItem';
 export * from './components/RegionHighlight';
 export * from './components/BoxDraw';
 export * from './components/HTMLPortal';
+export * from './components/TileSet';
 export * from './hooks/use-world-event';
 export * from './hooks/use-controlled-annotation-list';
 export * from './hooks/use-mode';
