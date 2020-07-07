@@ -25,7 +25,6 @@ export class TiledImage extends BaseObject {
 
   applyProps(props: any) {
     // @todo.
-    // console.log('apply props.', props);
   }
 
   getProps() {

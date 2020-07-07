@@ -1,6 +1,5 @@
 import React, { useContext } from 'react';
-
-export type ViewerMode = 'static' | 'explore' | 'sketch' | 'sketch-explore';
+import { ViewerMode } from '../../../renderer/runtime';
 
 export const ModeContext = React.createContext<ViewerMode>('explore');
 

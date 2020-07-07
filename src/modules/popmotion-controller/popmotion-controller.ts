@@ -442,7 +442,6 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         // Next we will add another zoom option, click to zoom. This time the origin will
         // be where our mouse is in relation to the world.
         canvas.addEventListener('click', ({ pageX, pageY, defaultPrevented }) => {
-          console.log(defaultPrevented);
           if (click && runtime.mode === 'explore') {
             zoomTo(
               0.6,

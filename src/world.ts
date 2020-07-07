@@ -175,7 +175,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   appendChild(item: WorldObject) {
-    console.log('appendChild', item);
     this.appendWorldObject(item);
   }
 
@@ -194,27 +193,9 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     this.objects[index] = null;
     this.triggerRepaint();
-
-    // // This breaks the index of all of the items.
-    // if (index === 0) {
-    //   console.log(item);
-    //   console.log(...this.points.slice(0, 20));
-    //   this.points.set(this.points.slice((index + 1) * 5));
-    //   console.log(...this.points.slice(0, 20));
-    // } else {
-    //   const before = this.points.slice(0, index * 5 - 1);
-    //   const after = this.points.slice((index + 1) * 5);
-    //   this.points.set(before);
-    //   this.points.set(after, index * 5);
-    // }
-    //
-    // this.objects = this.objects.filter(obj => obj !== item);
-    //
-    // this.triggerRepaint();
   }
 
   insertBefore(item: WorldObject, before: WorldObject) {
-    console.log('insert before', item, before);
     const beforeIndex = this.objects.indexOf(before);
     if (beforeIndex === -1) {
       return;

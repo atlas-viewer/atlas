@@ -5,12 +5,12 @@ import { Strand } from '@atlas-viewer/dna';
 import { RuntimeController } from '../../types';
 import { ReactAtlas } from './reconciler';
 import { CanvasRenderer } from '../canvas-renderer/canvas-renderer';
-import { Runtime } from '../../renderer/runtime';
+import { Runtime, ViewerMode } from '../../renderer/runtime';
 import { Paintable } from '../../world-objects/paint';
 import { supportedEventMap } from '../../events';
 import { distance } from '@popmotion/popcorn';
 import { popmotionController } from '../popmotion-controller/popmotion-controller';
-import { ViewerMode, ModeContext } from './hooks/use-mode';
+import { ModeContext } from './hooks/use-mode';
 
 const AtlasContext = React.createContext<
   | {
