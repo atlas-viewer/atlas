@@ -7,17 +7,18 @@ import { ReactAtlas } from './reconciler';
 import { CanvasRenderer } from '../canvas-renderer/canvas-renderer';
 import { Runtime } from '../../renderer/runtime';
 import { Paintable } from '../../world-objects/paint';
-import { render } from 'react-dom';
-import { Box } from '../../objects/box';
 import { supportedEventMap } from '../../events';
 import { distance } from '@popmotion/popcorn';
 import { popmotionController } from '../popmotion-controller/popmotion-controller';
+import { ViewerMode, ModeContext } from './hooks/use-mode';
 
 const AtlasContext = React.createContext<
   | {
       runtime: Runtime;
+      canvasPosition: ClientRect;
       canvas: { current: HTMLCanvasElement };
       mode: { current: ViewerMode };
+      ready: boolean;
     }
   | undefined
 >(undefined);
@@ -25,6 +26,7 @@ const AtlasContext = React.createContext<
 type AtlasProps = {
   width: number;
   height: number;
+  mode?: ViewerMode;
   onCreated?: (ctx: RuntimeContext) => void | Promise<void>;
 };
 
@@ -61,18 +63,6 @@ export const useRuntime = () => {
   return runtime;
 };
 
-export type ViewerMode = 'static' | 'explore' | 'sketch' | 'sketch-explore';
-
-export function useMode() {
-  const { mode: currentMode } = useAtlas();
-  const setMode = (mode: 'static' | 'explore' | 'sketch' | 'sketch-explore') => {
-    currentMode.current = mode;
-    // @todo implement
-  };
-
-  return [currentMode, setMode] as const;
-}
-
 export function canDrag(ref: { current: ViewerMode }) {
   return ref.current === 'sketch';
 }
@@ -85,28 +75,28 @@ export const useFrame = (callback: (time: number) => void, deps: any[] = []) => 
   }, deps);
 };
 
-export const useBeforeFrame = (callback: (time: number) => void) => {
+export const useBeforeFrame = (callback: (time: number) => void, deps: any[] = []) => {
   const runtime = useRuntime();
 
   useEffect(() => {
     return runtime.registerHook('useBeforeFrame', callback);
-  }, []);
+  }, deps);
 };
 
-export const useAfterPaint = (callback: (paint: Paintable) => void) => {
+export const useAfterPaint = (callback: (paint: Paintable) => void, deps: any[] = []) => {
   const runtime = useRuntime();
 
   useEffect(() => {
     return runtime.registerHook('useAfterPaint', callback);
-  }, []);
+  }, deps);
 };
 
-export const useAfterFrame = (callback: (time: number) => void) => {
+export const useAfterFrame = (callback: (time: number) => void, deps: any[] = []) => {
   const runtime = useRuntime();
 
   useEffect(() => {
     return runtime.registerHook('useAfterFrame', callback);
-  }, []);
+  }, deps);
 };
 
 export const useCanvas = () => {
@@ -114,35 +104,16 @@ export const useCanvas = () => {
   return canvas.current;
 };
 
-export const HTMLPortal: React.FC<{
-  backgroundColor?: string;
-  interactive?: boolean;
-  target?: { x: number; y: number; width: number; height: number };
-}> = ({ children, ...props }) => {
-  const boxRef = useRef<Box>();
-
-  useEffect(() => {
-    const box = boxRef.current;
-    if (box && box.__host) {
-      render(children as any, box.__host.element);
-    }
-  }, [children, boxRef]);
-
-  return <box {...props} ref={boxRef} />;
-};
-
 const eventPool = {
   atlas: { x: 0, y: 0 },
 };
 
-export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps }) => {
+export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', children, ...restProps }) => {
   const canvasRef = useRef<HTMLCanvasElement>();
   const mousedOver = useRef<any[]>([]);
   const overlayRef = useRef<HTMLDivElement>();
-  const mode = useRef<ViewerMode>('static');
   const [ready, setReady] = useState(false);
   const state: React.MutableRefObject<RuntimeContext> = useRef<any>({
-    mode,
     ready: ready,
     viewport: { width: restProps.width, height: restProps.height, x: 0, y: 0, scale: 1 },
     renderer: undefined,
@@ -161,6 +132,12 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
   const [containerClassName, setContainerClassName] = useState('');
 
   useEffect(() => {
+    if (state.current) {
+      state.current.runtime.mode = mode;
+    }
+  }, [state, mode]);
+
+  useEffect(() => {
     if (state.current.runtime) {
       const rt: Runtime = state.current.runtime;
 
@@ -172,6 +149,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
   }, [restProps.width, restProps.height]);
 
   useLayoutEffect(() => {
+    // @todo move out.
     const currentCanvas = canvasRef.current;
     const overlay = overlayRef.current;
     if (!currentCanvas || !overlay) return;
@@ -182,6 +160,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
     overlay.style.overflow = 'hidden';
   });
 
+  // @todo what does this do?
   const Canvas = useCallback(function Canvas(props: { children: React.ReactElement }): JSX.Element {
     const activate = () => setReady(true);
 
@@ -193,6 +172,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
     return props.children;
   }, []);
 
+  // @todo move most of this to runtime?
   const handlePointMove = useCallback((e: any) => {
     const { x, y } = state.current.runtime.viewerToWorld(
       e.pageX - state.current.canvasPosition.left,
@@ -261,6 +241,8 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
     if (!currentCanvas) {
       throw new Error('Something went wrong mounting canvas.');
     }
+
+    // @todo move this out.
     currentCanvas.style.userSelect = 'none';
 
     state.current.controller = popmotionController(currentCanvas, {
@@ -273,14 +255,18 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
       state.current.controller,
     ]);
     state.current.canvasPosition = currentCanvas.getBoundingClientRect();
+  }, []);
 
+  useLayoutEffect(() => {
     ReactAtlas.render(
       <Canvas>
-        <AtlasContext.Provider value={state.current}>{children}</AtlasContext.Provider>
+        <ModeContext.Provider value={mode}>
+          <AtlasContext.Provider value={state.current}>{children}</AtlasContext.Provider>
+        </ModeContext.Provider>
       </Canvas>,
       state.current.runtime
     );
-  }, []);
+  }, [state, mode, children]);
 
   const handleTouchEvent = (e: React.TouchEvent & { atlasTargetTouches?: any[]; atlasTouches?: any[] }) => {
     const type = supportedEventMap[e.type as any];
@@ -328,20 +314,6 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
       );
       state.current.runtime.world.propagatePointerEvent(ev, e, x, y);
     }
-  };
-
-  const stubbedUiEvent: React.UIEventHandler = e => {
-    // console.log(e);
-  };
-
-  const stubbedWheelEvent: React.WheelEventHandler = e => {
-    // console.log(e);
-  };
-
-  const stubbedDragEvent: React.DragEventHandler = e => {
-    // Drag over
-    // Drag enter
-    // Drag exit
   };
 
   const handleMouseDown = useCallback(e => {
@@ -400,7 +372,6 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
   useEffect(() => {
     const keyupSpace = () => {
       if (state.current.runtime.mode === 'explore') {
-        console.log('setting runtime mode to sketch');
         state.current.runtime.mode = 'sketch';
         setContainerClassName('mode-sketch');
       }
@@ -409,14 +380,22 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
 
     window.addEventListener('keydown', e => {
       if (e.code === 'Space' && state.current.runtime.mode === 'sketch') {
-        console.log('setting runtime mode to explore');
         state.current.runtime.mode = 'explore';
         setContainerClassName('mode-explore');
         window.addEventListener('keyup', keyupSpace);
       }
     });
 
-    return () => {};
+    return () => {
+      // no-op
+    };
+  });
+
+  useLayoutEffect(() => {
+    const currentCanvas = canvasRef.current;
+    if (state.current && currentCanvas) {
+      state.current.canvasPosition = currentCanvas.getBoundingClientRect();
+    }
   });
 
   return (
@@ -468,8 +447,6 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, children, ...restProps 
         onPointerLeave={handleMouseLeave as any}
         onPointerOver={handlePointerEvent as any}
         onPointerOut={handlePointerEvent as any}
-        // UI Events.
-        onScroll={stubbedUiEvent}
         // Wheel events.
         onWheel={handlePointerEvent as any}
         ref={canvasRef as any}

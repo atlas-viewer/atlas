@@ -8,7 +8,6 @@ import {
   transform,
   Strand,
   dna,
-  hidePointsOutsideRegion,
   translate,
   compose,
 } from '@atlas-viewer/dna';
@@ -91,6 +90,7 @@ export class Runtime {
   firstRender = true;
   lastTime: number;
   stopId?: number;
+  userMode: ViewerMode = 'explore';
   mode: ViewerMode = 'explore';
   controllers: RuntimeController[] = [];
   controllersRunning = false;

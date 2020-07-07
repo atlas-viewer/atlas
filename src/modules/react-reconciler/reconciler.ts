@@ -66,7 +66,6 @@ const reconciler = createReconciler({
         (instance as World).activatedEvents = world.activatedEvents;
         (instance as World).eventHandlers = world.eventHandlers;
         world = instance as World;
-        runtime.visible = false;
         break;
       case 'box':
         instance = new Box();
@@ -153,8 +152,10 @@ const reconciler = createReconciler({
     runtime.pendingUpdate = true;
     if (runtime.world) {
       if (runtime.world.needsRecalculate) {
-        runtime.world.recalculateWorldSize();
-        runtime.goHome();
+        const didChange = runtime.world.recalculateWorldSize();
+        if (didChange) {
+          runtime.goHome();
+        }
       }
     }
   },

@@ -31,6 +31,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   aggregateBuffer = dna(9);
   invertedBuffer = dna(9);
   filteredPointsBuffer: Strand;
+  _updatedList: any[] = [];
 
   constructor(props?: AbstractObject, position?: { x: number; y: number }) {
     super();
@@ -150,8 +151,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    // console.log(this.scale, scaleFactor);
-
     const transformer = compose(translate(this.x, this.y), scale(this.scale), this.aggregateBuffer);
 
     const inter = getIntersection(target, this.points, this.intersectionBuffer);
@@ -174,7 +173,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
 
-  _updatedList = [];
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
     const len = this.layers.length;
     this._updatedList = [];

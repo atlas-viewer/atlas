@@ -37,8 +37,8 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     height: 100,
     points: dna(5),
   };
-  interactive: boolean;
-  props: CanvasTextWrapperOptions = {
+  interactive = false;
+  props: CanvasTextWrapperOptions & { interactive?: boolean } = {
     font: '18px Arial, sans-serif',
     lineHeight: 1,
     textAlign: 'left',
@@ -54,6 +54,7 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     justifyLines: false,
     renderHDPI: false,
     textDecoration: 'none',
+    interactive: false,
   };
 
   constructor() {

@@ -431,15 +431,18 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         // For clicking its a little trickier. We want to still allow panning. So this
         // little temporary variable will nuke the value when the mouse is down.
         canvas.addEventListener('mousedown', () => {
-          click = true;
-          setTimeout(() => {
-            click = false;
-          }, 300);
+          if ( runtime.mode === 'explore') {
+            click = true;
+            setTimeout(() => {
+              click = false;
+            }, 300);
+          }
         });
 
         // Next we will add another zoom option, click to zoom. This time the origin will
         // be where our mouse is in relation to the world.
-        canvas.addEventListener('click', ({ pageX, pageY }) => {
+        canvas.addEventListener('click', ({ pageX, pageY, defaultPrevented }) => {
+          console.log(defaultPrevented);
           if (click && runtime.mode === 'explore') {
             zoomTo(
               0.6,

@@ -19,7 +19,7 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   time: WorldTime[] = [];
 
   // To be set by implementation constructor.
-  abstract id: string;
+  id: string;
   abstract points: Strand;
 
   getObjectsAt(target: Strand): SupportedChildElements[] | Array<[SupportedChildElements, any[]]> {
@@ -46,7 +46,7 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   ) => {
     let event = name;
     if (!this.eventHandlers[name]) {
-      event = supportedEventMap[name];
+      event = supportedEventMap[name] as any;
       if (!this.eventHandlers[event]) {
         throw new Error(`Unknown event ${event}`);
       }
@@ -60,14 +60,14 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   removeEventListener = <Name extends keyof SupportedEvents>(name: Name, cb: SupportedEvents[Name]) => {
     let event = name;
     if (!this.eventHandlers[name]) {
-      event = supportedEventMap[name];
+      event = supportedEventMap[name] as any;
       if (!this.eventHandlers[event]) {
         console.warn(`Unknown event ${event}`);
         return;
       }
     }
     if (this.eventHandlers[name].indexOf(cb) !== -1) {
-      this.eventHandlers[name] = (this.eventHandlers[name] as any).filter(e => e !== cb);
+      this.eventHandlers[name] = (this.eventHandlers[name] as any).filter((e: any) => e !== cb);
     }
   };
 

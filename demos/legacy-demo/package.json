@@ -1,5 +1,0 @@
-{
-  "scripts": {
-    "start": "../../node_modules/.bin/webpack-dev-server --entry ./index.ts --config ../webpack.config.js"
-  }
-}

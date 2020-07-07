@@ -2,8 +2,8 @@ import {
   AnnotationNormalized,
   AnnotationPageNormalized,
   CanvasNormalized,
+  ImageService,
   ManifestNormalized,
-  Service,
 } from '@hyperion-framework/types';
 import { Vault } from '@hyperion-framework/vault';
 
@@ -15,8 +15,12 @@ export type GetTile = {
   width: number;
   height: number;
   thumbnail?: { id: string; width: number; height: number };
-  imageService: Service;
+  imageService: ImageService;
 };
+
+export function getId(entity: any): string {
+  return entity.id || entity['@id'];
+}
 
 export async function getTileFromImageService(infoJsonId: string, width: number, height: number): Promise<GetTile> {
   const imageService = await loader.loadService({
@@ -26,10 +30,10 @@ export async function getTileFromImageService(infoJsonId: string, width: number,
   });
 
   return {
-    id: imageService.id,
+    id: getId(imageService),
     width: width,
     height: height,
-    imageService,
+    imageService: imageService as ImageService,
     thumbnail: undefined,
   };
 }

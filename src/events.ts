@@ -32,7 +32,7 @@ export const supportedEvents = [
 
 export function createDefaultEventMap(): SupportedEventMap {
   return supportedEvents.reduce((acc, next) => {
-    acc[next] = [];
+    (acc as any)[next] = [];
     return acc;
   }, {} as SupportedEventMap);
 }

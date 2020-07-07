@@ -21,7 +21,6 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
   }
 
   type: 'spacial-content' = 'spacial-content';
-  id: string;
   points: Strand;
   display = {
     scale: 1,

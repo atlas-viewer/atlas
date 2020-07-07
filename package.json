@@ -17,8 +17,8 @@
   "dependencies": {
     "@atlas-viewer/dna": "^0.5.0",
     "@atlas-viewer/iiif-image-api": "^1.0.9",
-    "@hyperion-framework/types": "1.0.0-alpha.4",
-    "@hyperion-framework/vault": "1.0.0-alpha.9",
+    "@hyperion-framework/types": "1.0.0-alpha.10",
+    "@hyperion-framework/vault": "1.0.0-alpha.10",
     "@popmotion/popcorn": "^0.4.4",
     "canvas-text-wrapper": "^0.10.2",
     "framesync": "^4.0.2",
@@ -32,7 +32,8 @@
     "scheduler": "^0.19.1",
     "stats.js": "^0.17.0",
     "style-value-types": "^3.1.7",
-    "typescript-memoize": "^1.0.0-alpha.3"
+    "typescript-memoize": "^1.0.0-alpha.3",
+    "use-resize-observer": "^6.1.0"
   },
   "publishConfig": {
     "access": "public"
@@ -48,9 +49,9 @@
     "@rollup/plugin-replace": "^2.3.2",
     "@rollup/plugin-typescript": "^4.1.2",
     "@types/jest": "^25.1.2",
+    "@types/nanoid": "^2.1.0",
     "@types/react": "^16.9.9",
     "@types/react-dom": "^16.9.2",
-    "@types/nanoid": "^2.1.0",
     "@types/stats.js": "^0.17.0",
     "@typescript-eslint/eslint-plugin": "^2.4.0",
     "@typescript-eslint/parser": "^2.4.0",

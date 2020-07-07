@@ -40,7 +40,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   selectedZone?: number;
   triggerQueue: Array<[string, any]> = [];
   activatedEvents: string[] = [];
-  _updatedList = [];
+  _updatedList: any[] = [];
   translationBuffer = dna(9);
   needsRecalculate = true;
 
@@ -60,7 +60,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   points: Strand;
 
   // These should be the same size.
-  private objects: WorldObject[] = [];
+  private objects: Array<WorldObject | null> = [];
   private subscriptions: Array<(type: string, changes?: unknown) => void> = [];
 
   constructor(width = 0, height = 0, worldObjectCount = 100, viewingDirection: ViewingDirection = 'left-to-right') {
@@ -92,7 +92,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   applyProps(props: WorldProps) {
-    if (props.width !== this.width || props.height !== this.height) {
+    if (
+      typeof props.width !== 'undefined' &&
+      typeof props.height !== 'undefined' &&
+      (props.width !== this.width || props.height !== this.height)
+    ) {
       this.resize(props.width, props.height);
     }
     if (props.viewingDirection !== this.viewingDirection) {
@@ -171,6 +175,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   appendChild(item: WorldObject) {
+    console.log('appendChild', item);
     this.appendWorldObject(item);
   }
 
@@ -179,7 +184,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     if (index === -1) {
       for (const obj of this.objects) {
-        if (obj.id === item.id) {
+        if (obj && obj.id === item.id) {
           this.removeChild(obj);
           return;
         }
@@ -187,25 +192,41 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       return;
     }
 
-    if (index === 0) {
-      this.points.set(this.points.slice((index + 1) * 5));
-    } else {
-      const before = this.points.slice(0, index * 5 - 1);
-      const after = this.points.slice((index + 1) * 5);
-      this.points.set(before);
-      this.points.set(after, index * 5);
-    }
-
-    this.objects = this.objects.filter(obj => obj !== item);
-
+    this.objects[index] = null;
     this.triggerRepaint();
+
+    // // This breaks the index of all of the items.
+    // if (index === 0) {
+    //   console.log(item);
+    //   console.log(...this.points.slice(0, 20));
+    //   this.points.set(this.points.slice((index + 1) * 5));
+    //   console.log(...this.points.slice(0, 20));
+    // } else {
+    //   const before = this.points.slice(0, index * 5 - 1);
+    //   const after = this.points.slice((index + 1) * 5);
+    //   this.points.set(before);
+    //   this.points.set(after, index * 5);
+    // }
+    //
+    // this.objects = this.objects.filter(obj => obj !== item);
+    //
+    // this.triggerRepaint();
   }
 
   insertBefore(item: WorldObject, before: WorldObject) {
+    console.log('insert before', item, before);
     const beforeIndex = this.objects.indexOf(before);
     if (beforeIndex === -1) {
       return;
     }
+
+    // Fix points array.
+    // 1. List of all objects after item including `before` item
+    // 2. Shift those items 5 places in the points array
+    // 3. Zero out the item before one
+    // 4. Set new item
+    // 1. Make space for new numbers in buffer.
+    // 2. Reset ALL of the worldItems with new array offsets.
 
     console.warn('insertBefore: Not yet implemented');
     this.appendWorldObject(item);
@@ -287,6 +308,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   recalculateWorldSize() {
+    let didChange = false;
     if (this.needsRecalculate) {
       const wBuffer = new Int32Array(this.objects.length);
       const hBuffer = new Int32Array(this.objects.length);
@@ -295,10 +317,20 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         wBuffer[x] = this.points[x * 5 + 3];
         hBuffer[x] = this.points[x * 5 + 4];
       }
-      this._width = Math.max(...wBuffer);
-      this._height = Math.max(...hBuffer);
+      const newWidth = Math.max(...wBuffer);
+      if (newWidth !== this._width) {
+        this._width = newWidth;
+        didChange = true;
+      }
+      const newHeight = Math.max(...hBuffer);
+      if (newHeight !== this._height) {
+        this._height = newHeight;
+        didChange = true;
+      }
       this.needsRecalculate = false;
     }
+
+    return didChange;
   }
 
   /**
@@ -351,14 +383,20 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       this.points.subarray(index * 5, index * 5 + 5),
       scaleAtOrigin(factor, this.points[index * 5 + 1], this.points[index * 5 + 2])
     );
-    this.objects[index].atScale(factor);
-    this.triggerRepaint();
+    const obj = this.objects[index];
+    if (obj) {
+      obj.atScale(factor);
+      this.triggerRepaint();
+    }
   }
 
   translateWorldObject(index: number, x: number, y: number) {
     mutate(this.points.subarray(index * 5, index * 5 + 5), translate(x, y));
-    this.objects[index].translate(x, y);
-    this.triggerRepaint();
+    const obj = this.objects[index];
+    if (obj) {
+      obj.translate(x, y);
+      this.triggerRepaint();
+    }
   }
 
   resize(width: number, height: number) {
@@ -403,7 +441,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this._updatedList = [];
     for (let index = 0; index < len; index++) {
       if (filteredPoints[index * 5] !== 0) {
-        this._updatedList.push(...this.objects[index].getScheduledUpdates(target, scaleFactor));
+        if (!this.objects[index]) continue;
+        this._updatedList.push(...(this.objects[index] as WorldObject).getScheduledUpdates(target, scaleFactor));
       }
     }
     return this._updatedList;
@@ -412,18 +451,14 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   getObjectsAt(target: Strand, all = false): Array<[WorldObject, Paintable[]]> {
     const zone = this.getActiveZone();
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
-    // const transformer = translate(-target[1], -target[2]);
-
     const len = this.objects.length;
     const objects: Array<[WorldObject, Paintable[]]> = [];
     for (let index = 0; index < len; index++) {
       if (filteredPoints[index * 5] !== 0) {
-        if (zone && zone.objects.indexOf(this.objects[index]) === -1) {
+        const object = this.objects[index];
+        if (!object || (zone && zone.objects.indexOf(object) === -1)) {
           continue;
         }
-
-        const object = this.objects[index];
-
         if (all) {
           objects.push([object, object.getObjectsAt(target)]);
         } else {
@@ -460,7 +495,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         }
         const len = this.subscriptions.length;
         for (let i = 0; i < len; i++) {
-          this.subscriptions[i].apply(this.triggerQueue[x]);
+          (this.subscriptions[i] as any).apply(this.triggerQueue[x]);
         }
       }
       this.triggerQueue = [];

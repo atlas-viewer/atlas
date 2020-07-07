@@ -1,15 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal, render } from 'react-dom';
-import {
-  Atlas,
-  HTMLPortal,
-  useAfterFrame,
-  useAfterPaint,
-  useBeforeFrame,
-  useCanvas,
-  useFrame,
-  useRuntime,
-} from '../../src/modules/react-reconciler/Atlas';
+import { render } from 'react-dom';
+import { Atlas, useAfterFrame, useCanvas, useFrame, useRuntime } from '../../src/modules/react-reconciler/Atlas';
+import { HTMLPortal } from '../../src/modules/react-reconciler/components/HTMLPortal';
 import { GetTile, getTiles } from '../../src/modules/iiif';
 import { WorldObject } from '../../src/world-objects/world-object';
 import usePortal from './use-portal';
@@ -18,6 +10,8 @@ import { World } from '../../src/world';
 import { clamp } from '@popmotion/popcorn';
 import { Position } from '../../src/types';
 import { scaleAtOrigin, transform } from '@atlas-viewer/dna';
+import { AllEvents } from '../../src/modules/react-reconciler/types';
+import { ImageService } from '@hyperion-framework/types';
 
 const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
   const [tiles, setTiles] = useState<GetTile[]>([]);
@@ -26,12 +20,6 @@ const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
   const canvas = useCanvas();
   const runtime = useRuntime();
   const selected = useRef<any>();
-
-  useAfterPaint(paint => {
-    if (shouldLogPaint.current) {
-      console.log(paint.display.scale);
-    }
-  });
 
   useAfterFrame(() => {
     shouldLogPaint.current = false;
@@ -68,9 +56,7 @@ const TiledImage: React.FC<{ x?: number; y?: number }> = props => {
   }
 
   const first = tiles[index];
-
-  const service = first.imageService;
-
+  const service = first.imageService as ImageService;
   const scale = 400 / first.width;
 
   return (
@@ -271,7 +257,7 @@ const TestImage: React.FC = () => {
       width={400}
       height={300}
       id={'test-2'}
-      onMouseMove={(e: any) => {
+      onMouseMove={e => {
         position.current = e.atlas;
       }}
       onMouseLeave={() => {
@@ -427,13 +413,13 @@ const ExampleText: React.FC = () => {
   );
 };
 
-const DraggableWorldItem: React.FC<{ id?: string; x?: number; y?: number; width: number; height: number }> = ({
-  x,
-  y,
-  width,
-  height,
-  children,
-}) => {
+const DraggableWorldItem: React.FC<{
+  id?: string;
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+} & AllEvents> = ({ x, y, width, height, children }) => {
   const worldObject = useRef<WorldObject>();
   const [position, setPosition] = useState({ x: x || 0, y: y || 0 });
   const delta = useRef({ x: 0, y: 0 });
@@ -462,15 +448,17 @@ const DraggableWorldItem: React.FC<{ id?: string; x?: number; y?: number; width:
 
     if (obj && (isDragging.current || isSelected.current)) {
       const ctx = canvas.getContext('2d');
-      const points = runtime.worldToViewer(
-        obj.points[1],
-        obj.points[2],
-        obj.points[3] - obj.points[1],
-        obj.points[4] - obj.points[2]
-      );
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = 'red';
-      ctx.strokeRect(points.x, points.y, points.width, points.height);
+      if (ctx) {
+        const points = runtime.worldToViewer(
+          obj.points[1],
+          obj.points[2],
+          obj.points[3] - obj.points[1],
+          obj.points[4] - obj.points[2]
+        );
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = 'red';
+        ctx.strokeRect(points.x, points.y, points.width, points.height);
+      }
     }
   });
 
@@ -580,9 +568,13 @@ const PanWorld: React.FC = ({ children }) => {
     if (isMoving.current) {
       runtime.pendingUpdate = true;
 
+      // @ts-ignore
       runtime.target[1] = smoothDelta.x1.value; // need to do a scale
+      // @ts-ignore
       runtime.target[2] = smoothDelta.y1.value; // need to do a scale
+      // @ts-ignore
       runtime.target[3] = smoothDelta.x2.value;
+      // @ts-ignore
       runtime.target[4] = smoothDelta.y2.value;
     }
   }, [position]);

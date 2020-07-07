@@ -255,7 +255,7 @@ export class CanvasRenderer implements Renderer {
         const scale = width / paint.width;
         const element: HTMLDivElement = paint.__host.element;
 
-        element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
         element.style.transformOrigin = `0px 0px`;
 
         if (this.previousVisible.indexOf(paint) === -1) {
@@ -369,7 +369,7 @@ export class CanvasRenderer implements Renderer {
   createHtmlHost(paint: Text | Box) {
     if (this.htmlContainer) {
       const div = document.createElement('div');
-      paint.__host = { element: div, revision: null };
+      paint.__host = { element: div, revision: null, relative: false };
       this.updateHtmlHost(paint);
     }
   }
@@ -378,7 +378,8 @@ export class CanvasRenderer implements Renderer {
     if (paint.__revision !== paint.__host.revision) {
       const div = paint.__host.element;
 
-      div.style.overflow = 'hidden';
+      // @todo drive this by props?
+      // div.style.overflow = 'hidden';
       div.style.position = 'absolute';
       div.style.width = `${paint.width}px`;
       div.style.height = `${paint.height}px`;
