@@ -13,17 +13,21 @@ import { Box } from '../../objects/box';
 import { supportedEvents } from '../../events';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
-  if (child) {
+  if (parent && parent.appendChild && child) {
     parent.appendChild(child);
   }
 }
 
 function removeChild(parent: AtlasObjectModel<any, any>, child: any) {
-  parent.removeChild(child);
+  if (parent && parent.removeChild && child) {
+    parent.removeChild(child);
+  }
 }
 
 function insertBefore(parent: AtlasObjectModel<any, any>, child: any, before: any) {
-  parent.insertBefore(child, before);
+  if (parent && parent.insertBefore) {
+    parent.insertBefore(child, before);
+  }
 }
 
 function applyProps(instance: any, oldProps: any, newProps: any) {
@@ -147,6 +151,19 @@ const reconciler = createReconciler({
   },
   prepareForCommit() {
     // no-op
+  },
+  hideInstance(instance: any) {
+    // no-op
+    // @todo these are called when a component is suspended
+  },
+  unhideInstance(instance: any, props: any) {
+    // no-op
+    // @todo these are called when a component is suspended
+  },
+  hideTextInstance() {
+    throw new Error(
+      'Text is not allowed in the react-three-fibre tree. You may have extraneous whitespace between components.'
+    );
   },
   resetAfterCommit(runtime: Runtime) {
     runtime.pendingUpdate = true;
