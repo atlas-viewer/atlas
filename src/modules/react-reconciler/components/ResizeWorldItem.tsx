@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useResizeWorldItem } from '../hooks/use-resize-world-item';
 import { HTMLPortal } from './HTMLPortal';
 
@@ -11,6 +11,16 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
     { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height },
     onSave
   );
+
+  const translate = useMemo(() => mouseEvent('translate'), [mouseEvent]);
+  const east = useMemo(() => mouseEvent('east'), [mouseEvent]);
+  const west = useMemo(() => mouseEvent('west'), [mouseEvent]);
+  const south = useMemo(() => mouseEvent('south'), [mouseEvent]);
+  const north = useMemo(() => mouseEvent('north'), [mouseEvent]);
+  const southEast = useMemo(() => mouseEvent('south-east'), [mouseEvent]);
+  const southWest = useMemo(() => mouseEvent('south-west'), [mouseEvent]);
+  const northEast = useMemo(() => mouseEvent('north-east'), [mouseEvent]);
+  const northWest = useMemo(() => mouseEvent('north-west'), [mouseEvent]);
 
   return (
     <>
@@ -25,7 +35,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
           {mode === 'sketch' && resizable ? (
             <>
               <div
-                onMouseDown={mouseEvent('translate')}
+                onMouseDown={translate}
                 style={{
                   display: 'block',
                   width: '100%',
@@ -38,7 +48,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="east"
-                onMouseDown={mouseEvent('east')}
+                onMouseDown={east}
                 style={{
                   cursor: 'e-resize',
                   position: 'absolute',
@@ -57,7 +67,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="west"
-                onMouseDown={mouseEvent('west')}
+                onMouseDown={west}
                 style={{
                   cursor: 'w-resize',
                   position: 'absolute',
@@ -76,7 +86,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="north"
-                onMouseDown={mouseEvent('north')}
+                onMouseDown={north}
                 style={{
                   cursor: 'n-resize',
                   position: 'absolute',
@@ -95,7 +105,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="south"
-                onMouseDown={mouseEvent('south')}
+                onMouseDown={south}
                 style={{
                   cursor: 's-resize',
                   position: 'absolute',
@@ -114,7 +124,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="north-east"
-                onMouseDown={mouseEvent('north-east')}
+                onMouseDown={northEast}
                 style={{
                   cursor: 'ne-resize',
                   position: 'absolute',
@@ -133,7 +143,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="south-east"
-                onMouseDown={mouseEvent('south-east')}
+                onMouseDown={southEast}
                 style={{
                   cursor: 'se-resize',
                   position: 'absolute',
@@ -152,7 +162,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="south-west"
-                onMouseDown={mouseEvent('south-west')}
+                onMouseDown={southWest}
                 style={{
                   cursor: 'sw-resize',
                   position: 'absolute',
@@ -171,7 +181,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="north-west"
-                onMouseDown={mouseEvent('north-west')}
+                onMouseDown={northWest}
                 style={{
                   cursor: 'nw-resize',
                   position: 'absolute',

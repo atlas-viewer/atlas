@@ -1,10 +1,12 @@
 import { useCallback, useState } from 'react';
 import { nanoid } from 'nanoid';
 
-export const useControlledAnnotationList = () => {
+export const useControlledAnnotationList = (
+  initialList: Array<{ x: number; y: number; width: number; height: number; id: any }> = []
+) => {
   const [annotations, setAnnotations] = useState<
     Array<{ x: number; y: number; width: number; height: number; id: any }>
-  >([]);
+  >(initialList);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedAnnotation, setSelectedAnnotation] = useState<string | undefined>();
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useMode } from '../hooks/use-mode';
 import { ResizeWorldItem } from './ResizeWorldItem';
 
@@ -18,6 +18,13 @@ export const RegionHighlight: React.FC<{
 }> = ({ region, onClick, onSave, isEditing }) => {
   const mode = useMode();
 
+  const saveCallback = useCallback(
+    bounds => {
+      onSave({ id: region.id, x: region.x, y: region.y, height: region.height, width: region.width, ...bounds });
+    },
+    [region.id, region.x, region.y, region.height, region.width]
+  );
+
   return (
     <ResizeWorldItem
       key={region.id}
@@ -26,9 +33,7 @@ export const RegionHighlight: React.FC<{
       width={region.width}
       height={region.height}
       resizable={isEditing}
-      onSave={bounds => {
-        onSave({ ...region, ...bounds });
-      }}
+      onSave={saveCallback}
     >
       <box
         onClick={

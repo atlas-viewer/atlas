@@ -104,7 +104,9 @@ export const useResizeWorldItem = (
       setIsEditing(false);
     };
     window.addEventListener('pointerup', cb);
-    return () => window.removeEventListener('pointerup', cb);
+    return () => {
+      window.removeEventListener('pointerup', cb);
+    };
   }, [onSave, props.height, props.width, props.x, props.y]);
 
   return {
