@@ -1,37 +1,34 @@
-import { SpacialContent } from './spacial-content';
 import { DnaFactory, hidePointsOutsideRegion, mutate, scale, transform, Strand } from '@atlas-viewer/dna';
 import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
 import { Memoize } from 'typescript-memoize';
+import { BaseObject } from '../objects/base-object';
 
-export class TiledImage implements SpacialContent {
+export class TiledImage extends BaseObject {
   readonly id: string;
-  readonly type: 'spacial-content' = 'spacial-content';
+  readonly type = 'spacial-content';
   readonly display: DisplayData;
 
   points: Strand;
-  width: number;
-  height: number;
-
-  get x(): number {
-    return this.points[1];
-  }
-
-  get y(): number {
-    return this.points[2];
-  }
 
   constructor(data: { url: string; scaleFactor: number; points: Strand; width: number; height: number }) {
+    super();
     this.id = data.url;
     this.points = transform(data.points, scale(data.scaleFactor));
-    this.width = data.width;
-    this.height = data.height;
     this.display = {
       width: data.width / data.scaleFactor,
       height: data.height / data.scaleFactor,
       points: data.points,
       scale: data.scaleFactor,
     };
+  }
+
+  applyProps(props: any) {
+    // @todo.
+  }
+
+  getProps() {
+    throw new Error('Method not implemented.');
   }
 
   static fromTile(
@@ -82,12 +79,12 @@ export class TiledImage implements SpacialContent {
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];
     return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${x2 / this.display.scale},${y2 /
-    this.display.scale}/0/default.jpg`;
+      this.display.scale}/0/default.jpg`;
   }
 
-  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint {
+  getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {
     const points = hidePointsOutsideRegion(this.points, target);
-    return [this, points, aggregate];
+    return [[this as any, points, aggregate]];
   }
 
   transform(op: Strand): void {

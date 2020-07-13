@@ -1,8 +1,7 @@
 import { SpacialContent } from '../spacial-content';
 import { World } from '../world';
-import {ZoneInterface} from "../world-objects/zone";
-import {Paint} from "../world-objects";
-import {PositionPair} from "../types";
+import { Paint } from '../world-objects';
+import { PositionPair } from '../types';
 import { Strand } from '@atlas-viewer/dna';
 
 export interface Renderer {
@@ -13,8 +12,6 @@ export interface Renderer {
   prepareLayer(paint: SpacialContent): void;
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void;
   pendingUpdate(): boolean;
-  getActiveZone(world: World): ZoneInterface | null;
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[];
-  hasActiveZone(): boolean;
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null;
 }
