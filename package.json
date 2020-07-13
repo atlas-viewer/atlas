@@ -1,6 +1,6 @@
 {
   "name": "@atlas-viewer/atlas",
-  "version": "1.0.0-alpha.7",
+  "version": "1.0.0",
   "main": "dist/index.js",
   "module": "dist/index.es.js",
   "web": "dist/index.umd.js",
