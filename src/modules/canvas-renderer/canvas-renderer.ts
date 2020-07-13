@@ -37,6 +37,8 @@ export class CanvasRenderer implements Renderer {
   frameIsRendering = false;
   firstMeaningfulPaint = false;
   parallelTasks = 3; // @todo configuration.
+  frameTasks = 3;
+  isGPUBusy = false;
   readonly configuration = {
     segmentRendering: true,
   };
@@ -105,26 +107,36 @@ export class CanvasRenderer implements Renderer {
   }
 
   doOffscreenWork() {
+    this.frameTasks = 0;
+    this.isGPUBusy = false;
     // This is our worker. It is called every 1ms (roughly) and will usually be
     // an async task that can run without blocking the frame. Because of
     // there is a configuration for parallel task count.
     if (this.loadingQueue.length) {
       // First call immediately.
       this._worker();
-      // Here's our clock for scheduling tasks, every 1ms it will try to call.
-      this._scheduled = setInterval(this._doWork, 6);
+      if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
+        // Here's our clock for scheduling tasks, every 1ms it will try to call.
+        this._scheduled = setInterval(this._doWork, 6);
+      }
     }
   }
 
   _worker = () => {
     // First we check if there is work to do.
-    if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
+    if (
+      this.loadingQueue.length &&
+      this.tasksRunning < this.parallelTasks &&
+      this.frameTasks < this.parallelTasks &&
+      !this.isGPUBusy
+    ) {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
       if (next) {
         const startTime = performance.now();
         // We will increment the task count
         this.tasksRunning++;
+        this.frameTasks++;
         // And kick it off. We don't care if it succeeded or not.
         // A task that needs to retry should just add a new task.
         this.currentTask = next
@@ -177,6 +189,7 @@ export class CanvasRenderer implements Renderer {
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
+    // console.log('painting', paint.__id)
     // Push visible items.
     this.visible.push(paint);
     // Only supporting single and tiled images at the moment.
@@ -194,6 +207,7 @@ export class CanvasRenderer implements Renderer {
             if (!fallback) {
               break;
             }
+            // console.log('painting fallback');
             const fallbackHost: ImageBuffer = fallback.__host;
             const adjustedScale = paint.display.scale / fallback.display.scale;
             if (fallbackHost && fallbackHost.indices.length) {
@@ -217,6 +231,7 @@ export class CanvasRenderer implements Renderer {
 
         // 2) Schedule paint onto local buffer (async, yay!)
         if (imageBuffer.indices.indexOf(index) === -1) {
+          // console.log('scheduling full paint');
           // we need to schedule a paint.
           this.schedulePaintToCanvas(
             imageBuffer,
@@ -326,6 +341,7 @@ export class CanvasRenderer implements Renderer {
                     const points = paint.display.points.slice(index * 5, index * 5 + 5);
                     const ctx = imageBuffer.canvas.getContext('2d') as CanvasRenderingContext2D;
                     ctx.drawImage(image, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+                    this.isGPUBusy = !this.firstMeaningfulPaint && true;
                     innerResolve();
                   });
                 },

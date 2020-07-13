@@ -38,6 +38,7 @@ export const useResizeWorldItem = (
   useWorldEvent(
     'onPointerMove',
     e => {
+      if (runtime.mode !== 'sketch') return;
       const box = portalRef.current;
       // Take co-ordinates, clamp constraints, update
       if (

@@ -459,6 +459,8 @@ export class Runtime {
   static USE_FRAME = 'useFrame';
   static USE_BEFORE_FRAME = 'useBeforeFrame';
 
+  dontCommitStartTime = 0;
+
   /**
    * Render
    *
@@ -475,7 +477,6 @@ export class Runtime {
     this.stopId = window.requestAnimationFrame(this.render);
     // Called every frame.
     this.hook('useFrame', delta);
-
     if (
       !this.firstRender &&
       !this.pendingUpdate &&
@@ -492,6 +493,10 @@ export class Runtime {
       // Nothing to do, target didn't change since last time.
       return;
     }
+
+    this.dontCommitStartTime = Date.now();
+    // Group.
+    // console.groupCollapsed(`Previous frame took ${delta} ${delta > 17 ? '<-' : ''} ${delta > 40 ? '<--' : ''}`);
 
     this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
@@ -572,5 +577,9 @@ export class Runtime {
         }
       }
     }
+
+    // console.log('Actual frame:', Date.now() - this.dontCommitStartTime);
+    // // Group end
+    // console.groupEnd();
   };
 }

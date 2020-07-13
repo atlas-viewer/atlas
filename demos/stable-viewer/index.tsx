@@ -6,6 +6,7 @@ import { TileSet } from '../../src/modules/react-reconciler/components/TileSet';
 import { DrawBox } from '../../src/modules/react-reconciler/components/BoxDraw';
 import { RegionHighlight } from '../../src/modules/react-reconciler/components/RegionHighlight';
 import { useControlledAnnotationList } from '../../src/modules/react-reconciler/hooks/use-controlled-annotation-list';
+import { AtlasAuto } from '../../src/modules/react-reconciler/components/AtlasAuto';
 
 // function useController() {
 //   return {
@@ -73,6 +74,13 @@ const Wunder = () => {
   return <TileSet tiles={tiles} x={0} y={0} width={4093} height={2743} />;
 };
 
+const sizes = [
+  { width: 800, height: 600 },
+  { width: 400, height: 300 },
+  { width: 900, height: 600 },
+  { width: 1000, height: 600 },
+];
+
 const Demo = () => {
   const {
     isEditing,
@@ -87,29 +95,42 @@ const Demo = () => {
     addNewAnnotation,
   } = useControlledAnnotationList();
 
+  const [size, setSize] = useState({ width: 800, height: 600, idx: 0 });
+
   return (
-    <div style={{ display: 'flex' }}>
+    <div>
       <div>
         <h3>Viewer</h3>
         <p>isEditing: {isEditing ? 'true' : 'false'}</p>
-        <Atlas width={800} height={600} mode={isEditing ? 'sketch' : 'explore'}>
-          <world onClick={onDeselect}>
-            <Wunder />
-            {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
-            {annotations.map(annotation => (
-              <RegionHighlight
-                key={annotation.id}
-                region={annotation}
-                isEditing={selectedAnnotation === annotation.id}
-                onSave={onUpdateAnnotation}
-                onClick={anno => {
-                  setIsEditing(true);
-                  setSelectedAnnotation(anno.id);
-                }}
-              />
-            ))}
-          </world>
-        </Atlas>
+        <button
+          onClick={() => {
+            const idx = (size.idx + 1) % sizes.length;
+            const newSize = sizes[idx];
+            setSize({ width: newSize.width, height: newSize.height, idx });
+          }}
+        >
+          Change size
+        </button>
+        <div>
+          <AtlasAuto mode={isEditing ? 'sketch' : 'explore'} style={{ width: '100%', height: size.height }}>
+            <world onClick={onDeselect}>
+              <Wunder />
+              {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
+              {annotations.map(annotation => (
+                <RegionHighlight
+                  key={annotation.id}
+                  region={annotation}
+                  isEditing={selectedAnnotation === annotation.id}
+                  onSave={onUpdateAnnotation}
+                  onClick={anno => {
+                    setIsEditing(true);
+                    setSelectedAnnotation(anno.id);
+                  }}
+                />
+              ))}
+            </world>
+          </AtlasAuto>
+        </div>
       </div>
       <div>
         {annotations.map(annotation => (

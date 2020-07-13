@@ -200,11 +200,11 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
       let currentZoom: ColdSubscription | undefined;
 
       function zoomTo(factor: number, origin?: Position, stream = false) {
-        if (factor < 1 && runtime.scaleFactor / factor > (1 / minZoomFactor) * devicePixelRatio) {
-          factor = 1;
+        if (runtime.scaleFactor / factor > 1 / minZoomFactor) {
+          factor = runtime.scaleFactor / (1 / minZoomFactor);
         }
         if (factor >= 1 && runtime.scaleFactor / factor < 1 / runtime.maxScaleFactor) {
-          factor = runtime.scaleFactor/(1/runtime.maxScaleFactor);
+          factor = runtime.scaleFactor / (1 / runtime.maxScaleFactor);
         }
 
         // Save the before for the tween.
@@ -431,7 +431,7 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         // For clicking its a little trickier. We want to still allow panning. So this
         // little temporary variable will nuke the value when the mouse is down.
         canvas.addEventListener('mousedown', () => {
-          if ( runtime.mode === 'explore') {
+          if (runtime.mode === 'explore') {
             click = true;
             setTimeout(() => {
               click = false;
@@ -470,6 +470,8 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         });
       }
     },
-    stop() {},
+    stop() {
+      // no-op.
+    },
   };
 };
