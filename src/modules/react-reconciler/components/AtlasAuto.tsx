@@ -11,7 +11,7 @@ export const AtlasAuto: React.FC<{
   const [ref, bounds] = useMeasure();
 
   return (
-    <div ref={ref} style={{ width: '100%', height: '100%', ...style }}>
+    <div ref={ref} style={{ width: '100%', height: 600, ...style }}>
       <Atlas width={bounds.width || 100} height={bounds.height || 100} {...props}>
         {props.children}
       </Atlas>
