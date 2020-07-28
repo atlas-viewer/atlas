@@ -7,6 +7,8 @@ import replace from '@rollup/plugin-replace';
 import compiler from '@ampproject/rollup-plugin-closure-compiler';
 import pkg from './package.json';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 export default [
   {
     input: 'src/index.ts',
@@ -29,12 +31,13 @@ export default [
       typescript({ target: 'es5' }),
       resolve(), // so Rollup can find `ms`
       replace({
-        'process.env.NODE_ENV': JSON.stringify('production'),
+        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
+        'process.env.VERSION': JSON.stringify(pkg.version),
       }),
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
-      terser(),
-      compiler(),
-    ],
+      isProduction && terser(),
+      isProduction && compiler(),
+    ].filter(Boolean),
   },
   {
     input: 'src/index.ts',
@@ -52,13 +55,14 @@ export default [
     ],
     external: [...Object.keys(pkg.dependencies)],
     plugins: [
-      typescript(),
+      typescript({ target: isProduction ? 'es5' : 'es2020' }),
       replace({
-        'process.env.NODE_ENV': JSON.stringify('production'),
+        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
+        'process.env.VERSION': JSON.stringify(pkg.version),
       }),
       resolve(), // so Rollup can find `ms`
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
-      visualizer(),
+      isProduction && visualizer(),
     ],
   },
-];
+].filter(Boolean);

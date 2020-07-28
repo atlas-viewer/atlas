@@ -10,3 +10,7 @@ export * from './modules/grid-builder/grid-builder';
 export * from './modules/popmotion-controller/popmotion-controller';
 export * from './modules/react-reconciler';
 export * from './modules/iiif';
+
+if (process.env.NODE_ENV !== 'production') {
+  console.log('Atlas', process.env.VERSION);
+}
