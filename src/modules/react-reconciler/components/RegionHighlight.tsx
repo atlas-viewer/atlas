@@ -11,23 +11,25 @@ type RegionHighlightType = {
 };
 
 export const RegionHighlight: React.FC<{
+  id?: string;
   region: RegionHighlightType;
   isEditing: boolean;
   onSave: (annotation: RegionHighlightType) => void;
   onClick: (annotation: RegionHighlightType) => void;
-}> = ({ region, onClick, onSave, isEditing }) => {
+  background?: string;
+  border?: string;
+}> = ({ region, onClick, onSave, isEditing, border = 'none', background = 'rgba(0,0,0,.4)' }) => {
   const mode = useMode();
 
   const saveCallback = useCallback(
     bounds => {
       onSave({ id: region.id, x: region.x, y: region.y, height: region.height, width: region.width, ...bounds });
     },
-    [region.id, region.x, region.y, region.height, region.width]
+    [onSave, region.id, region.x, region.y, region.height, region.width]
   );
 
   return (
     <ResizeWorldItem
-      key={region.id}
       x={region.x}
       y={region.y}
       width={region.width}
@@ -46,7 +48,8 @@ export const RegionHighlight: React.FC<{
             : () => void 0
         }
         target={{ x: 0, y: 0, width: region.width, height: region.height }}
-        backgroundColor={'rgba(0,0,0,.4)'}
+        backgroundColor={background}
+        border={border}
       />
     </ResizeWorldItem>
   );

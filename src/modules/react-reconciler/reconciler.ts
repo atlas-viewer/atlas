@@ -112,6 +112,7 @@ const reconciler = createReconciler({
   appendChildToContainer(runtime: Runtime, world: any) {
     if (world instanceof World) {
       runtime.world = world;
+      runtime._updateScaleFactor();
     } else if (world instanceof WorldObject) {
       runtime.world.appendChild(world);
     } else if (world) {
@@ -183,8 +184,8 @@ const reconciler = createReconciler({
 
 reconciler.injectIntoDevTools({
   bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
-  version: '0.0.0',
-  rendererPackageName: 'atlas',
+  version: process.env.VERSION || '0.0.0',
+  rendererPackageName: '@atlas-viewer/atlas',
 });
 
 export const ReactAtlas = {

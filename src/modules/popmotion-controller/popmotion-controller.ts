@@ -52,7 +52,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   devicePixelRatio: 1,
   // Flags
   enableWheel: true,
-  enableClickToZoom: true,
+  enableClickToZoom: false,
 };
 
 export const popmotionController = (canvas: HTMLElement, config: PopmotionControllerConfig = {}): RuntimeController => {

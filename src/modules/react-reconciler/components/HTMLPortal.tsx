@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
 import { render } from 'react-dom';
 import { useFrame, useRuntime } from '../Atlas';
@@ -37,7 +37,7 @@ export const HTMLPortal: React.FC<{
     }
   }, [props.relative]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const box = boxRef.current;
     if (fwdRef && box) {
       if (typeof fwdRef === 'function') {
@@ -52,6 +52,14 @@ export const HTMLPortal: React.FC<{
       } else {
         render(children as any, box.__host.element);
       }
+    } else if (box) {
+      box.__onCreate = () => {
+        if (props.relative) {
+          render(<div ref={ref as any}>{children}</div>, box.__host.element);
+        } else {
+          render(children as any, box.__host.element);
+        };
+      };
     }
   }, [fwdRef, children, boxRef, props.relative]);
 

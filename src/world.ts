@@ -193,6 +193,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     this.objects[index] = null;
     this.triggerRepaint();
+    this.needsRecalculate = true;
   }
 
   insertBefore(item: WorldObject, before: WorldObject) {
@@ -295,6 +296,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       const hBuffer = new Int32Array(this.objects.length);
       const totalObjects = this.objects.length;
       for (let x = 0; x < totalObjects; x++) {
+        if (!this.objects[x]) continue;
         wBuffer[x] = this.points[x * 5 + 3];
         hBuffer[x] = this.points[x * 5 + 4];
       }

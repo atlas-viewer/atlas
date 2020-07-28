@@ -86,28 +86,61 @@ export const useResizeWorldItem = (
     [props.width, props.height]
   );
 
+  const windowPointerUp = useRef<() => void>();
+
+  useEffect(() => {
+    windowPointerUp.current = () => {
+      if (isEditing) {
+        onSave({
+          x: (props.x || 0) + cardinalDeltas.current.west,
+          y: (props.y || 0) + cardinalDeltas.current.north,
+          width: props.width + cardinalDeltas.current.east - cardinalDeltas.current.west,
+          height: props.height + cardinalDeltas.current.south - cardinalDeltas.current.north,
+        });
+
+        resizeMode.current = undefined;
+        mouseStart.current = undefined;
+        cardinalDeltas.current.east = 0;
+        cardinalDeltas.current.west = 0;
+        cardinalDeltas.current.north = 0;
+        cardinalDeltas.current.south = 0;
+        setIsEditing(false);
+      }
+    };
+  }, [isEditing, onSave, props.height, props.width, props.x, props.y]);
+
   useEffect(() => {
     const cb = () => {
-      onSave({
-        x: (props.x || 0) + cardinalDeltas.current.west,
-        y: (props.y || 0) + cardinalDeltas.current.north,
-        width: props.width + cardinalDeltas.current.east - cardinalDeltas.current.west,
-        height: props.height + cardinalDeltas.current.south - cardinalDeltas.current.north,
-      });
-
-      resizeMode.current = undefined;
-      mouseStart.current = undefined;
-      cardinalDeltas.current.east = 0;
-      cardinalDeltas.current.west = 0;
-      cardinalDeltas.current.north = 0;
-      cardinalDeltas.current.south = 0;
-      setIsEditing(false);
+      if (windowPointerUp.current) {
+        windowPointerUp.current();
+      }
     };
     window.addEventListener('pointerup', cb);
-    return () => {
-      window.removeEventListener('pointerup', cb);
-    };
-  }, [onSave, props.height, props.width, props.x, props.y]);
+    return () => window.removeEventListener('pointerup', cb);
+  }, []);
+
+  // useEffect(() => {
+  //   const cb = () => {
+  //     onSave({
+  //       x: (props.x || 0) + cardinalDeltas.current.west,
+  //       y: (props.y || 0) + cardinalDeltas.current.north,
+  //       width: props.width + cardinalDeltas.current.east - cardinalDeltas.current.west,
+  //       height: props.height + cardinalDeltas.current.south - cardinalDeltas.current.north,
+  //     });
+  //
+  //     resizeMode.current = undefined;
+  //     mouseStart.current = undefined;
+  //     cardinalDeltas.current.east = 0;
+  //     cardinalDeltas.current.west = 0;
+  //     cardinalDeltas.current.north = 0;
+  //     cardinalDeltas.current.south = 0;
+  //     setIsEditing(false);
+  //   };
+  //   window.addEventListener('pointerup', cb);
+  //   return () => {
+  //     window.removeEventListener('pointerup', cb);
+  //   };
+  // }, [onSave, props.height, props.width, props.x, props.y]);
 
   return {
     portalRef,

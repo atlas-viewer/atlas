@@ -11,6 +11,7 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   __id: string;
   __revision = 0;
   __host: any;
+  __onCreate?: () => void;
   __parent?: CompositeResource;
   // Base properties.
   eventHandlers: SupportedEventMap;

@@ -65,7 +65,6 @@ export class CanvasRenderer implements Renderer {
     this.options = options || {};
     this.htmlContainer = htmlContainer;
     // Testing fade in.
-    // @todo definitely make this config.
     this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
 
@@ -189,7 +188,6 @@ export class CanvasRenderer implements Renderer {
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
-    // console.log('painting', paint.__id)
     // Push visible items.
     this.visible.push(paint);
     // Only supporting single and tiled images at the moment.
@@ -207,7 +205,6 @@ export class CanvasRenderer implements Renderer {
             if (!fallback) {
               break;
             }
-            // console.log('painting fallback');
             const fallbackHost: ImageBuffer = fallback.__host;
             const adjustedScale = paint.display.scale / fallback.display.scale;
             if (fallbackHost && fallbackHost.indices.length) {
@@ -231,7 +228,6 @@ export class CanvasRenderer implements Renderer {
 
         // 2) Schedule paint onto local buffer (async, yay!)
         if (imageBuffer.indices.indexOf(index) === -1) {
-          // console.log('scheduling full paint');
           // we need to schedule a paint.
           this.schedulePaintToCanvas(
             imageBuffer,
@@ -387,6 +383,9 @@ export class CanvasRenderer implements Renderer {
       const div = document.createElement('div');
       paint.__host = { element: div, revision: null, relative: false };
       this.updateHtmlHost(paint);
+      if (paint.__onCreate) {
+        paint.__onCreate();
+      }
     }
   }
 
@@ -426,7 +425,10 @@ export class CanvasRenderer implements Renderer {
           div.style.backgroundColor = paint.props.backgroundColor;
         }
         if (paint.props.border) {
-          div.style.backgroundColor = paint.props.border;
+          div.style.border = paint.props.border;
+        }
+        if (paint.props.className) {
+          div.className = paint.props.className;
         }
       }
     }

@@ -164,6 +164,24 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
     overlay.style.overflow = 'hidden';
   }, [bounds.height, bounds.width]);
 
+  useLayoutEffect(() => {
+    const windowResizeCallback = () => {
+      if (state.current.runtime) {
+        const rt: Runtime = state.current.runtime;
+
+        rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
+        rt._updateScaleFactor();
+        state.current.viewport.width = restProps.width;
+        state.current.viewport.height = restProps.height;
+        rt.pendingUpdate = true;
+      }
+    };
+
+    window.addEventListener('resize', windowResizeCallback);
+
+    return () => window.removeEventListener('resize', windowResizeCallback);
+  }, [restProps.height, restProps.width]);
+
   // @todo what does this do?
   const Canvas = useCallback(
     function Canvas(props: { children: React.ReactElement }): JSX.Element {
@@ -182,6 +200,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
   // @todo move most of this to runtime?
   const handlePointMove = useCallback(
     (e: any) => {
+      console.log();
       const { x, y } = state.current.runtime.viewerToWorld(e.pageX - bounds.left, e.pageY - bounds.top);
 
       eventPool.atlas.x = x;
@@ -254,13 +273,20 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
 
     state.current.controller = popmotionController(currentCanvas, {
       minZoomFactor: 0.5,
-      maxZoomFactor: 10,
-      enableClickToZoom: true,
+      maxZoomFactor: 3,
+      enableClickToZoom: false,
     });
     state.current.renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { debug: false });
     state.current.runtime = new Runtime(state.current.renderer, new World(0, 0), state.current.viewport, [
       state.current.controller,
     ]);
+
+    return () => {
+      if (state.current) {
+        state.current.controller.stop(state.current.runtime);
+        state.current.runtime.stop();
+      }
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -384,6 +410,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
 
     window.addEventListener('keydown', e => {
       if (e.code === 'Space' && state.current.runtime.mode === 'sketch') {
+        e.preventDefault();
         state.current.runtime.mode = 'explore';
         setContainerClassName('mode-explore');
         window.addEventListener('keyup', keyupSpace);
@@ -404,8 +431,6 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
         userSelect: 'none',
         display: 'inline-block',
         background: '#000',
-        borderRadius: 5,
-        overflow: 'hidden',
         width: restProps.width,
         height: restProps.height,
       }}

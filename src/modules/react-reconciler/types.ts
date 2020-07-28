@@ -87,6 +87,7 @@ declare global {
       box: BaseElement & {
         interactive?: boolean;
         backgroundColor?: string;
+        className?: string;
         border?: string;
         target?: { x: number; y: number; width: number; height: number };
       } & AllEvents;

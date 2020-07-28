@@ -185,6 +185,21 @@ export class Runtime {
     this.updateControllerPosition();
   }
 
+  _updateScaleFactor() {
+    if (this.world.width <= 0 || this.world.height <= 0) return;
+
+    const width = this.width * this.scaleFactor;
+    const height = this.height * this.scaleFactor;
+
+    const widthScale = this.world.width / width;
+    const heightScale = this.world.height / height;
+    if (widthScale < heightScale) {
+      this.maxScaleFactor = heightScale;
+    } else {
+      this.maxScaleFactor = widthScale;
+    }
+  }
+
   /**
    * Resize world
    *

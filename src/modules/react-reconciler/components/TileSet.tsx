@@ -11,7 +11,14 @@ export const TileSet: React.FC<{
   const scale = props.width / props.tiles.width;
 
   return (
-    <worldObject scale={scale} height={props.tiles.height} width={props.tiles.width} x={props.x} y={props.y}>
+    <worldObject
+      key={props.tiles.imageService.id}
+      scale={scale}
+      height={props.tiles.height}
+      width={props.tiles.width}
+      x={props.x}
+      y={props.y}
+    >
       <compositeImage
         key={props.tiles.imageService.id}
         id={props.tiles.imageService.id}

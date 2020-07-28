@@ -10,6 +10,7 @@ export type BoxProps = {
     width: number;
     height: number;
   };
+  className?: string;
   backgroundColor?: string;
   border?: string;
   interactive?: boolean;
@@ -33,6 +34,7 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     backgroundColor?: string;
     border?: string;
     interactive?: boolean;
+    className?: string;
   } = {};
 
   constructor() {
