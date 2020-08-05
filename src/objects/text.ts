@@ -1,10 +1,10 @@
+import { TextWrapperOptions } from "../types";
 import { BaseObject } from './base-object';
-import { dna, DnaFactory, scale, Strand, transform } from '@atlas-viewer/dna';
-import { CanvasTextWrapperOptions } from 'canvas-text-wrapper';
+import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
 import { SpacialContent } from '../spacial-content/spacial-content';
 import { Paint } from '../world-objects/paint';
 
-export type TextProps = CanvasTextWrapperOptions & {
+export type TextProps = TextWrapperOptions & {
   id: string;
   text: string;
   target: {
@@ -38,7 +38,7 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     points: dna(5),
   };
   interactive = false;
-  props: CanvasTextWrapperOptions & { interactive?: boolean } = {
+  props: TextWrapperOptions & { interactive?: boolean } = {
     font: '18px Arial, sans-serif',
     lineHeight: 1,
     textAlign: 'left',

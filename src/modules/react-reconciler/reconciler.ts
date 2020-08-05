@@ -69,6 +69,7 @@ const reconciler = createReconciler({
         instance = new World(props.width, props.height);
         (instance as World).activatedEvents = world.activatedEvents;
         (instance as World).eventHandlers = world.eventHandlers;
+        (instance as World).subscriptions = world.subscriptions;
         world = instance as World;
         break;
       case 'box':

@@ -61,7 +61,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   // These should be the same size.
   private objects: Array<WorldObject | null> = [];
-  private subscriptions: Array<(type: string, changes?: unknown) => void> = [];
+  subscriptions: Array<(type: string, changes?: unknown) => void> = [];
 
   constructor(width = 0, height = 0, worldObjectCount = 100, viewingDirection: ViewingDirection = 'left-to-right') {
     super();
@@ -409,11 +409,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   addLayoutSubscriber(subscription: (type: string, data: unknown) => void) {
-    const length = this.subscriptions.length;
     this.subscriptions.push(subscription);
 
     return () => {
-      this.subscriptions.splice(length, 1);
+      this.subscriptions.splice(this.subscriptions.indexOf(subscription), 1);
     };
   }
 
@@ -478,7 +477,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         }
         const len = this.subscriptions.length;
         for (let i = 0; i < len; i++) {
-          (this.subscriptions[i] as any).apply(this.triggerQueue[x]);
+          (this.subscriptions[i] as any).apply(null, this.triggerQueue[x]);
         }
       }
       this.triggerQueue = [];
@@ -491,5 +490,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   triggerRepaint() {
     this.trigger('repaint');
+  }
+
+  gotoRegion(data: { x: number; y: number; height: number; width: number; padding?: number }) {
+    this.trigger('goto-region', data);
+  }
+
+  goHome(immediate = true) {
+    this.trigger('goto-region', { x: 0, y: 0, width: this.width, height: this.height });
   }
 }

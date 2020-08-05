@@ -1,4 +1,6 @@
 import { ColdSubscription, easing, inertia, listen, pointer, tween, value } from 'popmotion';
+/** @ts-ignore */
+import normalizeWheel from 'normalize-wheel';
 import { clamp } from '@popmotion/popcorn';
 import { Projection, scaleAtOrigin, transform } from '@atlas-viewer/dna';
 import { RuntimeController, Position } from '../../types';
@@ -154,11 +156,55 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         }).start(viewer);
       };
 
-      runtime.world.addLayoutSubscriber(type => {
+      runtime.world.addLayoutSubscriber((type, data: any) => {
         if (type === 'zone-changed') {
           // @TODO this needs to be "goHome" equivalent
           constrainBounds(true);
         }
+        if (type === 'goto-region' && data) {
+          const {x, y, width, height, padding = 20 } = data || {};
+          const w = runtime.width;
+          const h = runtime.height;
+          const matchesHeight = (width  / w) < (height / h);
+          const fromPos = runtime.getViewport();
+
+
+          const rx = x - padding;
+          const ry = y - padding;
+          const rWidth = width + padding * 2;
+          const rHeight = height + padding * 2;
+
+          if (matchesHeight) {
+            // pad on the left and right.
+            const actualWidth = (rHeight / h) * w;
+            tween({
+              from: fromPos,
+              to: Object.create({
+                x: rx - ((actualWidth - rWidth)/2),
+                y: ry,
+                width: actualWidth,
+                height: rHeight,
+              }),
+              duration: 1000,
+              ease: easing.easeInOut,
+            }).start(viewer);
+          } else {
+            // pad on the top and bottom.
+            const actualHeight = (rWidth / w) * h;
+            tween({
+              from: fromPos,
+              to: Object.create({
+                x: rx,
+                y: ry - ((actualHeight - rHeight)/2),
+                width: rWidth,
+                height: actualHeight,
+              }),
+              duration: 1000,
+              ease: easing.easeInOut,
+            }).start(viewer);
+          }
+        }
+
       });
 
       if (reset) {
@@ -310,9 +356,10 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
       if (enableWheel) {
         // Next we will add a scrolling event to the scroll-wheel.
         canvas.addEventListener('wheel', e => {
+          const normalized = normalizeWheel(e);
           if (runtime.mode === 'explore') {
             e.preventDefault();
-            const zoomFactor = 1 + (e.deltaY * devicePixelRatio) / zoomWheelConstant;
+            const zoomFactor = 1 + (normalized.pixelY * devicePixelRatio) / zoomWheelConstant;
             zoomTo(
               // Generating a zoom from the wheel delta
               clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
