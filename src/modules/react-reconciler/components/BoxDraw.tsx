@@ -42,7 +42,7 @@ export const DrawBox: React.FC<{
   useEffect(() => {
     const cb = (e: MouseEvent) => {
       if (atlas.canvasPosition) {
-        const { x, y } = runtime.viewerToWorld(e.pageX - atlas.canvasPosition.left, e.pageY - atlas.canvasPosition.top);
+        const { x, y } = runtime.viewerToWorld(e.clientX - atlas.canvasPosition.left, e.clientY - atlas.canvasPosition.top);
         mousePosition.current.x = ~~x;
         mousePosition.current.y = ~~y;
       }
