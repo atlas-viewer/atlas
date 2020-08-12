@@ -60,7 +60,9 @@ export class CanvasRenderer implements Renderer {
 
   constructor(canvas: HTMLCanvasElement, htmlContainer?: HTMLDivElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
+    // Not working as expected.
+    // this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
+    this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
     this.htmlContainer = htmlContainer;

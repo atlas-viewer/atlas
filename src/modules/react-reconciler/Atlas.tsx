@@ -433,6 +433,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
         background: '#000',
         width: restProps.width,
         height: restProps.height,
+        zIndex: 10,
       }}
     >
       <style>{`
