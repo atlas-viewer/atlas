@@ -410,6 +410,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
 
     window.addEventListener('keydown', e => {
       if (e.code === 'Space' && state.current.runtime.mode === 'sketch') {
+        if (e.target && (e.target as any).tagName && (e.target as any).tagName.toLowerCase() === 'input') return;
         e.preventDefault();
         state.current.runtime.mode = 'explore';
         setContainerClassName('mode-explore');
