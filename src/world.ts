@@ -499,4 +499,18 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   goHome(immediate = true) {
     this.trigger('goto-region', { x: 0, y: 0, width: this.width, height: this.height });
   }
+
+  zoomIn(point?: { x: number; y: number }) {
+    this.trigger('zoom-to', {
+      point,
+      factor: 0.5,
+    });
+  }
+
+  zoomOut(point?: { x: number; y: number }) {
+    this.trigger('zoom-to', {
+      point,
+      factor: 2,
+    });
+  }
 }

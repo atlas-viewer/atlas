@@ -156,57 +156,6 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         }).start(viewer);
       };
 
-      runtime.world.addLayoutSubscriber((type, data: any) => {
-        if (type === 'zone-changed') {
-          // @TODO this needs to be "goHome" equivalent
-          constrainBounds(true);
-        }
-        if (type === 'goto-region' && data) {
-          const {x, y, width, height, padding = 20 } = data || {};
-          const w = runtime.width;
-          const h = runtime.height;
-          const matchesHeight = (width  / w) < (height / h);
-          const fromPos = runtime.getViewport();
-
-
-          const rx = x - padding;
-          const ry = y - padding;
-          const rWidth = width + padding * 2;
-          const rHeight = height + padding * 2;
-
-          if (matchesHeight) {
-            // pad on the left and right.
-            const actualWidth = (rHeight / h) * w;
-            tween({
-              from: fromPos,
-              to: Object.create({
-                x: rx - ((actualWidth - rWidth)/2),
-                y: ry,
-                width: actualWidth,
-                height: rHeight,
-              }),
-              duration: 1000,
-              ease: easing.easeInOut,
-            }).start(viewer);
-          } else {
-            // pad on the top and bottom.
-            const actualHeight = (rWidth / w) * h;
-            tween({
-              from: fromPos,
-              to: Object.create({
-                x: rx,
-                y: ry - ((actualHeight - rHeight)/2),
-                width: rWidth,
-                height: actualHeight,
-              }),
-              duration: 1000,
-              ease: easing.easeInOut,
-            }).start(viewer);
-          }
-        }
-
-      });
-
       if (reset) {
         reset.addEventListener('click', () => {
           // const bounds = runtime.getBounds(panPadding);
@@ -373,6 +322,59 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
           }
         });
       }
+
+      // Layout subscriber - move more into here.
+      runtime.world.addLayoutSubscriber((type, data: any) => {
+        if (type === 'zone-changed') {
+          // @TODO this needs to be "goHome" equivalent
+          constrainBounds(true);
+        }
+        if (type === 'zoom-to') {
+          zoomTo(data.factor, data.position);
+        }
+        if (type === 'goto-region' && data) {
+          const { x, y, width, height, padding = 20 } = data || {};
+          const w = runtime.width;
+          const h = runtime.height;
+          const matchesHeight = width / w < height / h;
+          const fromPos = runtime.getViewport();
+
+          const rx = x - padding;
+          const ry = y - padding;
+          const rWidth = width + padding * 2;
+          const rHeight = height + padding * 2;
+
+          if (matchesHeight) {
+            // pad on the left and right.
+            const actualWidth = (rHeight / h) * w;
+            tween({
+              from: fromPos,
+              to: Object.create({
+                x: rx - (actualWidth - rWidth) / 2,
+                y: ry,
+                width: actualWidth,
+                height: rHeight,
+              }),
+              duration: 1000,
+              ease: easing.easeInOut,
+            }).start(viewer);
+          } else {
+            // pad on the top and bottom.
+            const actualHeight = (rWidth / w) * h;
+            tween({
+              from: fromPos,
+              to: Object.create({
+                x: rx,
+                y: ry - (actualHeight - rHeight) / 2,
+                width: rWidth,
+                height: actualHeight,
+              }),
+              duration: 1000,
+              ease: easing.easeInOut,
+            }).start(viewer);
+          }
+        }
+      });
 
       // The following lines are incomplete implementations of multi-touch zoom. This currently
       // interferes with the panning and would need to be combined for touch inputs.

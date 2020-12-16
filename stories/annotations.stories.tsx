@@ -6,9 +6,9 @@ import { DrawBox } from '../src/modules/react-reconciler/components/BoxDraw';
 import { RegionHighlight } from '../src/modules/react-reconciler/components/RegionHighlight';
 import { useControlledAnnotationList } from '../src/modules/react-reconciler/hooks/use-controlled-annotation-list';
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
-import { Runtime } from "../src/renderer/runtime";
+import { Runtime } from '../src/renderer/runtime';
 
-export default { title: 'Annotations' }
+export default { title: 'Annotations' };
 
 const staticTiles = [
   {
@@ -28,7 +28,7 @@ const Wunder = () => {
 
   useEffect(() => {
     getTileFromImageService(staticTiles[1].id, staticTiles[1].width, staticTiles[1].height).then(s => {
-      console.log(s)
+      console.log(s);
       setTile(s);
     });
   }, []);
@@ -96,17 +96,29 @@ export const SelectionDemo = () => {
 
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
 
-  const goTo = (data: any ) => {
+  const goTo = (data: any) => {
     if (runtime.current) {
       runtime.current.world.gotoRegion(data);
     }
-  }
+  };
 
   const goHome = () => {
     if (runtime.current) {
       runtime.current.world.goHome();
     }
-  }
+  };
+
+  const zoomIn = () => {
+    if (runtime.current) {
+      runtime.current.world.zoomIn();
+    }
+  };
+
+  const zoomOut = () => {
+    if (runtime.current) {
+      runtime.current.world.zoomOut();
+    }
+  };
 
   return (
     <div>
@@ -124,7 +136,11 @@ export const SelectionDemo = () => {
         </button>
         <div style={{ display: 'flex' }}>
           <div style={{ flex: '1 1 0px' }}>
-            <AtlasAuto onCreated={rt => runtime.current = rt.runtime} mode={isEditing ? 'sketch' : 'explore'} style={{ width: size.width, height: size.height }}>
+            <AtlasAuto
+              onCreated={rt => (runtime.current = rt.runtime)}
+              mode={isEditing ? 'sketch' : 'explore'}
+              style={{ width: size.width + 200, height: size.height }}
+            >
               <world onClick={onDeselect}>
                 <Wunder />
                 {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
@@ -145,9 +161,12 @@ export const SelectionDemo = () => {
           </div>
           <div style={{ width: 300 }}>
             <button onClick={goHome}>Go home</button>
+            <button onClick={zoomIn}>Zoom in</button>
+            <button onClick={zoomOut}>Zoom out</button>
             {annotations.map(annotation => (
               <div key={annotation.id}>
-                {annotation.id} <button onClick={() => editAnnotation(annotation.id)}>edit</button> <button onClick={() => goTo(annotation)}>go to</button>
+                {annotation.id} <button onClick={() => editAnnotation(annotation.id)}>edit</button>{' '}
+                <button onClick={() => goTo(annotation)}>go to</button>
               </div>
             ))}
             <button onClick={addNewAnnotation}>Add new</button>
