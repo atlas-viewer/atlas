@@ -92,7 +92,14 @@ export class CanvasRenderer implements Renderer {
     }
     for (const prev of this.previousVisible) {
       if (this.visible.indexOf(prev) === -1) {
-        if (this.htmlContainer && prev.__id && this.htmlIds.indexOf(prev.__id) !== -1) {
+        if (
+          // HTML container
+          this.htmlContainer &&
+          // Previous ID
+          prev.__id &&
+          // Is it in the list.
+          this.htmlIds.indexOf(prev.__id) !== -1
+        ) {
           this.htmlContainer.removeChild(prev.__host.element);
         }
       }
@@ -118,7 +125,9 @@ export class CanvasRenderer implements Renderer {
       this._worker();
       if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
         // Here's our clock for scheduling tasks, every 1ms it will try to call.
-        this._scheduled = setInterval(this._doWork, 6);
+        if (!this._scheduled) {
+          this._scheduled = setInterval(this._doWork, 6);
+        }
       }
     }
   }
@@ -134,7 +143,6 @@ export class CanvasRenderer implements Renderer {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
       if (next) {
-        const startTime = performance.now();
         // We will increment the task count
         this.tasksRunning++;
         this.frameTasks++;
@@ -143,7 +151,6 @@ export class CanvasRenderer implements Renderer {
         this.currentTask = next
           .task()
           .then(() => {
-            this.averageJobTime = Math.min((this.averageJobTime + (performance.now() - startTime)) / 2, 2000);
             this.tasksRunning--;
           })
           .catch(() => {
@@ -155,8 +162,9 @@ export class CanvasRenderer implements Renderer {
   _scheduled: any = 0;
   _doWork = () => {
     // Here is the shut down, no more work to do.
-    if (this.frameIsRendering || (this.loadingQueue.length === 0 && this.tasksRunning === 0)) {
+    if (this.frameIsRendering || (this.loadingQueue.length === 0 && this.tasksRunning === 0 && this._scheduled)) {
       clearInterval(this._scheduled);
+      this._scheduled = 0;
     }
     // And here's our working being called. Since JS is blocking, this will complete
     // before the next tick, so its possible that this could be more than 1ms.
@@ -193,11 +201,13 @@ export class CanvasRenderer implements Renderer {
     // Push visible items.
     this.visible.push(paint);
     // Only supporting single and tiled images at the moment.
+    // @todo check property instead of instance of.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
       try {
         // 1) Find cached image buffer.
         const imageBuffer: ImageBuffer = paint.__host;
 
+        // @todo this lookup of the loaded items is slow.
         if (imageBuffer.loaded.indexOf(index) === -1 && paint.__parent) {
           let done = false;
           let current = paint.__parent.images.indexOf(paint);
@@ -274,7 +284,9 @@ export class CanvasRenderer implements Renderer {
         if (this.previousVisible.indexOf(paint) === -1) {
           this.htmlContainer.appendChild(element);
         }
-        this.htmlIds.push(paint.__id);
+        if (this.htmlIds.indexOf(paint.__id) === -1) {
+          this.htmlIds.push(paint.__id);
+        }
       }
     }
   }
@@ -282,13 +294,13 @@ export class CanvasRenderer implements Renderer {
   loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void): void {
     try {
       const image = document.createElement('img');
-      image.style.transform = 'translate3d(0,0,0)';
       image.decoding = 'async';
-      image.src = url;
       image.onload = function() {
         callback(image);
         image.onload = null;
       };
+      image.src = url;
+
     } catch (e) {
       err(e);
     }
@@ -314,6 +326,7 @@ export class CanvasRenderer implements Renderer {
       task: () =>
         // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
         new Promise(resolve => {
+          // @todo this is a little slow.
           if (this.visible.indexOf(paint) === -1) {
             this.imagesPending--;
             imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
@@ -383,6 +396,7 @@ export class CanvasRenderer implements Renderer {
   createHtmlHost(paint: Text | Box) {
     if (this.htmlContainer) {
       const div = document.createElement('div');
+      div.style.position = 'absolute';
       paint.__host = { element: div, revision: null, relative: false };
       this.updateHtmlHost(paint);
       if (paint.__onCreate) {
@@ -397,7 +411,6 @@ export class CanvasRenderer implements Renderer {
 
       // @todo drive this by props?
       // div.style.overflow = 'hidden';
-      div.style.position = 'absolute';
       div.style.width = `${paint.width}px`;
       div.style.height = `${paint.height}px`;
       if (paint.props.interactive) {
@@ -426,7 +439,7 @@ export class CanvasRenderer implements Renderer {
         if (paint.props.backgroundColor) {
           div.style.backgroundColor = paint.props.backgroundColor;
         }
-        if (paint.props.border) {
+        if (paint.props.border !== div.style.border) {
           div.style.border = paint.props.border;
         }
         if (paint.props.className) {
