@@ -23,29 +23,36 @@ const staticTiles = [
   },
 ];
 
-const Wunder = () => {
+const Wunder = ({ index = 0 }: any) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
 
   useEffect(() => {
-    getTileFromImageService(staticTiles[1].id, staticTiles[1].width, staticTiles[1].height).then(s => {
-      console.log(s);
+    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then(s => {
       setTile(s);
     });
-  }, []);
+  }, [index]);
 
   if (!tiles) {
     return (
-      <worldObject height={staticTiles[1].height} width={staticTiles[1].width}>
+      <worldObject height={staticTiles[index].height} width={staticTiles[index].width}>
         <box
-          target={{ x: 0, y: 0, width: staticTiles[1].width, height: staticTiles[1].height }}
-          id="123"
+          target={{ x: 0, y: 0, width: staticTiles[index].width, height: staticTiles[index].height }}
+          id={index}
           backgroundColor="#000"
         />
       </worldObject>
     );
   }
 
-  return <TileSet tiles={tiles} x={0} y={0} width={staticTiles[1].width} height={staticTiles[1].height} />;
+  return (
+    <TileSet
+      tiles={tiles}
+      x={0}
+      y={0}
+      width={staticTiles[index].width}
+      height={staticTiles[index].height}
+    />
+  );
 };
 
 const sizes = [
@@ -93,7 +100,7 @@ export const SelectionDemo = () => {
       y: 900,
     },
   ]);
-
+  const [tileIndex, setTileIndex] = useState(0);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
 
   const goTo = (data: any) => {
@@ -134,6 +141,7 @@ export const SelectionDemo = () => {
         >
           Change size
         </button>
+        <button onClick={() => setTileIndex(i => (i ? 0 : 1))}>Change image</button>
         <div style={{ display: 'flex' }}>
           <div style={{ flex: '1 1 0px' }}>
             <AtlasAuto
@@ -142,7 +150,7 @@ export const SelectionDemo = () => {
               style={{ width: size.width + 200, height: size.height }}
             >
               <world onClick={onDeselect}>
-                <Wunder />
+                <Wunder key="wunder" index={tileIndex} />
                 {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
                 {annotations.map(annotation => (
                   <RegionHighlight

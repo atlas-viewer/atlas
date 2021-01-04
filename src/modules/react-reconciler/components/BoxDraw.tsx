@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useAfterFrame, useAtlas, useCanvas, useFrame, useRuntime } from '../Atlas';
+import { useAfterFrame } from '../hooks/use-after-frame';
+import { useFrame } from '../hooks/use-frame';
+import { useCanvas } from '../hooks/use-canvas';
+import { useAtlas } from '../hooks/use-atlas';
+import { useRuntime } from '../hooks/use-runtime';
 
 export const DrawBox: React.FC<{
   onCreate: (bounds: { x: number; y: number; width: number; height: number }) => void;
@@ -10,15 +14,16 @@ export const DrawBox: React.FC<{
   const atlas = useAtlas() as any;
   const [firstCorner, setFirstCorner] = useState<{ x: number; y: number } | undefined>();
   const [secondCorner, setSecondCorner] = useState<{ x: number; y: number } | undefined>();
+  const mode = runtime ? runtime.mode : undefined;
 
   useFrame(() => {
-    if (firstCorner && !secondCorner) {
+    if (runtime && firstCorner && !secondCorner) {
       runtime.pendingUpdate = true;
     }
   }, [firstCorner, secondCorner]);
 
   useAfterFrame(() => {
-    if (firstCorner) {
+    if (firstCorner && canvas && runtime) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const { x, y, width, height } = runtime.worldToViewer(
@@ -41,27 +46,40 @@ export const DrawBox: React.FC<{
 
   useEffect(() => {
     const cb = (e: MouseEvent) => {
-      if (atlas.canvasPosition) {
-        const { x, y } = runtime.viewerToWorld(e.clientX - atlas.canvasPosition.left, e.clientY - atlas.canvasPosition.top);
+      if (atlas.canvasPosition && runtime) {
+        const { x, y } = runtime.viewerToWorld(
+          e.clientX - atlas.canvasPosition.left,
+          e.clientY - atlas.canvasPosition.top
+        );
         mousePosition.current.x = ~~x;
         mousePosition.current.y = ~~y;
       }
     };
-    canvas.addEventListener('mousemove', cb);
-    return () => canvas.removeEventListener('mousemove', cb);
+    if (canvas) {
+      canvas.addEventListener('mousemove', cb);
+      return () => canvas.removeEventListener('mousemove', cb);
+    }
+    return () => {
+      // no-op
+    };
   }, [atlas.canvasPosition, canvas, runtime]);
 
   useEffect(() => {
     const cb = (e: MouseEvent) => {
-      if (runtime.mode === 'sketch') {
+      if (mode === 'sketch') {
         setFirstCorner({ x: Math.round(mousePosition.current.x), y: Math.round(mousePosition.current.y) });
         setSecondCorner(undefined);
       }
     };
-    canvas.addEventListener('mousedown', cb);
+    if (canvas) {
+      canvas.addEventListener('mousedown', cb);
 
-    return () => canvas.removeEventListener('mousedown', cb);
-  }, [canvas, runtime.mode]);
+      return () => canvas.removeEventListener('mousedown', cb);
+    }
+    return () => {
+      // no-op
+    };
+  }, [canvas, mode]);
 
   useEffect(() => {
     const cb = (e: MouseEvent) => {
@@ -69,9 +87,15 @@ export const DrawBox: React.FC<{
         setSecondCorner({ x: Math.round(mousePosition.current.x), y: Math.round(mousePosition.current.y) });
       }
     };
-    canvas.addEventListener('mouseup', cb);
 
-    return () => canvas.removeEventListener('mouseup', cb);
+    if (canvas) {
+      canvas.addEventListener('mouseup', cb);
+
+      return () => canvas.removeEventListener('mouseup', cb);
+    }
+    return () => {
+      // no-op
+    };
   }, [canvas, firstCorner, secondCorner]);
 
   useEffect(() => {

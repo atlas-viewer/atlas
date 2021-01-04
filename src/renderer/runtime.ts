@@ -431,6 +431,7 @@ export class Runtime {
   stop(): () => void {
     if (typeof this.stopId !== 'undefined') {
       window.cancelAnimationFrame(this.stopId);
+      this.stopId = undefined;
     }
 
     return () => {
@@ -490,13 +491,18 @@ export class Runtime {
     this.world.flushSubscriptions();
     // Set up our loop.
     this.stopId = window.requestAnimationFrame(this.render);
+
     // Called every frame.
     this.hook('useFrame', delta);
+
+    const pendingUpdate = this.pendingUpdate;
+    const rendererPendingUpdate = this.renderer.pendingUpdate();
+
     if (
       !this.firstRender &&
-      !this.pendingUpdate &&
+      !pendingUpdate &&
       // Check if there was a pending update from the renderer.
-      !this.renderer.pendingUpdate() &&
+      !rendererPendingUpdate &&
       // Then check the points, the first will catch invalidation.
       this.target[0] === this.lastTarget[0] &&
       // The following are x1, y1, x2, y2 points of the target.
@@ -597,4 +603,8 @@ export class Runtime {
     // // Group end
     // console.groupEnd();
   };
+
+  updateNextFrame() {
+    this.pendingUpdate = true;
+  }
 }

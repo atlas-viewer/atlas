@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAtlas, useFrame, useRuntime } from '../Atlas';
 import { Box } from '../../../objects/box';
 import { useMode } from './use-mode';
 import { useWorldEvent } from './use-world-event';
+import { useRuntime } from './use-runtime';
+import { useAtlas } from './use-atlas';
+import { useFrame } from './use-frame';
 
 export const useResizeWorldItem = (
   props: { x: number; y: number; width: number; height: number },
@@ -19,26 +21,30 @@ export const useResizeWorldItem = (
 
   const mouseEvent = (direction: string) => (e: any) => {
     setIsEditing(true);
-    const { top, left } = atlas.canvasPosition;
-    const current = runtime.viewerToWorld(e.pageX - left, e.pageY - top);
-    mouseStart.current = { x: current.x, y: current.y };
-    resizeMode.current = direction;
+    if (atlas.canvasPosition && runtime) {
+      const { top, left } = atlas.canvasPosition;
+      const current = runtime.viewerToWorld(e.pageX - left, e.pageY - top);
+      mouseStart.current = { x: current.x, y: current.y };
+      resizeMode.current = direction;
+    }
   };
 
   useFrame(() => {
-    if (mouseStart && atlas.ready) {
-      runtime.pendingUpdate = true;
+    if (mouseStart && runtime) {
+      runtime.updateNextFrame();
     }
   });
 
   useEffect(() => {
-    runtime.pendingUpdate = true;
+    if (runtime) {
+      runtime.updateNextFrame();
+    }
   }, [runtime, isEditing]);
 
   useWorldEvent(
     'onPointerMove',
     e => {
-      if (runtime.mode !== 'sketch') return;
+      if (!runtime || runtime.mode !== 'sketch') return;
       const box = portalRef.current;
       // Take co-ordinates, clamp constraints, update
       if (
@@ -80,7 +86,7 @@ export const useResizeWorldItem = (
         box.points[3] = props.width + cardinalDeltas.current.east;
         box.points[4] = props.height + cardinalDeltas.current.south;
 
-        runtime.pendingUpdate = true;
+        runtime.updateNextFrame();
       }
     },
     [props.width, props.height]

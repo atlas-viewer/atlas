@@ -43,6 +43,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   _updatedList: any[] = [];
   translationBuffer = dna(9);
   needsRecalculate = true;
+  emptyPaintables = [];
 
   get x(): number {
     return 0;
@@ -58,6 +59,21 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   points: Strand;
+  pointerEventState: {
+    isClicking: boolean;
+    isPressed: boolean;
+    isDragging: boolean;
+    itemsBeingDragged: BaseObject[];
+    mouseDownStart: { x: number; y: number };
+    lastTouches: Array<{ id: number; x: number; y: number }>;
+  } = {
+    isClicking: false,
+    isDragging: false,
+    isPressed: false,
+    itemsBeingDragged: [],
+    mouseDownStart: { x: 0, y: 0 },
+    lastTouches: [],
+  };
 
   // These should be the same size.
   private objects: Array<WorldObject | null> = [];
@@ -85,8 +101,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   // Atlas object model.
   getProps() {
     return {
-      width: this.width,
-      height: this.height,
+      width: this._width,
+      height: this._height,
       viewingDirection: this.viewingDirection,
     };
   }
@@ -95,7 +111,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     if (
       typeof props.width !== 'undefined' &&
       typeof props.height !== 'undefined' &&
-      (props.width !== this.width || props.height !== this.height)
+      (props.width !== this._width || props.height !== this._height)
     ) {
       this.resize(props.width, props.height);
     }
@@ -129,6 +145,16 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     if (this.activatedEvents.indexOf(eventName) === -1) return [];
     const point = DnaFactory.singleBox(1, 1, x, y);
     const worldObjects = this.getObjectsAt(point, true).reverse();
+
+    // Here there is more we can handle.
+    // - When a move move event is detected:
+    //    - Handle mouse enter / leave
+    //    - Handle drag / drag start / drag end / drag-over
+    // - When a mouse leave
+    //    - Reset mouse over items
+    // - When a mouse down event is detected:
+    //    - Store click / clickStart / drag items
+
     return this.propagateEvent(eventName, e, worldObjects, opts);
   }
 
@@ -444,7 +470,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         if (all) {
           objects.push([object, object.getObjectsAt(target)]);
         } else {
-          objects.push([object, []]);
+          objects.push([object, this.emptyPaintables]);
         }
       }
     }
@@ -477,6 +503,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         }
         const len = this.subscriptions.length;
         for (let i = 0; i < len; i++) {
+          // eslint-disable-next-line prefer-spread
           (this.subscriptions[i] as any).apply(null, this.triggerQueue[x]);
         }
       }
@@ -497,7 +524,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   goHome(immediate = true) {
-    this.trigger('goto-region', { x: 0, y: 0, width: this.width, height: this.height });
+    this.trigger('goto-region', { x: 0, y: 0, width: this._width, height: this._height });
   }
 
   zoomIn(point?: { x: number; y: number }) {

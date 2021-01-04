@@ -1,7 +1,8 @@
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
 import { render } from 'react-dom';
-import { useFrame, useRuntime } from '../Atlas';
+import { useFrame } from '../hooks/use-frame';
+import { useRuntime } from '../hooks/use-runtime';
 
 export const HTMLPortal: React.FC<{
   backgroundColor?: string;
@@ -25,7 +26,7 @@ export const HTMLPortal: React.FC<{
   useFrame(() => {
     if (props.relative) {
       const relativeBox = ref.current;
-      if (relativeBox) {
+      if (relativeBox && runtime) {
         if (lastScale.current !== runtime.scaleFactor) {
           lastScale.current = runtime.scaleFactor;
           relativeBox.style.transformOrigin = '0 0';
@@ -58,7 +59,7 @@ export const HTMLPortal: React.FC<{
           render(<div ref={ref as any}>{children}</div>, box.__host.element);
         } else {
           render(children as any, box.__host.element);
-        };
+        }
       };
     }
   }, [fwdRef, children, boxRef, props.relative]);

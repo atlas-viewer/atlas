@@ -57,9 +57,12 @@ function activateEvents(world: World, props: any) {
 }
 
 const roots = new Map<any, any>();
+const emptyObject = {};
 
 const reconciler = createReconciler({
   supportsMutation: true,
+  isPrimaryRenderer: false,
+  warnsIfNotActing: true,
 
   createInstance(type: string, props: any, runtime: Runtime) {
     let instance: BaseObject<any, any>;
@@ -139,20 +142,22 @@ const reconciler = createReconciler({
     }
   },
 
-  finalizeInitialChildren() {
-    // no-op
+  finalizeInitialChildren(instance: any) {
+    // https://github.com/facebook/react/issues/20271
+    // Returning true will trigger commitMount
+    return instance.__handlers;
   },
-  getChildHostContext(...args: any[]) {
-    // no-op
+  getChildHostContext() {
+    return emptyObject;
   },
   getPublicInstance(obj: any) {
     return obj;
   },
   getRootHostContext() {
-    // no-op
+    return emptyObject;
   },
   prepareForCommit() {
-    // no-op
+    return null;
   },
   hideInstance(instance: any) {
     // no-op
@@ -181,10 +186,15 @@ const reconciler = createReconciler({
   shouldSetTextContent() {
     return false;
   },
+  shouldDeprioritizeSubtree() {
+    return false;
+  },
 });
 
 reconciler.injectIntoDevTools({
   bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
+  //@ts-ignore
+  findHostInstanceByFiber: () => null,
   version: process.env.VERSION || '0.0.0',
   rendererPackageName: '@atlas-viewer/atlas',
 });
@@ -193,9 +203,9 @@ export const ReactAtlas = {
   render(whatToRender: any, runtime: any) {
     const root = roots.get(runtime);
     if (root) {
-      reconciler.updateContainer(whatToRender, root, null, null);
+      reconciler.updateContainer(whatToRender, root, null, () => undefined);
     } else {
-      const newRoot = reconciler.createContainer(runtime, false, false);
+      const newRoot = reconciler.createContainer(runtime, 0, false, null);
       reconciler.updateContainer(whatToRender, newRoot, null, null);
       roots.set(runtime, newRoot);
     }

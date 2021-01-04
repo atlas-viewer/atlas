@@ -1,6 +1,6 @@
 import { SupportedEvents } from '../../../events';
 import { useEffect } from 'react';
-import { useRuntime } from '../Atlas';
+import { useRuntime } from './use-runtime';
 
 export const useWorldEvent = <Name extends keyof SupportedEvents>(
   name: Name,
@@ -8,14 +8,20 @@ export const useWorldEvent = <Name extends keyof SupportedEvents>(
   deps: any[] = []
 ) => {
   const runtime = useRuntime();
+  const world = runtime ? runtime.world : undefined;
 
   useEffect(() => {
-    const callback = cb;
-    runtime.world.activatedEvents.push(name);
-    runtime.world.addEventListener(name, callback);
+    if (runtime) {
+      const callback = cb;
+      runtime.world.activatedEvents.push(name);
+      runtime.world.addEventListener(name, callback);
 
+      return () => {
+        runtime.world.removeEventListener(name, callback);
+      };
+    }
     return () => {
-      runtime.world.removeEventListener(name, callback);
+      // no-op
     };
-  }, [runtime.world, name, ...deps]);
+  }, [world, name, ...deps]);
 };
