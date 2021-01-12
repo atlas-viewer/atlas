@@ -14,6 +14,7 @@ import {
 import { EventSubscription, supportedEvents } from './dispatcher';
 import { Renderer } from './renderer';
 import { Paint } from '../world-objects/paint';
+import { easing, tween } from 'popmotion';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -85,6 +86,7 @@ export class Runtime {
   scaleFactor: number;
   transformBuffer = dna(500);
   lastTarget = dna(5);
+  zoomBuffer = dna(5);
   logNextRender = false;
   pendingUpdate = false;
   firstRender = true;
@@ -334,6 +336,73 @@ export class Runtime {
     const maxY = addConstraintPaddingY ? 0 : hw - this.height;
 
     return { x1: minX, x2: maxX, y1: minY, y2: maxY };
+  }
+
+  /**
+   * Zoom
+   */
+  getZoomedPosition(
+    factor: number,
+    { origin, minZoomFactor = 0.05 }: { minZoomFactor?: number; origin?: { x: number; y: number } }
+  ) {
+    if (this.scaleFactor / factor > 1 / minZoomFactor) {
+      factor = this.scaleFactor / (1 / minZoomFactor);
+    }
+    if (factor >= 1 && this.scaleFactor / factor < 1 / this.maxScaleFactor) {
+      factor = this.scaleFactor / (1 / this.maxScaleFactor);
+    }
+    // set the new scale.
+    return transform(
+      this.target,
+      scaleAtOrigin(
+        factor,
+        origin ? origin.x : this.target[1] + (this.target[3] - this.target[1]) / 2,
+        origin ? origin.y : this.target[2] + (this.target[4] - this.target[2]) / 2
+      ),
+      this.zoomBuffer
+    );
+  }
+
+  clampRegion({
+    x,
+    y,
+    width,
+    height,
+    padding = 20,
+  }: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    padding?: number;
+  }) {
+    const w = this.width;
+    const h = this.height;
+    const matchesHeight = width / w < height / h;
+
+    const rx = x - padding;
+    const ry = y - padding;
+    const rWidth = width + padding * 2;
+    const rHeight = height + padding * 2;
+
+    if (matchesHeight) {
+      // pad on the left and right.
+      const actualWidth = (rHeight / h) * w;
+      return {
+        x: rx - (actualWidth - rWidth) / 2,
+        y: ry,
+        width: actualWidth,
+        height: rHeight,
+      };
+    }
+    // pad on the top and bottom.
+    const actualHeight = (rWidth / w) * h;
+    return {
+      x: rx,
+      y: ry - (actualHeight - rHeight) / 2,
+      width: rWidth,
+      height: actualHeight,
+    };
   }
 
   /**

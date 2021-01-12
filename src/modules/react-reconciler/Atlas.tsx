@@ -9,6 +9,7 @@ import { popmotionController } from '../popmotion-controller/popmotion-controlle
 import { ModeContext } from './hooks/use-mode';
 import useMeasure from 'react-use-measure';
 import { AtlasContext, AtlasContextType } from './components/AtlasContext';
+import { BrowserEventManager } from '../browser-event-manager/browser-event-manager';
 
 type AtlasProps = {
   width: number;
@@ -93,6 +94,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
   }, [restProps.width, restProps.height]);
 
   // When the bounds of the container change, we need to reflect those changes in the overlay.
+  // @todo move to canvas.
   useLayoutEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
@@ -103,6 +105,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
   }, [bounds.height, bounds.width]);
 
   // When the window resizes we need to recalculate the width.
+  // @todo possibly move to controller.
   useLayoutEffect(() => {
     const windowResizeCallback = () => {
       if (state.current.runtime) {
@@ -121,7 +124,6 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
     return () => window.removeEventListener('resize', windowResizeCallback);
   }, [restProps.height, restProps.width]);
 
-  // @todo what does this do?
   const Canvas = useCallback(
     function Canvas(props: { children: React.ReactElement }): JSX.Element {
       const activate = () => {
@@ -138,6 +140,89 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  // Render v-dom into scene
+  useLayoutEffect(() => {
+    const currentCanvas = canvasRef.current;
+    if (!currentCanvas) {
+      throw new Error('Something went wrong mounting canvas.');
+    }
+
+    // @todo move this out.
+    currentCanvas.style.userSelect = 'none';
+
+    state.current.canvas = canvasRef;
+
+    const controller = popmotionController(currentCanvas, {
+      minZoomFactor: 0.5,
+      maxZoomFactor: 3,
+      enableClickToZoom: true,
+    });
+    state.current.controller = controller;
+
+    const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { debug: false });
+    state.current.renderer = renderer;
+
+    const runtime = new Runtime(renderer, new World(0, 0), state.current.viewport, [controller]);
+    state.current.runtime = runtime;
+
+    const em = new BrowserEventManager(currentCanvas, runtime);
+    state.current.em = em;
+
+    return () => {
+      controller.stop(runtime);
+      runtime.stop();
+      em.stop();
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    ReactAtlas.render(
+      <Canvas>
+        <ModeContext.Provider value={mode}>
+          <AtlasContext.Provider value={state.current as any}>{children}</AtlasContext.Provider>
+        </ModeContext.Provider>
+      </Canvas>,
+      state.current.runtime
+    );
+  }, [state, mode, children]);
+
+  // @todo move to controller.
+  useEffect(() => {
+    const keyupSpace = () => {
+      if (state.current.runtime && state.current.runtime.mode === 'explore') {
+        state.current.runtime.mode = 'sketch';
+        setContainerClassName('mode-sketch');
+      }
+      window.removeEventListener('keyup', keyupSpace);
+    };
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' && state.current.runtime && state.current.runtime.mode === 'sketch') {
+        if (e.target && (e.target as any).tagName && (e.target as any).tagName.toLowerCase() === 'input') return;
+        e.preventDefault();
+        state.current.runtime.mode = 'explore';
+        setContainerClassName('mode-explore');
+        window.addEventListener('keyup', keyupSpace);
+      }
+    });
+
+    return () => {
+      // no-op
+    };
+  });
+
+  //
+  //
+  //
+  //
+  //
+  //                         START EVENTS
+  //
+  //
+  //
+  //
+  //
 
   // @todo move most of this to runtime?
   const handlePointMove = useCallback(
@@ -212,46 +297,6 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
     }
     mousedOver.current = [];
   }, []);
-
-  // Render v-dom into scene
-  useLayoutEffect(() => {
-    const currentCanvas = canvasRef.current;
-    if (!currentCanvas) {
-      throw new Error('Something went wrong mounting canvas.');
-    }
-
-    // @todo move this out.
-    currentCanvas.style.userSelect = 'none';
-
-    const controller = popmotionController(currentCanvas, {
-      minZoomFactor: 0.5,
-      maxZoomFactor: 3,
-      enableClickToZoom: false,
-    });
-    state.current.controller = controller;
-
-    const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { debug: false });
-    state.current.renderer = renderer;
-
-    const runtime = new Runtime(renderer, new World(0, 0), state.current.viewport, [controller]);
-    state.current.runtime = runtime;
-
-    return () => {
-      controller.stop(runtime);
-      runtime.stop();
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    ReactAtlas.render(
-      <Canvas>
-        <ModeContext.Provider value={mode}>
-          <AtlasContext.Provider value={state.current as any}>{children}</AtlasContext.Provider>
-        </ModeContext.Provider>
-      </Canvas>,
-      state.current.runtime
-    );
-  }, [state, mode, children]);
 
   const handleTouchEvent = (e: React.TouchEvent & { atlasTargetTouches?: any[]; atlasTouches?: any[] }) => {
     if (!state.current.runtime) {
@@ -373,29 +418,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
     [bounds, handlePointerEvent]
   );
 
-  useEffect(() => {
-    const keyupSpace = () => {
-      if (state.current.runtime && state.current.runtime.mode === 'explore') {
-        state.current.runtime.mode = 'sketch';
-        setContainerClassName('mode-sketch');
-      }
-      window.removeEventListener('keyup', keyupSpace);
-    };
-
-    window.addEventListener('keydown', e => {
-      if (e.code === 'Space' && state.current.runtime && state.current.runtime.mode === 'sketch') {
-        if (e.target && (e.target as any).tagName && (e.target as any).tagName.toLowerCase() === 'input') return;
-        e.preventDefault();
-        state.current.runtime.mode = 'explore';
-        setContainerClassName('mode-explore');
-        window.addEventListener('keyup', keyupSpace);
-      }
-    });
-
-    return () => {
-      // no-op
-    };
-  });
+  // End events
 
   return (
     <div
