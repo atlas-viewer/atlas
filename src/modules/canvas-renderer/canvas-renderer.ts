@@ -25,6 +25,9 @@ export type ImageBuffer = {
   loading: boolean;
 };
 
+// @todo be smarter.
+const imageCache: { [id: string]: HTMLImageElement } = {};
+
 export class CanvasRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   htmlContainer?: HTMLDivElement;
@@ -287,11 +290,17 @@ export class CanvasRenderer implements Renderer {
   }
 
   loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void): void {
+    if (imageCache[url]) {
+      callback(imageCache[url]);
+      return;
+    }
+
     try {
       const image = document.createElement('img');
       image.decoding = 'async';
       image.onload = function() {
         callback(image);
+        imageCache[url] = image;
         image.onload = null;
       };
       image.src = url;
