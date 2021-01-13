@@ -59,21 +59,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   points: Strand;
-  pointerEventState: {
-    isClicking: boolean;
-    isPressed: boolean;
-    isDragging: boolean;
-    itemsBeingDragged: BaseObject[];
-    mouseDownStart: { x: number; y: number };
-    lastTouches: Array<{ id: number; x: number; y: number }>;
-  } = {
-    isClicking: false,
-    isDragging: false,
-    isPressed: false,
-    itemsBeingDragged: [],
-    mouseDownStart: { x: 0, y: 0 },
-    lastTouches: [],
-  };
 
   // These should be the same size.
   private objects: Array<WorldObject | null> = [];
@@ -142,7 +127,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     y: number,
     opts: { bubbles?: boolean; cancelable?: boolean } = {}
   ) {
-    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    // @todo re-add activated events, but smarter.
+    // if (this.activatedEvents.indexOf(eventName) === -1) return [];
     const point = DnaFactory.singleBox(1, 1, x, y);
     const worldObjects = this.getObjectsAt(point, true).reverse();
 
@@ -165,7 +151,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     worldObjects: [WorldObject, SpacialContent[]][],
     { bubbles = false, cancelable = false }: { bubbles?: boolean; cancelable?: boolean } = {}
   ) {
-    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    // @todo re-add activated events, but smarter.
+    // if (this.activatedEvents.indexOf(eventName) === -1) return [];
     // Modify event if we need to.
     e.atlasTarget = this;
 

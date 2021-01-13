@@ -46,7 +46,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   enableClickToZoom: false,
 };
 
-export const popmotionController = (canvas: HTMLElement, config: PopmotionControllerConfig = {}): RuntimeController => {
+export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
   const state: any = {
     viewer: undefined,
   };
@@ -76,8 +76,6 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         ...defaultConfig,
         ...config,
       };
-
-      const canvasPos = canvas.getBoundingClientRect();
 
       // Some user interactions, using popmotion. This is an observer, listening
       //  to the x, y, height and width co-ordinates and updating the views.
@@ -189,33 +187,28 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
       });
 
       // Click to zoom functionality.
-      if (enableClickToZoom) {
-        runtime.world.activatedEvents.push('onClick');
-        runtime.world.addEventListener('onClick', ({ atlas }) => {
-          if (runtime.mode === 'explore' && !runtime.world.pointerEventState.isDragging) {
-            runtime.world.zoomIn(atlas);
-          }
-        });
-      }
+      // @todo come back to this.
+      // if (enableClickToZoom) {
+      //   runtime.world.activatedEvents.push('onClick');
+      //   runtime.world.addEventListener('onClick', ({ atlas }) => {
+      //     if (runtime.mode === 'explore') {
+      //       runtime.world.zoomIn(atlas);
+      //     }
+      //   });
+      // }
 
       if (enableWheel) {
-        // Next we will add a scrolling event to the scroll-wheel.
-        // @todo debug wheel event
-        canvas.addEventListener('wheel', e => {
+        runtime.world.activatedEvents.push('onWheel');
+        runtime.world.addEventListener('onWheel', e => {
           const normalized = normalizeWheel(e);
-          if (runtime.mode === 'explore') {
-            e.preventDefault();
-            const zoomFactor = 1 + (normalized.pixelY * devicePixelRatio) / zoomWheelConstant;
-            runtime.world.zoomTo(
-              // Generating a zoom from the wheel delta
-              clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
-              runtime.viewerToWorld(
-                e.pageX * devicePixelRatio - canvasPos.left,
-                e.pageY * devicePixelRatio - canvasPos.top
-              ),
-              true
-            );
-          }
+
+          const zoomFactor = 1 + (normalized.pixelY * devicePixelRatio) / zoomWheelConstant;
+          runtime.world.zoomTo(
+            // Generating a zoom from the wheel delta
+            clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
+            e.atlas,
+            true
+          );
         });
       }
 
@@ -267,7 +260,6 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         if (currentZoom) {
           currentZoom.stop();
         }
-
         currentZoom = tween({
           from: fromPos,
           to: Object.create({

@@ -482,17 +482,6 @@ export class Runtime {
   }
 
   /**
-   * Invalidate
-   *
-   * Unused function, not sure what it does.
-   * @deprecated
-   */
-  invalidate() {
-    // The first 0 will ensure no valid target matches.
-    this.target.set([0, 0, 0, 0, 0]);
-  }
-
-  /**
    * Stop the runtime
    *
    * Stops the internal clock, where no more updates will occur. Returns a function to restart it.
@@ -506,13 +495,6 @@ export class Runtime {
     return () => {
       this.render(performance.now());
     };
-  }
-
-  registerEventListener<T extends supportedEvents, N extends keyof T>(
-    eventName: N,
-    subscription: EventSubscription<T[N]>
-  ) {
-    // new Dispatcher(this.world).registerEventListener(eventName, subscription);
   }
 
   selectZone(zone: number | string) {
@@ -540,11 +522,6 @@ export class Runtime {
       this.hooks[name] = (this.hooks[name] as any[]).filter(e => e !== (hook as any));
     };
   }
-
-  static USE_FRAME = 'useFrame';
-  static USE_BEFORE_FRAME = 'useBeforeFrame';
-
-  dontCommitStartTime = 0;
 
   /**
    * Render
@@ -584,7 +561,6 @@ export class Runtime {
       return;
     }
 
-    this.dontCommitStartTime = Date.now();
     // Group.
     // console.groupCollapsed(`Previous frame took ${delta} ${delta > 17 ? '<-' : ''} ${delta > 40 ? '<--' : ''}`);
 
@@ -667,10 +643,6 @@ export class Runtime {
         }
       }
     }
-
-    // console.log('Actual frame:', Date.now() - this.dontCommitStartTime);
-    // // Group end
-    // console.groupEnd();
   };
 
   updateNextFrame() {

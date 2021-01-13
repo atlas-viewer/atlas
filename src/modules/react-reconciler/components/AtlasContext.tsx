@@ -14,9 +14,6 @@ export type AtlasContextType = {
   controller?: RuntimeController;
   viewport: { width: number; height: number; x: number; y: number; scale: number };
   canvas?: React.MutableRefObject<HTMLCanvasElement | undefined>;
-
-  // Mouse states
-  lastTouches: Array<{ id: number; x: number; y: number }>;
 };
 
 export const AtlasContext = React.createContext<AtlasContextType | undefined>(undefined);
