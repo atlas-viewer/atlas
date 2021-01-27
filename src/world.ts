@@ -167,7 +167,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     };
 
     const woLen = worldObjects.length;
-    for (let w = 0; w < woLen; w++) {
+    for (let w = woLen - 1; w >= 0; w--) {
       // @todo unsure why this was here.
       // if (w === 1) break;
       this._propagateEventTargets.unshift(worldObjects[w][0]);
