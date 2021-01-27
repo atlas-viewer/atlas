@@ -150,7 +150,7 @@ export const Atlas: React.FC<AtlasProps> = ({ onCreated, mode = 'explore', child
     const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { debug: false });
     state.current.renderer = renderer;
 
-    const runtime = new Runtime(renderer, new World(0, 0), state.current.viewport, [controller]);
+    const runtime = new Runtime(renderer, new World(), state.current.viewport, [controller]);
     state.current.runtime = runtime;
 
     const em = new BrowserEventManager(currentCanvas, runtime);

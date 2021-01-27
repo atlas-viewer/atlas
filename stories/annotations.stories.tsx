@@ -44,15 +44,7 @@ const Wunder = ({ index = 0 }: any) => {
     );
   }
 
-  return (
-    <TileSet
-      tiles={tiles}
-      x={0}
-      y={0}
-      width={staticTiles[index].width}
-      height={staticTiles[index].height}
-    />
-  );
+  return <TileSet tiles={tiles} x={0} y={0} width={staticTiles[index].width} height={staticTiles[index].height} />;
 };
 
 const sizes = [

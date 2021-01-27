@@ -19,7 +19,7 @@ export class GridBuilder {
   padding = 20;
 
   constructor() {
-    this.world = new World(0, 0);
+    this.world = World.withProps({ width: 0, height: 0, viewingDirection: 'left-to-right' });
     this.width = 0;
     this.height = 0;
   }

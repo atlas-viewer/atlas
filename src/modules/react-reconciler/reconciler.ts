@@ -74,7 +74,7 @@ const reconciler = createReconciler({
     let world: World = runtime.world;
     switch (type) {
       case 'world':
-        instance = new World(props.width, props.height);
+        instance = World.withProps({ width: props.width, height: props.height, viewingDirection: 'left-to-right' });
         (instance as World).activatedEvents = world.activatedEvents;
         (instance as World).eventHandlers = world.eventHandlers;
         (instance as World).subscriptions = world.subscriptions;

@@ -18,7 +18,8 @@ export const RegionHighlight: React.FC<{
   onClick: (annotation: RegionHighlightType) => void;
   background?: string;
   border?: string;
-}> = ({ region, onClick, onSave, isEditing, border = 'none', background = 'rgba(0,0,0,.4)' }) => {
+  interactive?: boolean;
+}> = ({ interactive, region, onClick, onSave, isEditing, border = 'none', background = 'rgba(0,0,0,.4)' }) => {
   const mode = useMode();
 
   const saveCallback = useCallback(
@@ -38,6 +39,7 @@ export const RegionHighlight: React.FC<{
       onSave={saveCallback}
     >
       <box
+        interactive={interactive}
         onClick={
           mode === 'explore'
             ? e => {

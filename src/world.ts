@@ -66,9 +66,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   constructor(width = 0, height = 0, worldObjectCount = 100, viewingDirection: ViewingDirection = 'left-to-right') {
     super();
-    if (typeof width !== 'undefined') {
-      console.warn('Passing in arguments to world is unsupported, use World.withProps()');
-    }
     this._width = width;
     this._height = height;
     this.aspectRatio = Number.isNaN(width / height) ? 1 : width / height;
@@ -217,7 +214,28 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       return;
     }
 
+    // 1st case is reuse existing points.
+    if (this.objects[beforeIndex - 1] === null) {
+      const availablePoints = this.points.subarray((beforeIndex - 1) * 5, beforeIndex - 1 + 5);
+      if (availablePoints) {
+        this.objects[beforeIndex - 1] = item;
+
+        const pointValues = item.points;
+        item.points = availablePoints;
+        item.points[1] = pointValues[1];
+        item.points[2] = pointValues[2];
+        item.points[3] = pointValues[3];
+        item.points[4] = pointValues[4];
+
+        this.triggerRepaint();
+        this.needsRecalculate = true;
+      }
+
+      return;
+    }
+
     // Fix points array.
+    // this.checkResizeInternalBuffer();
     // 1. List of all objects after item including `before` item
     // 2. Shift those items 5 places in the points array
     // 3. Zero out the item before one
@@ -225,7 +243,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     // 1. Make space for new numbers in buffer.
     // 2. Reset ALL of the worldItems with new array offsets.
 
-    console.warn('insertBefore: Not yet implemented');
+    console.warn('insertBefore: Not fully implemented');
     this.appendWorldObject(item);
   }
 
