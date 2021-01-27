@@ -78,8 +78,9 @@ export class TiledImage extends BaseObject {
     const im = this.points.slice(index * 5, index * 5 + 5);
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];
-    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${x2 / this.display.scale},${y2 /
-      this.display.scale}/0/default.jpg`;
+    // This is not used.
+    // const yCalculated = y2 / this.display.scale;
+    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${x2 / this.display.scale},/0/default.jpg`;
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {
