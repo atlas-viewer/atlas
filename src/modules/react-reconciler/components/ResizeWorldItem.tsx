@@ -6,7 +6,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
   handleSize?: number;
   resizable?: boolean;
   onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
-}> = ({ handleSize = 6, resizable, onSave, children, ...props }) => {
+}> = ({ handleSize = 9, resizable, onSave, children, ...props }) => {
   const { portalRef, mode, mouseEvent, isEditing } = useResizeWorldItem(
     { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height },
     onSave
@@ -36,6 +36,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
             <>
               <div
                 onMouseDown={translate}
+                onTouchStart={translate}
                 style={{
                   display: 'block',
                   width: '100%',
@@ -48,6 +49,7 @@ export const ResizeWorldItem: React.FC<JSX.IntrinsicElements['worldObject'] & {
 
               <div
                 title="east"
+                onTouchStart={east}
                 onMouseDown={east}
                 style={{
                   cursor: 'e-resize',

@@ -53,8 +53,8 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
       }
     }
 
-    if (this.eventHandlers[name].indexOf(cb) === -1) {
-      this.eventHandlers[name].push(cb);
+    if (this.eventHandlers[event].indexOf(cb) === -1) {
+      this.eventHandlers[event].push(cb);
     }
   };
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box } from '../../../objects/box';
 import { useMode } from './use-mode';
 import { useWorldEvent } from './use-world-event';
@@ -41,9 +41,10 @@ export const useResizeWorldItem = (
     }
   }, [runtime, isEditing]);
 
-  useWorldEvent(
-    'onPointerMove',
+  const onPointerMoveCallback = useCallback(
     e => {
+      const position = e.atlasTouches ? e.atlasTouches[0] : e.atlas ? e.atlas : { x: e.pageX, y: e.pageY};
+
       if (!runtime || runtime.mode !== 'sketch') return;
       const box = portalRef.current;
       // Take co-ordinates, clamp constraints, update
@@ -53,7 +54,7 @@ export const useResizeWorldItem = (
         resizeMode.current === 'north-east' ||
         resizeMode.current === 'south-east'
       ) {
-        cardinalDeltas.current.east = e.atlas.x - (mouseStart.current ? mouseStart.current.x : 0);
+        cardinalDeltas.current.east = position.x - (mouseStart.current ? mouseStart.current.x : 0);
       }
       if (
         resizeMode.current === 'translate' ||
@@ -61,7 +62,7 @@ export const useResizeWorldItem = (
         resizeMode.current === 'north-west' ||
         resizeMode.current === 'south-west'
       ) {
-        cardinalDeltas.current.west = e.atlas.x - (mouseStart.current ? mouseStart.current.x : 0);
+        cardinalDeltas.current.west = position.x - (mouseStart.current ? mouseStart.current.x : 0);
       }
       if (
         resizeMode.current === 'translate' ||
@@ -69,7 +70,7 @@ export const useResizeWorldItem = (
         resizeMode.current === 'north-east' ||
         resizeMode.current === 'north-west'
       ) {
-        cardinalDeltas.current.north = e.atlas.y - (mouseStart.current ? mouseStart.current.y : 0);
+        cardinalDeltas.current.north = position.y - (mouseStart.current ? mouseStart.current.y : 0);
       }
       if (
         resizeMode.current === 'translate' ||
@@ -77,7 +78,7 @@ export const useResizeWorldItem = (
         resizeMode.current === 'south-west' ||
         resizeMode.current === 'south-east'
       ) {
-        cardinalDeltas.current.south = e.atlas.y - (mouseStart.current ? mouseStart.current.y : 0);
+        cardinalDeltas.current.south = position.y - (mouseStart.current ? mouseStart.current.y : 0);
       }
 
       if (box) {
@@ -89,8 +90,11 @@ export const useResizeWorldItem = (
         runtime.updateNextFrame();
       }
     },
-    [props.width, props.height]
+    [runtime, props.width, props.height]
   );
+
+  useWorldEvent('onMouseMove', onPointerMoveCallback, [props.width, props.height]);
+  useWorldEvent('onPointerMove', onPointerMoveCallback, [props.width, props.height]);
 
   const windowPointerUp = useRef<() => void>();
 
@@ -122,7 +126,11 @@ export const useResizeWorldItem = (
       }
     };
     window.addEventListener('pointerup', cb);
-    return () => window.removeEventListener('pointerup', cb);
+    window.addEventListener('touchend', cb);
+    return () => {
+      window.removeEventListener('pointerup', cb);
+      window.removeEventListener('touchend', cb);
+    }
   }, []);
 
   // useEffect(() => {
@@ -152,6 +160,7 @@ export const useResizeWorldItem = (
     portalRef,
     mode,
     mouseEvent,
+    onPointerMoveCallback,
     isEditing,
   };
 };

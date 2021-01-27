@@ -100,7 +100,7 @@ export const SelectionDemo = () => {
       y: 900,
     },
   ]);
-  const [tileIndex, setTileIndex] = useState(0);
+  const [tileIndex, setTileIndex] = useState(1);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
 
   const goTo = (data: any) => {
@@ -159,6 +159,7 @@ export const SelectionDemo = () => {
                     isEditing={selectedAnnotation === annotation.id}
                     onSave={onUpdateAnnotation}
                     onClick={anno => {
+                      console.log('click annotation');
                       setIsEditing(true);
                       setSelectedAnnotation(anno.id);
                     }}

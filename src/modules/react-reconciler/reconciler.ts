@@ -48,11 +48,16 @@ function applyProps(instance: any, oldProps: any, newProps: any) {
 
 function activateEvents(world: World, props: any) {
   const keys = Object.keys(props);
+  let didActivate = false;
   for (const key of keys) {
     if (supportedEvents.indexOf(key) !== -1) {
       if (world.activatedEvents.indexOf(key) !== -1) continue;
+      didActivate = true;
       world.activatedEvents.push(key);
     }
+  }
+  if (didActivate) {
+    world.triggerEventActivation();
   }
 }
 
@@ -73,6 +78,7 @@ const reconciler = createReconciler({
         (instance as World).activatedEvents = world.activatedEvents;
         (instance as World).eventHandlers = world.eventHandlers;
         (instance as World).subscriptions = world.subscriptions;
+        (instance as World).triggerEventActivation();
         world = instance as World;
         break;
       case 'box':

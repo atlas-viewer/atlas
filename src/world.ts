@@ -59,21 +59,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   points: Strand;
-  pointerEventState: {
-    isClicking: boolean;
-    isPressed: boolean;
-    isDragging: boolean;
-    itemsBeingDragged: BaseObject[];
-    mouseDownStart: { x: number; y: number };
-    lastTouches: Array<{ id: number; x: number; y: number }>;
-  } = {
-    isClicking: false,
-    isDragging: false,
-    isPressed: false,
-    itemsBeingDragged: [],
-    mouseDownStart: { x: 0, y: 0 },
-    lastTouches: [],
-  };
 
   // These should be the same size.
   private objects: Array<WorldObject | null> = [];
@@ -142,7 +127,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     y: number,
     opts: { bubbles?: boolean; cancelable?: boolean } = {}
   ) {
-    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    // @todo re-add activated events, but smarter.
+    // if (this.activatedEvents.indexOf(eventName) === -1) return [];
     const point = DnaFactory.singleBox(1, 1, x, y);
     const worldObjects = this.getObjectsAt(point, true).reverse();
 
@@ -165,7 +151,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     worldObjects: [WorldObject, SpacialContent[]][],
     { bubbles = false, cancelable = false }: { bubbles?: boolean; cancelable?: boolean } = {}
   ) {
-    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    // @todo re-add activated events, but smarter.
+    // if (this.activatedEvents.indexOf(eventName) === -1) return [];
     // Modify event if we need to.
     e.atlasTarget = this;
 
@@ -181,7 +168,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     const woLen = worldObjects.length;
     for (let w = 0; w < woLen; w++) {
-      if (w === 1) break;
+      // @todo unsure why this was here.
+      // if (w === 1) break;
       this._propagateEventTargets.unshift(worldObjects[w][0]);
       const len = worldObjects[w][1].length;
       if (len) {
@@ -190,6 +178,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         }
       }
     }
+
     const len = this._propagateEventTargets.length;
     for (let i = 0; i < len; i++) {
       e.atlasTarget = this._propagateEventTargets[i];
@@ -515,16 +504,36 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.triggerQueue.push([type, data]);
   }
 
+  triggerEventActivation() {
+    this.trigger('event-activation');
+  }
+
   triggerRepaint() {
     this.trigger('repaint');
   }
 
-  gotoRegion(data: { x: number; y: number; height: number; width: number; padding?: number }) {
+  gotoRegion(data: {
+    x: number;
+    y: number;
+    height: number;
+    width: number;
+    padding?: number;
+    nudge?: boolean;
+    immediate?: boolean;
+  }) {
     this.trigger('goto-region', data);
   }
 
   goHome(immediate = true) {
     this.trigger('goto-region', { x: 0, y: 0, width: this._width, height: this._height });
+  }
+
+  zoomTo(factor: number, point?: { x: number; y: number }, stream?: boolean) {
+    this.trigger('zoom-to', {
+      point,
+      factor,
+      stream,
+    });
   }
 
   zoomIn(point?: { x: number; y: number }) {
@@ -539,5 +548,9 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       point,
       factor: 2,
     });
+  }
+
+  constraintBounds(immediate?: boolean) {
+    this.trigger('constrain-bounds', { immediate });
   }
 }

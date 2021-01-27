@@ -4,6 +4,7 @@ import { useFrame } from '../hooks/use-frame';
 import { useCanvas } from '../hooks/use-canvas';
 import { useAtlas } from '../hooks/use-atlas';
 import { useRuntime } from '../hooks/use-runtime';
+import { useMode } from '../hooks/use-mode';
 
 export const DrawBox: React.FC<{
   onCreate: (bounds: { x: number; y: number; width: number; height: number }) => void;
@@ -14,7 +15,7 @@ export const DrawBox: React.FC<{
   const atlas = useAtlas() as any;
   const [firstCorner, setFirstCorner] = useState<{ x: number; y: number } | undefined>();
   const [secondCorner, setSecondCorner] = useState<{ x: number; y: number } | undefined>();
-  const mode = runtime ? runtime.mode : undefined;
+  const mode = useMode();
 
   useFrame(() => {
     if (runtime && firstCorner && !secondCorner) {

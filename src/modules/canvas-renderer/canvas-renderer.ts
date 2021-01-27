@@ -25,23 +25,21 @@ export type ImageBuffer = {
   loading: boolean;
 };
 
+// @todo be smarter.
+const imageCache: { [id: string]: HTMLImageElement } = {};
+
 export class CanvasRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   htmlContainer?: HTMLDivElement;
   ctx: CanvasRenderingContext2D;
-  imageCache: { [url: string]: HTMLImageElement } = {};
   options: CanvasRendererOptions;
-  hasPendingUpdate = false;
   imagesPending = 0;
   imagesLoaded = 0;
   frameIsRendering = false;
   firstMeaningfulPaint = false;
-  parallelTasks = 3; // @todo configuration.
+  parallelTasks = 8; // @todo configuration.
   frameTasks = 3;
   isGPUBusy = false;
-  readonly configuration = {
-    segmentRendering: true,
-  };
   loadingQueueOrdered = true;
   loadingQueue: Array<{
     id: string;
@@ -292,15 +290,20 @@ export class CanvasRenderer implements Renderer {
   }
 
   loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void): void {
+    if (imageCache[url]) {
+      callback(imageCache[url]);
+      return;
+    }
+
     try {
       const image = document.createElement('img');
       image.decoding = 'async';
       image.onload = function() {
         callback(image);
+        imageCache[url] = image;
         image.onload = null;
       };
       image.src = url;
-
     } catch (e) {
       err(e);
     }
@@ -506,6 +509,6 @@ export class CanvasRenderer implements Renderer {
       return true;
     }
 
-    return !ready || this.hasPendingUpdate;
+    return !ready;
   }
 }

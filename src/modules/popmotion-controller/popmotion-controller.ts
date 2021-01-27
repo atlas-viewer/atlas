@@ -2,15 +2,10 @@ import { ColdSubscription, easing, inertia, listen, pointer, tween, value } from
 /** @ts-ignore */
 import normalizeWheel from 'normalize-wheel';
 import { clamp } from '@popmotion/popcorn';
-import { Projection, scaleAtOrigin, transform } from '@atlas-viewer/dna';
+import { Projection } from '@atlas-viewer/dna';
 import { RuntimeController, Position } from '../../types';
 
 export type PopmotionControllerConfig = {
-  zoomOut?: HTMLElement | null;
-  zoomIn?: HTMLElement | null;
-  reset?: HTMLElement | null;
-  printX?: HTMLElement | null;
-  printY?: HTMLElement | null;
   zoomOutFactor?: number;
   zoomInFactor?: number;
   maxZoomFactor?: number;
@@ -30,12 +25,6 @@ export type PopmotionControllerConfig = {
 };
 
 export const defaultConfig: Required<PopmotionControllerConfig> = {
-  // Optional HTML Elements
-  zoomOut: null,
-  zoomIn: null,
-  printX: null,
-  reset: null,
-  printY: null,
   // Zoom options
   zoomOutFactor: 0.8,
   zoomInFactor: 1.25,
@@ -57,7 +46,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   enableClickToZoom: false,
 };
 
-export const popmotionController = (canvas: HTMLElement, config: PopmotionControllerConfig = {}): RuntimeController => {
+export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
   const state: any = {
     viewer: undefined,
   };
@@ -70,16 +59,9 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
     },
     start: function(runtime) {
       const {
-        zoomOut,
-        zoomIn,
-        zoomOutFactor,
-        zoomInFactor,
         zoomDuration,
         zoomWheelConstant,
         zoomClamp,
-        printX,
-        printY,
-        reset,
         minZoomFactor,
         panBounceStiffness,
         panBounceDamping,
@@ -95,13 +77,9 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         ...config,
       };
 
-      // Need this anyway to be in scope.
-      let click = false;
-      const canvasPos = canvas.getBoundingClientRect();
-
       // Some user interactions, using popmotion. This is an observer, listening
       //  to the x, y, height and width co-ordinates and updating the views.
-      // This acts as a bridge to popmotion, allowing us to twean these values as
+      // This acts as a bridge to popmotion, allowing us to tween these values as
       // we see fit.
       const viewer = value(
         {
@@ -118,7 +96,8 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
 
       // These two control the dragging, panning and zooming. The second has inertia
       // so it will slow down and bounce on the sides.
-      listen(canvas, 'mousedown touchstart').start((e: { touches: [] }) => {
+      runtime.world.activatedEvents.push('onMouseDown', 'onTouchStart');
+      listen(runtime.world as any, 'mousedown touchstart').start((e: { touches: [] }) => {
         if (runtime.mode === 'explore') {
           const { x, y } = viewer.get() as Position;
           pointer({
@@ -131,7 +110,116 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         }
       });
 
-      const constrainBounds = (immediate = false) => {
+      runtime.world.activatedEvents.push('onMouseUp', 'onTouchEnd');
+      listen(runtime.world as any, 'mouseup touchend').start(() => {
+        runtime.world.constraintBounds();
+      });
+
+      let isPressing = false;
+
+      runtime.world.activatedEvents.push('onTouchStart');
+      runtime.world.addEventListener('onTouchStart', e => {
+        if (runtime.mode === 'explore') {
+          isPressing = true;
+        }
+      });
+
+      window.addEventListener('touchend', e => {
+        if (isPressing) {
+          runtime.world.constraintBounds();
+          isPressing = false;
+        }
+      });
+
+      runtime.world.activatedEvents.push('onMouseDown');
+      runtime.world.addEventListener('onMouseDown', e => {
+        isPressing = true;
+      });
+
+      window.addEventListener('mouseup', e => {
+        if (isPressing) {
+          if (runtime.mode === 'explore') {
+            runtime.world.constraintBounds();
+          }
+          isPressing = false;
+        }
+      });
+
+      document.addEventListener('keydown', e => {
+        switch (e.code) {
+          case 'ArrowLeft':
+            runtime.world.gotoRegion({
+              x: runtime.x - nudgeDistance / runtime.scaleFactor,
+              y: runtime.y,
+              width: runtime.width,
+              height: runtime.height,
+              nudge: true,
+            });
+            break;
+          case 'ArrowRight':
+            runtime.world.gotoRegion({
+              x: runtime.x + nudgeDistance / runtime.scaleFactor,
+              y: runtime.y,
+              width: runtime.width,
+              height: runtime.height,
+              nudge: true,
+            });
+            break;
+          case 'ArrowUp':
+            runtime.world.gotoRegion({
+              x: runtime.x,
+              y: runtime.y - nudgeDistance / runtime.scaleFactor,
+              width: runtime.width,
+              height: runtime.height,
+              nudge: true,
+            });
+            break;
+          case 'ArrowDown':
+            runtime.world.gotoRegion({
+              x: runtime.x,
+              y: runtime.y + nudgeDistance / runtime.scaleFactor,
+              width: runtime.width,
+              height: runtime.height,
+              nudge: true,
+            });
+            break;
+        }
+      });
+
+      // Click to zoom functionality.
+      // @todo come back to this.
+      // if (enableClickToZoom) {
+      //   runtime.world.activatedEvents.push('onClick');
+      //   runtime.world.addEventListener('onClick', ({ atlas }) => {
+      //     if (runtime.mode === 'explore') {
+      //       runtime.world.zoomIn(atlas);
+      //     }
+      //   });
+      // }
+
+      if (enableWheel) {
+        runtime.world.activatedEvents.push('onWheel');
+        runtime.world.addEventListener('onWheel', e => {
+          const normalized = normalizeWheel(e);
+
+          const zoomFactor = 1 + (normalized.pixelY * devicePixelRatio) / zoomWheelConstant;
+          runtime.world.zoomTo(
+            // Generating a zoom from the wheel delta
+            clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
+            e.atlas,
+            true
+          );
+        });
+      }
+
+      // Pt 2. The subscribers.
+
+      /**
+       * Constrains bounds
+       *
+       * @param immediate
+       */
+      function constrainBounds(immediate = false) {
         const { x1, x2, y1, y2 } = runtime.getBounds(panPadding);
 
         if (immediate) {
@@ -154,38 +242,7 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
           from: viewer.get(),
           velocity: viewer.getVelocity(),
         }).start(viewer);
-      };
-
-      if (reset) {
-        reset.addEventListener('click', () => {
-          // const bounds = runtime.getBounds(panPadding);
-          // viewer.update({
-          //   x: bounds.x1,
-          //   y: bounds.x2,
-          // });
-
-          constrainBounds();
-        });
       }
-
-      // runtime.registerEventListener('click', dispatch => {
-      //   const listener = (e: MouseEvent) =>
-      //     dispatch(
-      //       runtime.viewerToWorld(
-      //         e.pageX * devicePixelRatio - canvasPos.left,
-      //         e.pageY * devicePixelRatio - canvasPos.top
-      //       )
-      //     );
-      //   canvas.addEventListener('click', listener);
-      //
-      //   return () => {
-      //     canvas.removeEventListener('click', listener);
-      //   };
-      // });
-
-      listen(canvas, 'mouseup touchend').start(() => {
-        constrainBounds();
-      });
 
       // A generic zoom to function, with an optional origin parameter.
       // All of the points referenced are world points. You can pass your
@@ -195,29 +252,14 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
       let currentZoom: ColdSubscription | undefined;
 
       function zoomTo(factor: number, origin?: Position, stream = false) {
-        if (runtime.scaleFactor / factor > 1 / minZoomFactor) {
-          factor = runtime.scaleFactor / (1 / minZoomFactor);
-        }
-        if (factor >= 1 && runtime.scaleFactor / factor < 1 / runtime.maxScaleFactor) {
-          factor = runtime.scaleFactor / (1 / runtime.maxScaleFactor);
-        }
-
         // Save the before for the tween.
         const fromPos = runtime.getViewport();
         // set the new scale.
-        const newPoints = transform(
-          runtime.target,
-          scaleAtOrigin(
-            factor,
-            origin ? origin.x : runtime.target[1] + (runtime.target[3] - runtime.target[1]) / 2,
-            origin ? origin.y : runtime.target[2] + (runtime.target[4] - runtime.target[2]) / 2
-          )
-        );
+        const newPoints = runtime.getZoomedPosition(factor, { origin, minZoomFactor });
         // Need to update our observables, for pop-motion
         if (currentZoom) {
           currentZoom.stop();
         }
-
         currentZoom = tween({
           from: fromPos,
           to: Object.create({
@@ -231,98 +273,6 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
         }).start(viewer);
       }
 
-      // Let's use that new zoom method, first we will hook up the UI buttons to zoom.
-      // Simple zoom out control.
-      if (zoomOut) {
-        zoomOut.addEventListener('click', () => zoomTo(1 / zoomOutFactor));
-      }
-      if (zoomIn) {
-        // Simple zoom in control.
-        zoomIn.addEventListener('click', () => zoomTo(1 / zoomInFactor));
-      }
-
-      let isPressing = false;
-
-      canvas.addEventListener('touchstart', e => {
-        if (runtime.mode === 'explore') {
-          isPressing = true;
-        }
-      });
-
-      window.addEventListener('touchend', e => {
-        if (isPressing) {
-          constrainBounds();
-          isPressing = false;
-        }
-      });
-
-      canvas.addEventListener('mousedown', e => {
-        isPressing = true;
-      });
-
-      window.addEventListener('mouseup', e => {
-        if (isPressing) {
-          if (runtime.mode === 'explore') {
-            constrainBounds();
-          }
-          isPressing = false;
-        }
-      });
-
-      document.addEventListener('keydown', e => {
-        switch (e.code) {
-          case 'ArrowLeft':
-            tween({
-              from: { x: runtime.x, y: runtime.y },
-              to: { x: runtime.x - nudgeDistance / runtime.scaleFactor, y: runtime.y },
-              duration: zoomDuration,
-            }).start(viewer);
-            break;
-          case 'ArrowRight':
-            tween({
-              from: { x: runtime.x, y: runtime.y },
-              to: { x: runtime.x + nudgeDistance / runtime.scaleFactor, y: runtime.y },
-              duration: zoomDuration,
-            }).start(viewer);
-            break;
-          case 'ArrowUp':
-            tween({
-              from: { x: runtime.x, y: runtime.y },
-              to: { x: runtime.x, y: runtime.y - nudgeDistance / runtime.scaleFactor },
-              duration: zoomDuration,
-            }).start(viewer);
-            break;
-          case 'ArrowDown':
-            tween({
-              from: { x: runtime.x, y: runtime.y },
-              to: { x: runtime.x, y: runtime.y + nudgeDistance / runtime.scaleFactor },
-              duration: zoomDuration,
-            }).start(viewer);
-            break;
-        }
-      });
-
-      if (enableWheel) {
-        // Next we will add a scrolling event to the scroll-wheel.
-        canvas.addEventListener('wheel', e => {
-          const normalized = normalizeWheel(e);
-          if (runtime.mode === 'explore') {
-            e.preventDefault();
-            const zoomFactor = 1 + (normalized.pixelY * devicePixelRatio) / zoomWheelConstant;
-            zoomTo(
-              // Generating a zoom from the wheel delta
-              clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
-              // Convert the cursor to an origin
-              runtime.viewerToWorld(
-                e.pageX * devicePixelRatio - canvasPos.left,
-                e.pageY * devicePixelRatio - canvasPos.top
-              ),
-              true
-            );
-          }
-        });
-      }
-
       // Layout subscriber - move more into here.
       runtime.world.addLayoutSubscriber((type, data: any) => {
         if (type === 'zone-changed') {
@@ -330,197 +280,33 @@ export const popmotionController = (canvas: HTMLElement, config: PopmotionContro
           constrainBounds(true);
         }
         if (type === 'zoom-to') {
-          zoomTo(data.factor, data.position);
+          zoomTo(data.factor, data.point, data.stream);
         }
         if (type === 'goto-region' && data) {
-          const { x, y, width, height, padding = 20 } = data || {};
-          const w = runtime.width;
-          const h = runtime.height;
-          const matchesHeight = width / w < height / h;
+          const clampedRegion = runtime.clampRegion(data);
           const fromPos = runtime.getViewport();
 
-          const rx = x - padding;
-          const ry = y - padding;
-          const rWidth = width + padding * 2;
-          const rHeight = height + padding * 2;
-
-          if (matchesHeight) {
-            // pad on the left and right.
-            const actualWidth = (rHeight / h) * w;
-            tween({
-              from: fromPos,
-              to: Object.create({
-                x: rx - (actualWidth - rWidth) / 2,
-                y: ry,
-                width: actualWidth,
-                height: rHeight,
-              }),
-              duration: 1000,
-              ease: easing.easeInOut,
-            }).start(viewer);
-          } else {
-            // pad on the top and bottom.
-            const actualHeight = (rWidth / w) * h;
-            tween({
-              from: fromPos,
-              to: Object.create({
-                x: rx,
-                y: ry - (actualHeight - rHeight) / 2,
-                width: rWidth,
-                height: actualHeight,
-              }),
-              duration: 1000,
-              ease: easing.easeInOut,
-            }).start(viewer);
+          if (data.immediate) {
+            viewer.stop();
+            viewer.update(clampedRegion);
+            return;
           }
+
+          tween({
+            from: fromPos,
+            to: clampedRegion,
+            duration: data.nudge ? zoomDuration : 1000,
+            ease: easing.easeInOut,
+          }).start(viewer);
+        }
+        if (type === 'constrain-bounds' && data) {
+          constrainBounds(data.immediate);
         }
       });
-
-      // The following lines are incomplete implementations of multi-touch zoom. This currently
-      // interferes with the panning and would need to be combined for touch inputs.
-
-      // const middlePoint = (points: Array<{ x: number; y: number }>) => {
-      //   if (points.length > 0) {
-      //     let xAcc = 0;
-      //     let yAcc = 0;
-      //
-      //     for (let i = 0; i < points.length; i++) {
-      //       xAcc += points[i].x;
-      //       yAcc += points[i].y;
-      //     }
-      //     return {
-      //       x: xAcc / points.length,
-      //       y: yAcc / points.length,
-      //     };
-      //   }
-      //   return {
-      //     x: 0,
-      //     y: 0,
-      //   };
-      // };
-
-      // let moveSub: ColdSubscription | undefined;
-      // listen(canvas, 'touchstart').start((er) => {
-      //   er.preventDefault();
-      //   moveSub = multitouch({ scale: runtime.scaleFactor, preventDefault: true }).start(
-      //     (e: { touches: Array<{ x: number; y: number }>; scale: number }) => {
-      //       if (e.touches.length !== 2) {
-      //         return;
-      //       }
-      //       const { x, y } = middlePoint(e.touches);
-      //
-      //       const scaleF = (1 / e.scale) * runtime.scaleFactor;
-      //       const origin =
-      //         // Convert the cursor to an origin
-      //         runtime.viewerToWorld(x - canvasPos.left, y - canvasPos.top);
-      //
-      //       if (zoomIn) {
-      //         zoomIn.innerText = `${origin.x}, ${origin.y}`;
-      //       }
-      //
-      //       // Save the before for the tween.
-      //       // const fromPos = runtime.getViewport();
-      //       // set the new scale.
-      //       const newPoints = transform(
-      //         runtime.target,
-      //         scaleAtOrigin(
-      //           scaleF,
-      //           origin && origin.x > 0 ? origin.x : runtime.target[1] + (runtime.target[3] - runtime.target[1]) / 2,
-      //           origin && origin.y > 0 ? origin.y : runtime.target[2] + (runtime.target[4] - runtime.target[2]) / 2
-      //         )
-      //       );
-      //
-      //       viewer.update({
-      //         x: newPoints[1],
-      //         y: newPoints[2],
-      //         width: newPoints[3] - newPoints[1],
-      //         height: newPoints[4] - newPoints[2],
-      //       });
-      //     }
-      //   );
-      // });
-      //
-      // listen(document, 'mouseup touchend').start(() => {
-      //   if (moveSub) {
-      //     moveSub.stop();
-      //   }
-      // });
-
-      // // let delta = 0;
-      // let kasd = 0;
-      // multitouch({ scale: runtime.scaleFactor }).start(e => {
-      //   if (e.touches.length === 2) {
-      //     kasd++;
-      //
-      //     if (zoomIn) {
-      //       zoomIn.innerText = `${e.scale}`;
-      //       zoomIn.style.fontSize = `11px`;
-      //     }
-      //     if (zoomOut) {
-      //       zoomOut.innerText = `${kasd}`;
-      //     }
-      //     // const {x, y} = middlePoint(e.touches);
-      //     // const zoomFactor = (e.scale - delta) / runtime.scaleFactor;
-      //     // delta = e.scale;
-      //     //
-      //     // // const zoomFactor = 1 / e.scale;
-      //     // // const clamped =
-      //     // //   zoomFactor < 1 - zoomClamp ? 1 - zoomClamp : zoomFactor > 1 + zoomClamp ? 1 + zoomClamp : zoomFactor;
-      //     // zoomTo(
-      //     //   // Generating a zoom from the wheel delta
-      //     //   zoomFactor,
-      //     //   // Convert the cursor to an origin
-      //     //   runtime.viewerToWorld(x - canvasPos.left, y - canvasPos.top),
-      //     //   true
-      //     // );
-      //   }
-      // });
-
-      if (enableClickToZoom) {
-        // For clicking its a little trickier. We want to still allow panning. So this
-        // little temporary variable will nuke the value when the mouse is down.
-        canvas.addEventListener('mousedown', () => {
-          if (runtime.mode === 'explore') {
-            click = true;
-            setTimeout(() => {
-              click = false;
-            }, 300);
-          }
-        });
-
-        // Next we will add another zoom option, click to zoom. This time the origin will
-        // be where our mouse is in relation to the world.
-        canvas.addEventListener('click', ({ pageX, pageY, defaultPrevented }) => {
-          if (click && runtime.mode === 'explore') {
-            zoomTo(
-              0.6,
-              runtime.viewerToWorld(pageX * devicePixelRatio - canvasPos.left, pageY * devicePixelRatio - canvasPos.top)
-            );
-          }
-        });
-      }
-
-      if (printX || printY || enableClickToZoom) {
-        // On mouse move we will display the world co-ordinates over the mouse in the UI.
-        canvas.addEventListener('mousemove', ({ pageX, pageY }) => {
-          // Here we stop a click if the mouse has moved (starting a drag).
-          click = false;
-          const { x, y } = runtime.viewerToWorld(
-            pageX * devicePixelRatio - canvasPos.left,
-            devicePixelRatio * pageY - canvasPos.top
-          );
-
-          if (printX) {
-            printX.innerText = '' + Math.floor(x);
-          }
-          if (printY) {
-            printY.innerText = '' + Math.floor(y);
-          }
-        });
-      }
     },
     stop() {
       // no-op.
+      // @todo remove world events.
     },
   };
 };
