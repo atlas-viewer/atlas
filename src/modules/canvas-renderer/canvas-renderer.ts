@@ -15,6 +15,7 @@ export type CanvasRendererOptions = {
   beforeFrame?: (delta: number) => void;
   debug?: boolean;
   htmlContainer?: HTMLDivElement;
+  crossOrigin?: boolean;
 };
 
 export type ImageBuffer = {
@@ -75,6 +76,10 @@ export class CanvasRenderer implements Renderer {
         document.body.appendChild(this.stats.dom);
       }
     }
+  }
+
+  isReady(): boolean {
+    return this.firstMeaningfulPaint;
   }
 
   afterFrame(world: World): void {
@@ -303,6 +308,9 @@ export class CanvasRenderer implements Renderer {
         imageCache[url] = image;
         image.onload = null;
       };
+      if (this.options.crossOrigin) {
+        image.crossOrigin = 'anonymous';
+      }
       image.src = url;
     } catch (e) {
       err(e);
@@ -495,7 +503,8 @@ export class CanvasRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
-    const ready = this.imagesPending === 0 && this.loadingQueue.length === 0 && this.tasksRunning === 0;
+    const ready =
+      this.imagesPending === 0 && this.loadingQueue.length === 0 && this.tasksRunning === 0 && this.visible.length > 0;
     if (!this.firstMeaningfulPaint && ready) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';

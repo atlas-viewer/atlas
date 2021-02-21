@@ -21,6 +21,10 @@ export class DebugRenderer implements Renderer {
     this.context = canvas.getContext('2d') as CanvasRenderingContext2D;
   }
 
+  isReady(): boolean {
+    return true;
+  }
+
   afterFrame(world: World, delta: number, target: Float32Array) {
     // Everything in this debugger happens at the end of the render cycle.
     // This debugger is made to be hacked and changed as needed, so some

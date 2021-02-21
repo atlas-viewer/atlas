@@ -214,25 +214,25 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       return;
     }
 
-    // 1st case is reuse existing points.
-    if (this.objects[beforeIndex - 1] === null) {
-      const availablePoints = this.points.subarray((beforeIndex - 1) * 5, beforeIndex - 1 + 5);
-      if (availablePoints) {
-        this.objects[beforeIndex - 1] = item;
-
-        const pointValues = item.points;
-        item.points = availablePoints;
-        item.points[1] = pointValues[1];
-        item.points[2] = pointValues[2];
-        item.points[3] = pointValues[3];
-        item.points[4] = pointValues[4];
-
-        this.triggerRepaint();
-        this.needsRecalculate = true;
-      }
-
-      return;
-    }
+    // // 1st case is reuse existing points.
+    // if (this.objects[beforeIndex - 1] === null) {
+    //   const availablePoints = this.points.subarray((beforeIndex - 1) * 5, beforeIndex - 1 + 5);
+    //   if (availablePoints) {
+    //     this.objects[beforeIndex - 1] = item;
+    //
+    //     const pointValues = item.points;
+    //     item.points = availablePoints;
+    //     item.points[1] = pointValues[1];
+    //     item.points[2] = pointValues[2];
+    //     item.points[3] = pointValues[3];
+    //     item.points[4] = pointValues[4];
+    //
+    //     this.triggerRepaint();
+    //     this.needsRecalculate = true;
+    //   }
+    //
+    //   return;
+    // }
 
     // Fix points array.
     // this.checkResizeInternalBuffer();
@@ -342,6 +342,9 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       if (newHeight !== this._height) {
         this._height = newHeight;
         didChange = true;
+      }
+      if (didChange) {
+        this.trigger('recalculate-world-size', { width: newWidth, height: newHeight });
       }
       this.needsRecalculate = false;
     }

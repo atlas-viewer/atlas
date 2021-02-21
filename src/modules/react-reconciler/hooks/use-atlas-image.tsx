@@ -1,29 +1,34 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { World } from '../../world';
-import { ReactAtlas } from './reconciler';
-import { CanvasRenderer } from '../canvas-renderer/canvas-renderer';
-import { Runtime, ViewerMode } from '../../renderer/runtime';
-import { popmotionController } from '../popmotion-controller/popmotion-controller';
-import { ModeContext } from './hooks/use-mode';
-import useMeasure from 'react-use-measure';
-import { AtlasContext, AtlasContextType } from './components/AtlasContext';
-import { BrowserEventManager } from '../browser-event-manager/browser-event-manager';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useAfterFrame } from './use-after-frame';
+import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
+import { ReactAtlas } from '../reconciler';
+import { Runtime, ViewerMode } from '../../../renderer/runtime';
+import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
+import { popmotionController } from '../../popmotion-controller/popmotion-controller';
+import { World } from '../../../world';
+import { AtlasContextType, AtlasContext } from '../components/AtlasContext';
+import { ModeContext } from './use-mode';
 
 type AtlasProps = {
   width: number;
   height: number;
   mode?: ViewerMode;
   onCreated?: (ctx: AtlasContextType) => void | Promise<void>;
+  containerRef?: { current?: HTMLElement };
+  cover?: boolean;
   resetWorldOnChange?: boolean;
 };
 
-export const Atlas: React.FC<AtlasProps> = ({
-  onCreated,
-  mode = 'explore',
-  resetWorldOnChange = true,
+export const useAtlasImage: (
+  children: any,
+  options: AtlasProps
+) => { uri: string | undefined; loading?: boolean; imageError?: string } = (
   children,
-  ...restProps
-}) => {
+  { onCreated, resetWorldOnChange = true, mode = 'explore', cover, containerRef, ...restProps }
+) => {
+  const [ready, setReady] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
+  const [imageError, setError] = useState<string | undefined>(undefined);
   // Reference to the current HTML Canvas element
   // Set by React by passing <canvas ref={...} />
   // Used to instantiate the controller and viewer with the correct HTML element.
@@ -36,7 +41,13 @@ export const Atlas: React.FC<AtlasProps> = ({
   const overlayRef = useRef<HTMLDivElement>();
 
   // This measures the height and width of the Atlas element.
-  const [ref, bounds] = useMeasure({ scroll: true });
+  // const [ref, bounds] = useMeasure({ scroll: true });
+  const bounds = useMemo(() => {
+    return {
+      width: restProps.width,
+      height: restProps.height,
+    };
+  }, [restProps.width, restProps.height]);
 
   // This is a big messy global state of atlas that is updated outside of Reacts lifecycle.
   const state = useRef<AtlasContextType>({
@@ -49,14 +60,59 @@ export const Atlas: React.FC<AtlasProps> = ({
     canvasPosition: undefined,
   });
 
-  // This holds the class name for the container. This is changes when the
-  // editing mode changes.
-  const [containerClassName, setContainerClassName] = useState('');
+  // Create our in memory canvas.
+  useLayoutEffect(() => {
+    const $cvs = document.createElement('canvas');
+    $cvs.height = bounds.height;
+    $cvs.width = bounds.width;
+    canvasRef.current = $cvs;
+  }, []);
+
+  useLayoutEffect(() => {
+    const $cvs = canvasRef.current;
+    if ($cvs) {
+      $cvs.height = bounds.height;
+      $cvs.width = bounds.width;
+    }
+  }, [bounds.width, bounds.height]);
+
+  useEffect(() => {
+    const runtime = state.current.runtime;
+    if (runtime) {
+      return runtime.registerHook('useAfterFrame', () => {
+        if (canvasRef.current) {
+          try {
+            setImageUrl(canvasRef.current.toDataURL());
+          } catch (e) {
+            setError(e.message);
+          }
+        }
+      });
+    }
+    return () => {
+      // no-op
+    };
+  }, []);
+
+  useEffect(() => {
+    const runtime = state.current.runtime;
+    if (runtime) {
+      return runtime.world.addLayoutSubscriber(type => {
+        if (type === 'ready') {
+          setReady(true);
+        }
+      });
+    }
+    return () => {
+      // no-op
+    };
+  }, []);
 
   // This changes the mutable state object with the position (top/left/width/height) of the
   // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing
   // positions.
   useEffect(() => {
+    // @ts-ignore
     state.current.canvasPosition = bounds;
     if (state.current.em) {
       state.current.em.updateBounds();
@@ -80,7 +136,11 @@ export const Atlas: React.FC<AtlasProps> = ({
       const rt: Runtime = state.current.runtime;
 
       rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
-      rt.goHome();
+      if (cover) {
+        rt.cover();
+      } else {
+        rt.goHome();
+      }
       state.current.viewport.width = restProps.width;
       state.current.viewport.height = restProps.height;
       rt.updateNextFrame();
@@ -146,27 +206,38 @@ export const Atlas: React.FC<AtlasProps> = ({
     currentCanvas.style.userSelect = 'none';
 
     state.current.canvas = canvasRef;
+    const controllers: any[] = [];
 
-    const controller = popmotionController({
-      minZoomFactor: 0.5,
-      maxZoomFactor: 3,
-      enableClickToZoom: false,
-    });
-    state.current.controller = controller;
+    if (containerRef && containerRef.current) {
+      const controller = popmotionController({
+        minZoomFactor: 0.5,
+        maxZoomFactor: 3,
+        enableClickToZoom: false,
+      });
+      state.current.controller = controller;
+      controllers.push(controller);
+    }
 
-    const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { debug: false });
+    const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { crossOrigin: true, debug: false });
     state.current.renderer = renderer;
 
-    const runtime = new Runtime(renderer, new World(), state.current.viewport, [controller]);
+    const runtime = new Runtime(renderer, new World(), state.current.viewport, controllers);
     state.current.runtime = runtime;
 
-    const em = new BrowserEventManager(currentCanvas, runtime);
-    state.current.em = em;
+    let em: any = undefined;
+    if (containerRef && containerRef.current) {
+      em = new BrowserEventManager(containerRef.current, runtime);
+      state.current.em = em;
+    }
 
     return () => {
-      controller.stop(runtime);
+      controllers.forEach(controller => {
+        controller.stop(runtime);
+      });
       runtime.stop();
-      em.stop();
+      if (em) {
+        em.stop();
+      }
     };
   }, []);
 
@@ -176,7 +247,7 @@ export const Atlas: React.FC<AtlasProps> = ({
       if (resetWorldOnChange) {
         return rt.world.addLayoutSubscriber(type => {
           if (type === 'recalculate-world-size') {
-            rt.goHome();
+            rt.goHome(cover);
           }
         });
       }
@@ -184,7 +255,7 @@ export const Atlas: React.FC<AtlasProps> = ({
     return () => {
       // no-op
     };
-  }, [resetWorldOnChange]);
+  }, [cover, resetWorldOnChange]);
 
   useLayoutEffect(() => {
     ReactAtlas.render(
@@ -197,61 +268,9 @@ export const Atlas: React.FC<AtlasProps> = ({
     );
   }, [state, mode, children]);
 
-  // @todo move to controller.
-  useEffect(() => {
-    const keyupSpace = () => {
-      if (state.current.runtime && state.current.runtime.mode === 'explore') {
-        state.current.runtime.mode = 'sketch';
-        setContainerClassName('mode-sketch');
-      }
-      window.removeEventListener('keyup', keyupSpace);
-    };
-
-    window.addEventListener('keydown', e => {
-      if (e.code === 'Space' && state.current.runtime && state.current.runtime.mode === 'sketch') {
-        if (e.target && (e.target as any).tagName && (e.target as any).tagName.toLowerCase() === 'input') return;
-        e.preventDefault();
-        state.current.runtime.mode = 'explore';
-        setContainerClassName('mode-explore');
-        window.addEventListener('keyup', keyupSpace);
-      }
-    });
-
-    return () => {
-      // no-op
-    };
-  });
-
-  return (
-    <div
-      ref={ref}
-      className={containerClassName}
-      style={{
-        position: 'relative',
-        userSelect: 'none',
-        display: 'inline-block',
-        background: '#000',
-        width: restProps.width,
-        height: restProps.height,
-        zIndex: 10,
-        touchAction: 'none',
-      }}
-    >
-      <style>{`
-        .mode-explore { 
-           cursor: move; /* fallback if grab cursor is unsupported */
-           cursor: grab;
-           cursor: -moz-grab;
-           cursor: -webkit-grab;
-         }
-        .mode-explore:active { 
-          cursor: grabbing;
-          cursor: -moz-grabbing;
-          cursor: -webkit-grabbing;
-        }
-      `}</style>
-      <canvas {...restProps} ref={canvasRef as any} />
-      <div style={{ position: 'absolute', top: 0, left: 0 }} ref={overlayRef as any} />
-    </div>
-  );
+  return {
+    loading: !imageUrl && ready,
+    uri: imageUrl,
+    imageError,
+  };
 };

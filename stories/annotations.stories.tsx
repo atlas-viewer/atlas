@@ -23,7 +23,7 @@ const staticTiles = [
   },
 ];
 
-const Wunder = ({ index = 0 }: any) => {
+export const Wunder = ({ index = 0 }: any) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
 
   useEffect(() => {
@@ -33,15 +33,7 @@ const Wunder = ({ index = 0 }: any) => {
   }, [index]);
 
   if (!tiles) {
-    return (
-      <worldObject height={staticTiles[index].height} width={staticTiles[index].width}>
-        <box
-          target={{ x: 0, y: 0, width: staticTiles[index].width, height: staticTiles[index].height }}
-          id={index}
-          backgroundColor="#000"
-        />
-      </worldObject>
-    );
+    return <></>;
   }
 
   return <TileSet tiles={tiles} x={0} y={0} width={staticTiles[index].width} height={staticTiles[index].height} />;

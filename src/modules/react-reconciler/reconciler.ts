@@ -182,10 +182,8 @@ const reconciler = createReconciler({
     runtime.pendingUpdate = true;
     if (runtime.world) {
       if (runtime.world.needsRecalculate) {
-        const didChange = runtime.world.recalculateWorldSize();
-        if (didChange) {
-          runtime.goHome();
-        }
+        runtime.world.recalculateWorldSize();
+        runtime.world.triggerRepaint();
       }
     }
   },

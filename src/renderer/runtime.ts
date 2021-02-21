@@ -30,6 +30,7 @@ type useFrame = UnwrapHook<RuntimeHooks['useFrame']>;
 export type ViewerMode = 'static' | 'explore' | 'sketch';
 
 export class Runtime {
+  ready = false;
   // Helper getters.
   get x(): number {
     return this.target[1];
@@ -154,7 +155,11 @@ export class Runtime {
     }
   }
 
-  goHome() {
+  cover() {
+    return this.goHome(true);
+  }
+
+  goHome(cover?: boolean) {
     if (this.world.width <= 0 || this.world.height <= 0) return;
 
     const width = this.width * this.scaleFactor;
@@ -164,7 +169,7 @@ export class Runtime {
     const heightScale = this.world.height / height;
     const ar = width / height;
 
-    if (widthScale < heightScale) {
+    if (cover ? widthScale > heightScale : widthScale < heightScale) {
       const fullWidth = ar * this.world.height;
       const space = (fullWidth - this.world.width) / 2;
 
@@ -626,6 +631,10 @@ export class Runtime {
     this.firstRender = false;
     this.pendingUpdate = false;
     this.logNextRender = false;
+    if (this.renderer.isReady()) {
+      this.ready = true;
+      this.world.trigger('ready');
+    }
     // Flush world subscriptions.
     this.world.flushSubscriptions();
     // @todo this could be improved, but will work for now.

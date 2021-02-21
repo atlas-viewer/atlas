@@ -12,6 +12,7 @@ export * from './components/TileSet';
 export * from './hooks/use-after-frame';
 export * from './hooks/use-after-paint';
 export * from './hooks/use-atlas';
+export * from './hooks/use-atlas-image';
 export * from './hooks/use-before-frame';
 export * from './hooks/use-canvas';
 export * from './hooks/use-controlled-annotation-list';
