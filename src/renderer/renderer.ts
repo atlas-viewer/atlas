@@ -15,4 +15,5 @@ export interface Renderer {
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[];
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null;
   isReady(): boolean;
+  resize(width: number, height: number): void;
 }

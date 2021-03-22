@@ -24,6 +24,10 @@ export class StaticRenderer implements Renderer {
     return true;
   }
 
+  resize() {
+    // no-op.
+  }
+
   afterFrame(world: World, delta: number, target: Strand): void {
     for (const item of this.previouslyVisible) {
       item.style.display = 'none';

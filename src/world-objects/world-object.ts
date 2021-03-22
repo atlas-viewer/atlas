@@ -23,6 +23,7 @@ type WorldObjectProps = {
 
 export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   id: string;
+  type = 'world-object';
   scale: number;
   layers: Paintable[];
   points: Strand;

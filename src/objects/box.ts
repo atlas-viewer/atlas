@@ -2,8 +2,10 @@ import { BaseObject } from './base-object';
 import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
 import { SpacialContent } from '../spacial-content/spacial-content';
 import { Paint } from '../world-objects/paint';
+import { nanoid } from 'nanoid';
 
 export type BoxProps = {
+  id: string;
   target: {
     x: number;
     y: number;
@@ -21,6 +23,7 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     return {};
   }
 
+  id: string;
   type: 'spacial-content' = 'spacial-content';
   points: Strand;
   display = {
@@ -39,10 +42,12 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
 
   constructor() {
     super();
+    this.id = nanoid(12);
     this.points = dna(5);
   }
 
   getAllPointsAt(target: Strand, aggregate: Strand): Paint[] {
+    // this.points[0] = 1;
     return [[this as any, this.points, aggregate]];
   }
 

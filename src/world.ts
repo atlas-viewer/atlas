@@ -469,12 +469,18 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   getObjectsAt(target: Strand, all = false): Array<[WorldObject, Paintable[]]> {
     const zone = this.getActiveZone();
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
+
     const len = this.objects.length;
     const objects: Array<[WorldObject, Paintable[]]> = [];
+
     for (let index = 0; index < len; index++) {
       if (filteredPoints[index * 5] !== 0) {
         const object = this.objects[index];
         if (!object || (zone && zone.objects.indexOf(object) === -1)) {
+          continue;
+        }
+        if (object.type !== 'world-object') {
+          objects.push([object, [object]] as any);
           continue;
         }
         if (all) {
@@ -484,6 +490,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         }
       }
     }
+
+    // console.log(objects);
     return objects;
   }
 

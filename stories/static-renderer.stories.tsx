@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { Renderer } from 'react-dom';
 import { Runtime } from '../src/renderer/runtime';
 import '../src/modules/react-reconciler/types';
 import { World } from '../src/world';
@@ -13,8 +12,8 @@ import { popmotionController } from '../src/modules/popmotion-controller/popmoti
 import { TiledImage } from '../src/spacial-content/tiled-image';
 import { CompositeResource } from '../src/spacial-content/composite-resource';
 import { useAtlasImage } from '../src/modules/react-reconciler/hooks/use-atlas-image';
-import { Wunder } from './annotations.stories';
 import useMeasure from 'react-use-measure';
+import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 
 export default { title: 'Static renderer' };
 
@@ -172,7 +171,7 @@ export const DefaultStaticTiles: React.FC = () => {
 
 export const StaticRenderHook = () => {
   const containerRef = useRef<any>();
-  const { loading, uri } = useAtlasImage(<Wunder index={0} />, {
+  const { loading, uri } = useAtlasImage(<ImageService {...staticTiles[0]} />, {
     height: 600,
     width: 800,
     containerRef,
@@ -183,7 +182,7 @@ export const StaticRenderHook = () => {
 
 export const StaticRenderHookBackgroundImage = () => {
   const [ref, bounds] = useMeasure();
-  const { loading, uri } = useAtlasImage(<Wunder index={0} />, {
+  const { loading, uri } = useAtlasImage(<ImageService {...staticTiles[0]} />, {
     height: bounds.height || 500,
     width: bounds.width || 1000,
     cover: true,

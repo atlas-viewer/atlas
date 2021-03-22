@@ -1,5 +1,5 @@
 import { Atlas } from '../Atlas';
-import React from 'react';
+import React, { useEffect } from 'react';
 import useMeasure from 'react-use-measure';
 import { ViewerMode } from '../../../renderer/runtime';
 
@@ -7,8 +7,16 @@ export const AtlasAuto: React.FC<{
   mode?: ViewerMode;
   onCreated?: (ctx: any) => void | Promise<void>;
   style?: React.CSSProperties;
-}> = ({ style, ...props }) => {
-  const [ref, bounds] = useMeasure();
+  resizeHash?: number;
+  unstable_webglRenderer?: boolean;
+}> = ({ style, resizeHash, ...props }) => {
+  const [ref, bounds, forceRefresh] = useMeasure();
+
+  const { width, height } = style || {};
+
+  useEffect(() => {
+    forceRefresh();
+  }, [width, height, resizeHash, forceRefresh]);
 
   return (
     <div ref={ref} style={{ width: '100%', height: 600, ...style }}>

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useAfterFrame } from './use-after-frame';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
 import { ReactAtlas } from '../reconciler';
 import { Runtime, ViewerMode } from '../../../renderer/runtime';
@@ -166,7 +165,6 @@ export const useAtlasImage: (
         const rt: Runtime = state.current.runtime;
 
         rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
-        rt._updateScaleFactor();
         state.current.viewport.width = restProps.width;
         state.current.viewport.height = restProps.height;
         rt.updateNextFrame();
@@ -218,7 +216,7 @@ export const useAtlasImage: (
       controllers.push(controller);
     }
 
-    const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { crossOrigin: true, debug: false });
+    const renderer = new CanvasRenderer(currentCanvas, { crossOrigin: true, debug: false });
     state.current.renderer = renderer;
 
     const runtime = new Runtime(renderer, new World(), state.current.viewport, controllers);

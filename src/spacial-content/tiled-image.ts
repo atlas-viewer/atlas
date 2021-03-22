@@ -3,8 +3,9 @@ import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
 import { Memoize } from 'typescript-memoize';
 import { BaseObject } from '../objects/base-object';
+import { SpacialContent } from './spacial-content';
 
-export class TiledImage extends BaseObject {
+export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
   readonly type = 'spacial-content';
   readonly display: DisplayData;

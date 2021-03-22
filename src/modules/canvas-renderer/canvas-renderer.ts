@@ -31,7 +31,6 @@ const imageCache: { [id: string]: HTMLImageElement } = {};
 
 export class CanvasRenderer implements Renderer {
   canvas: HTMLCanvasElement;
-  htmlContainer?: HTMLDivElement;
   ctx: CanvasRenderingContext2D;
   options: CanvasRendererOptions;
   imagesPending = 0;
@@ -50,21 +49,17 @@ export class CanvasRenderer implements Renderer {
   currentTask: Promise<any> = Promise.resolve();
   tasksRunning = 0;
   stats?: Stats;
-
-  visible: Array<Text | Box | SpacialContent> = [];
-  previousVisible: Array<Text | Box | SpacialContent> = [];
-  htmlIds: string[] = [];
-
   averageJobTime = 1000; // ms
+  visible: Array<SpacialContent> = [];
+  previousVisible: Array<SpacialContent> = [];
 
-  constructor(canvas: HTMLCanvasElement, htmlContainer?: HTMLDivElement, options?: CanvasRendererOptions) {
+  constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
     // Not working as expected.
     // this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
     this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
-    this.htmlContainer = htmlContainer;
     // Testing fade in.
     this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
@@ -76,6 +71,10 @@ export class CanvasRenderer implements Renderer {
         document.body.appendChild(this.stats.dom);
       }
     }
+  }
+
+  resize() {
+    // no-op.
   }
 
   isReady(): boolean {
@@ -92,20 +91,6 @@ export class CanvasRenderer implements Renderer {
         return b.distance - a.distance;
       });
       this.loadingQueueOrdered = true;
-    }
-    for (const prev of this.previousVisible) {
-      if (this.visible.indexOf(prev) === -1) {
-        if (
-          // HTML container
-          this.htmlContainer &&
-          // Previous ID
-          prev.__id &&
-          // Is it in the list.
-          this.htmlIds.indexOf(prev.__id) !== -1
-        ) {
-          this.htmlContainer.removeChild(prev.__host.element);
-        }
-      }
     }
     // Set them.
     this.previousVisible = this.visible;
@@ -201,45 +186,13 @@ export class CanvasRenderer implements Renderer {
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
-    // Push visible items.
-    this.visible.push(paint);
     // Only supporting single and tiled images at the moment.
-    // @todo check property instead of instance of.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
+      this.visible.push(paint);
+
       try {
         // 1) Find cached image buffer.
-        const imageBuffer: ImageBuffer = paint.__host;
-
-        // @todo this lookup of the loaded items is slow.
-        if (imageBuffer.loaded.indexOf(index) === -1 && paint.__parent) {
-          let done = false;
-          let current = paint.__parent.images.indexOf(paint);
-          while (!done) {
-            current++;
-            const fallback = paint.__parent.images[current];
-            if (!fallback) {
-              break;
-            }
-            const fallbackHost: ImageBuffer = fallback.__host;
-            const adjustedScale = paint.display.scale / fallback.display.scale;
-            if (fallbackHost && fallbackHost.indices.length) {
-              if (!fallbackHost.loading) {
-                done = true;
-              }
-              this.ctx.drawImage(
-                fallbackHost.canvas,
-                paint.display.points[index * 5 + 1] * adjustedScale,
-                paint.display.points[index * 5 + 2] * adjustedScale,
-                (paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1) * adjustedScale,
-                (paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1) * adjustedScale,
-                x,
-                y,
-                width + 0.8,
-                height + 0.8
-              );
-            }
-          }
-        }
+        const imageBuffer: ImageBuffer = paint.__host.canvas;
 
         // 2) Schedule paint onto local buffer (async, yay!)
         if (imageBuffer.indices.indexOf(index) === -1) {
@@ -271,25 +224,6 @@ export class CanvasRenderer implements Renderer {
         );
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
-      }
-    }
-
-    if (paint instanceof Text || paint instanceof Box) {
-      if (this.htmlContainer) {
-        this.updateHtmlHost(paint);
-
-        const scale = width / paint.width;
-        const element: HTMLDivElement = paint.__host.element;
-
-        element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
-        element.style.transformOrigin = `0px 0px`;
-
-        if (this.previousVisible.indexOf(paint) === -1) {
-          this.htmlContainer.appendChild(element);
-        }
-        if (this.htmlIds.indexOf(paint.__id) === -1) {
-          this.htmlIds.push(paint.__id);
-        }
       }
     }
   }
@@ -325,7 +259,7 @@ export class CanvasRenderer implements Renderer {
     // We push the index we want to load onto the image buffer.
     imageBuffer.indices.push(index);
     // Mark as loading.
-    paint.__host.loading = true;
+    paint.__host.canvas.loading = true;
     // Unique id for paint.
     const id = `${paint.id}--${paint.display.scale}`;
     // Set loading queue ordering to false to trigger re-order.
@@ -386,13 +320,10 @@ export class CanvasRenderer implements Renderer {
   }
 
   prepareLayer(paint: SpacialContent): void {
-    if (!paint.__host) {
+    if (!paint.__host || !paint.__host.canvas) {
       if (paint instanceof SingleImage || paint instanceof TiledImage) {
         // create it if it does not exist.
         this.createImageHost(paint);
-      }
-      if (paint instanceof Text || paint instanceof Box) {
-        this.createHtmlHost(paint);
       }
     }
   }
@@ -401,82 +332,14 @@ export class CanvasRenderer implements Renderer {
     const canvas = document.createElement('canvas');
     canvas.width = paint.display.width;
     canvas.height = paint.display.height;
-    paint.__host = { canvas, indices: [], loaded: [], loading: false };
-  }
 
-  createHtmlHost(paint: Text | Box) {
-    if (this.htmlContainer) {
-      const div = document.createElement('div');
-      div.style.position = 'absolute';
-      paint.__host = { element: div, revision: null, relative: false };
-      this.updateHtmlHost(paint);
-      if (paint.__onCreate) {
-        paint.__onCreate();
-      }
-    }
-  }
-
-  updateHtmlHost(paint: Text | Box) {
-    if (paint.__revision !== paint.__host.revision) {
-      const div = paint.__host.element;
-
-      // @todo drive this by props?
-      // div.style.overflow = 'hidden';
-      div.style.width = `${paint.width}px`;
-      div.style.height = `${paint.height}px`;
-      if (paint.props.interactive) {
-        div.style.pointerEvents = 'all';
-      }
-
-      if (paint instanceof Text) {
-        if (paint.text) {
-          div.innerText = paint.text;
-        }
-        if (paint.backgroundColor) {
-          div.style.backgroundColor = paint.backgroundColor;
-        }
-        if (paint.color) {
-          div.style.color = paint.color;
-        }
-        if (paint.props.font) {
-          div.style.font = paint.props.font;
-        }
-        if (paint.props.textAlign) {
-          div.style.textAlign = paint.props.textAlign;
-        }
-        paint.__host.revision = paint.__revision;
-      }
-      if (paint instanceof Box) {
-        if (paint.props.backgroundColor) {
-          div.style.backgroundColor = paint.props.backgroundColor;
-        }
-        if (paint.props.border !== div.style.border) {
-          div.style.border = paint.props.border;
-        }
-        if (paint.props.className) {
-          div.className = paint.props.className;
-        }
-      }
-    }
+    paint.__host = paint.__host ? paint.__host : {};
+    paint.__host.canvas = { canvas, indices: [], loaded: [], loading: false };
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
     return world.getPointsAt(target, aggregate, scaleFactor);
   }
-
-  // getActiveZone(world: World): ZoneInterface | null {
-  //   const len = world.zones.length;
-  //   for (let i = 0; i < len; i++) {
-  //     if (world.zones[i].id === this.selectedZone) {
-  //       return world.zones[i];
-  //     }
-  //   }
-  //   return null;
-  // }
-  //
-  // hasActiveZone(): boolean {
-  //   return !!this.selectedZone;
-  // }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {
     const zone = world.getActiveZone();

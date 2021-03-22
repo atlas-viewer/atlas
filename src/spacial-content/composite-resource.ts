@@ -2,7 +2,7 @@ import { SpacialContent } from './spacial-content';
 import { compose, dna, DnaFactory, Strand, translate } from '@atlas-viewer/dna';
 import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
-import { bestResourceAtRatio } from '../utils';
+import { bestResourceAtRatio, bestResourceIndexAtRatio } from '../utils';
 import { AbstractContent } from './abstract-content';
 import { AtlasObjectModel } from '../aom';
 
@@ -115,10 +115,18 @@ export class CompositeResource extends AbstractContent
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {
-    return bestResourceAtRatio(1 / (scale || 1), this.images).getAllPointsAt(
-      target,
-      aggregate ? compose(aggregate, translate(this.x, this.y), this.aggregateBuffer) : translate(this.x, this.y),
-      scale
-    );
+    const bestIndex = bestResourceIndexAtRatio(1 / (scale || 1), this.images);
+    const len = this.images.length;
+    const newAggregate = aggregate ? compose(aggregate, translate(this.x, this.y)) : translate(this.x, this.y);
+
+    if (bestIndex !== this.images.length - 1 && this.images[bestIndex + 1]) {
+      const toPaint = [];
+      for (let i = len - 1; i >= bestIndex; i--) {
+        toPaint.push(...this.images[i].getAllPointsAt(target, newAggregate, scale));
+      }
+      return toPaint;
+    }
+
+    return this.images[bestIndex].getAllPointsAt(target, newAggregate, scale);
   }
 }

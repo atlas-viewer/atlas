@@ -11,10 +11,8 @@ import {
   translate,
   compose,
 } from '@atlas-viewer/dna';
-import { EventSubscription, supportedEvents } from './dispatcher';
 import { Renderer } from './renderer';
 import { Paint } from '../world-objects/paint';
-import { easing, tween } from 'popmotion';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -84,7 +82,6 @@ export class Runtime {
   world: World;
   target: Strand;
   aggregate: Strand;
-  scaleFactor: number;
   transformBuffer = dna(500);
   lastTarget = dna(5);
   zoomBuffer = dna(5);
@@ -93,7 +90,6 @@ export class Runtime {
   firstRender = true;
   lastTime: number;
   stopId?: number;
-  userMode: ViewerMode = 'explore';
   mode: ViewerMode = 'explore';
   controllers: RuntimeController[] = [];
   controllersRunning = false;
@@ -105,13 +101,13 @@ export class Runtime {
     useAfterPaint: [],
     useAfterFrame: [],
   };
+  fpsLimit: number | undefined;
 
   constructor(renderer: Renderer, world: World, target: Viewer, controllers: RuntimeController[] = []) {
     this.renderer = renderer;
     this.world = world;
     this.target = DnaFactory.projection(target);
     this.aggregate = scale(1);
-    this.scaleFactor = target.scale;
     this.world.addLayoutSubscriber((type: string) => {
       if (type === 'repaint') {
         this.pendingUpdate = true;
@@ -162,8 +158,10 @@ export class Runtime {
   goHome(cover?: boolean) {
     if (this.world.width <= 0 || this.world.height <= 0) return;
 
-    const width = this.width * this.scaleFactor;
-    const height = this.height * this.scaleFactor;
+    const scaleFactor = this.getScaleFactor();
+
+    const width = this.width * scaleFactor;
+    const height = this.height * scaleFactor;
 
     const widthScale = this.world.width / width;
     const heightScale = this.world.height / height;
@@ -177,7 +175,6 @@ export class Runtime {
       this.target[2] = 0;
       this.target[3] = fullWidth - space;
       this.target[4] = this.world.height;
-      this.maxScaleFactor = heightScale;
     } else {
       const fullHeight = this.world.width / ar;
       const space = (fullHeight - this.world.height) / 2;
@@ -186,25 +183,9 @@ export class Runtime {
       this.target[2] = -space;
       this.target[3] = this.world.width;
       this.target[4] = fullHeight - space;
-      this.maxScaleFactor = widthScale;
     }
 
     this.updateControllerPosition();
-  }
-
-  _updateScaleFactor() {
-    if (this.world.width <= 0 || this.world.height <= 0) return;
-
-    const width = this.width * this.scaleFactor;
-    const height = this.height * this.scaleFactor;
-
-    const widthScale = this.world.width / width;
-    const heightScale = this.world.height / height;
-    if (widthScale < heightScale) {
-      this.maxScaleFactor = heightScale;
-    } else {
-      this.maxScaleFactor = widthScale;
-    }
   }
 
   /**
@@ -219,9 +200,14 @@ export class Runtime {
    * @param toHeight
    */
   resize(fromWidth: number, toWidth: number, fromHeight: number, toHeight: number) {
-    this.scaleFactor = this.scaleFactor * (fromWidth / toWidth);
-    this.target[3] = this.target[1] + (this.target[3] - this.target[1]) / (fromWidth / toWidth);
-    this.target[4] = this.target[2] + (this.target[4] - this.target[2]) / (fromHeight / toHeight);
+    // Challenge 1. Equal space on all sides.
+    const widthRatio = toWidth / fromWidth;
+    const heightRatio = toHeight / fromHeight;
+
+    this.target[3] = this.target[1] + (this.target[3] - this.target[1]) * widthRatio;
+    this.target[4] = this.target[2] + (this.target[4] - this.target[2]) * heightRatio;
+    this.goHome();
+    this.renderer.resize(toWidth, toHeight);
   }
 
   _viewport = { x: 0, y: 0, width: 0, height: 0 };
@@ -264,8 +250,13 @@ export class Runtime {
     } else {
       this.target[4] = this.target[4] - this.target[2] + y;
     }
-    this.target[1] = x;
-    this.target[2] = y;
+
+    if (Math.abs(this.target[1] - x) > 0.01) {
+      this.target[1] = x;
+    }
+    if (Math.abs(this.target[2] - y) > 0.01) {
+      this.target[2] = y;
+    }
   };
 
   /**
@@ -343,19 +334,61 @@ export class Runtime {
     return { x1: minX, x2: maxX, y1: minY, y2: maxY };
   }
 
+  getScaleFactor() {
+    return this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2]);
+  }
+
   /**
    * Zoom
    */
-  getZoomedPosition(
-    factor: number,
-    { origin, minZoomFactor = 0.05 }: { minZoomFactor?: number; origin?: { x: number; y: number } }
-  ) {
-    if (this.scaleFactor / factor > 1 / minZoomFactor) {
-      factor = this.scaleFactor / (1 / minZoomFactor);
+  getZoomedPosition(factor: number, { origin }: { minZoomFactor?: number; origin?: { x: number; y: number } }) {
+    // Fresh scale factor.
+    const scaleFactor = this.getScaleFactor();
+
+    const maxUnderZoom = 1; // @todo config
+    const maxOverZoom = 1; // @todo config
+
+    const realFactor = 1 / factor;
+    const proposedFactor = scaleFactor * realFactor;
+    const isZoomingOut = realFactor < 1;
+
+    if (isZoomingOut) {
+      const width = this.width * scaleFactor;
+      const height = this.height * scaleFactor;
+
+      const widthScale = this.world.width / width;
+      const heightScale = this.world.height / height;
+
+      if (widthScale > heightScale) {
+        // Constrain width
+        // If the proposed world display height.
+        const proposedWorldDisplayWidth = this.world.width * proposedFactor;
+        // Is greater than the display width.
+        const displayWidth = ~~(this.width * scaleFactor);
+        const displayWidthAdjusted = displayWidth * maxUnderZoom;
+
+        if (proposedWorldDisplayWidth < displayWidthAdjusted) {
+          factor = (this.world.width * scaleFactor) / (this.width * scaleFactor * maxUnderZoom);
+        }
+      } else {
+        // Constrain height.
+        // If the proposed world display height.
+        const proposedWorldDisplayHeight = this.world.height * proposedFactor;
+        // Is greater than the display height.
+        const displayHeight = ~~(this.height * scaleFactor);
+        const displayHeightAdjusted = displayHeight * maxUnderZoom;
+
+        if (proposedWorldDisplayHeight < displayHeightAdjusted) {
+          factor = (this.world.height * scaleFactor) / (this.height * scaleFactor * maxUnderZoom);
+        }
+      }
+    } else {
+      // Zooming in.
+      if (proposedFactor > 1) {
+        factor = scaleFactor / maxOverZoom;
+      }
     }
-    if (factor >= 1 && this.scaleFactor / factor < 1 / this.maxScaleFactor) {
-      factor = this.scaleFactor / (1 / this.maxScaleFactor);
-    }
+
     // set the new scale.
     return transform(
       this.target,
@@ -419,8 +452,9 @@ export class Runtime {
    * @param y
    */
   viewerToWorld(x: number, y: number) {
-    this._viewerToWorld.x = this.target[1] + x / this.scaleFactor;
-    this._viewerToWorld.y = this.target[2] + y / this.scaleFactor;
+    const scaleFactor = this.getScaleFactor();
+    this._viewerToWorld.x = this.target[1] + x / scaleFactor;
+    this._viewerToWorld.y = this.target[2] + y / scaleFactor;
     return this._viewerToWorld;
   }
 
@@ -437,7 +471,7 @@ export class Runtime {
   worldToViewer(x: number, y: number, width: number, height: number) {
     const strand = DnaFactory.singleBox(width, height, x, y);
 
-    mutate(strand, compose(scale(this.scaleFactor), translate(-this.target[1], -this.target[2])));
+    mutate(strand, compose(scale(this.getScaleFactor()), translate(-this.target[1], -this.target[2])));
 
     return {
       // visible: visible[0] !== 0,
@@ -537,6 +571,12 @@ export class Runtime {
    */
   render = (t: number) => {
     const delta = t - this.lastTime;
+
+    if (this.fpsLimit && delta < 1000 / this.fpsLimit) {
+      this.stopId = window.requestAnimationFrame(this.render);
+      return;
+    }
+
     this.lastTime = t;
     // First flush
     this.world.flushSubscriptions();
@@ -573,9 +613,9 @@ export class Runtime {
     // Before everything kicks off, add a hook.
     this.renderer.beforeFrame(this.world, delta, this.target);
     // Calculate a scale factor by passing in the height and width of the target.
-    this.scaleFactor = this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2]);
+    const scaleFactor = this.getScaleFactor();
     // Get the points to render based on this scale factor and the current x,y,w,h in the target buffer.
-    const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, this.scaleFactor);
+    const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor);
     const pointsLen = points.length;
     for (let p = 0; p < pointsLen; p++) {
       // each point is an array of [SpacialContent, Strand, Strand]
@@ -638,7 +678,7 @@ export class Runtime {
     // Flush world subscriptions.
     this.world.flushSubscriptions();
     // @todo this could be improved, but will work for now.
-    const updates = this.world.getScheduledUpdates(this.target, this.scaleFactor);
+    const updates = this.world.getScheduledUpdates(this.target, scaleFactor);
     const len = updates.length;
     if (len > 0) {
       for (let i = 0; i < len; i++) {

@@ -25,6 +25,10 @@ export class DebugRenderer implements Renderer {
     return true;
   }
 
+  resize() {
+    // no-op.
+  }
+
   afterFrame(world: World, delta: number, target: Float32Array) {
     // Everything in this debugger happens at the end of the render cycle.
     // This debugger is made to be hacked and changed as needed, so some
