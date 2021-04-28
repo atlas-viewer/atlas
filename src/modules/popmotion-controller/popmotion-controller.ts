@@ -31,7 +31,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   maxZoomFactor: 1,
   minZoomFactor: 0.05,
   zoomDuration: 300,
-  zoomWheelConstant: 100,
+  zoomWheelConstant: 18,
   zoomClamp: 0.6,
   // Pan options.
   panBounceStiffness: 120,
@@ -205,7 +205,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.world.addEventListener('onWheel', e => {
           const normalized = normalizeWheel(e);
 
-          const zoomFactor = 1 + (normalized.pixelY * devicePixelRatio) / zoomWheelConstant;
+          const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;
           runtime.world.zoomTo(
             // Generating a zoom from the wheel delta
             clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
