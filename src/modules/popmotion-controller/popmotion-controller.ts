@@ -54,6 +54,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
   return {
     updatePosition(x, y, width, height) {
       if (state.viewer) {
+        state.viewer.stop();
         state.viewer.update({ x, y, width, height });
       }
     },
@@ -98,14 +99,15 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       // so it will slow down and bounce on the sides.
       runtime.world.activatedEvents.push('onMouseDown', 'onTouchStart');
       listen(runtime.world as any, 'mousedown touchstart').start((e: { touches: [] }) => {
+        const scaleFactor = runtime.getScaleFactor();
         if (runtime.mode === 'explore') {
           const { x, y } = viewer.get() as Position;
           pointer({
-            x: (-x * runtime.scaleFactor) / devicePixelRatio,
-            y: (-y * runtime.scaleFactor) / devicePixelRatio,
+            x: (-x * scaleFactor) / devicePixelRatio,
+            y: (-y * scaleFactor) / devicePixelRatio,
           })
             .pipe((v: Position): Position => ({ x: v.x * devicePixelRatio, y: v.y * devicePixelRatio }))
-            .pipe((v: Position): Position => ({ x: -v.x / runtime.scaleFactor, y: -v.y / runtime.scaleFactor }))
+            .pipe((v: Position): Position => ({ x: -v.x / scaleFactor, y: -v.y / scaleFactor }))
             .start(viewer);
         }
       });
@@ -146,10 +148,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       });
 
       document.addEventListener('keydown', e => {
+        const scaleFactor = runtime.getScaleFactor();
         switch (e.code) {
           case 'ArrowLeft':
             runtime.world.gotoRegion({
-              x: runtime.x - nudgeDistance / runtime.scaleFactor,
+              x: runtime.x - nudgeDistance / scaleFactor,
               y: runtime.y,
               width: runtime.width,
               height: runtime.height,
@@ -158,7 +161,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             break;
           case 'ArrowRight':
             runtime.world.gotoRegion({
-              x: runtime.x + nudgeDistance / runtime.scaleFactor,
+              x: runtime.x + nudgeDistance / scaleFactor,
               y: runtime.y,
               width: runtime.width,
               height: runtime.height,
@@ -168,7 +171,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           case 'ArrowUp':
             runtime.world.gotoRegion({
               x: runtime.x,
-              y: runtime.y - nudgeDistance / runtime.scaleFactor,
+              y: runtime.y - nudgeDistance / scaleFactor,
               width: runtime.width,
               height: runtime.height,
               nudge: true,
@@ -177,7 +180,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           case 'ArrowDown':
             runtime.world.gotoRegion({
               x: runtime.x,
-              y: runtime.y + nudgeDistance / runtime.scaleFactor,
+              y: runtime.y + nudgeDistance / scaleFactor,
               width: runtime.width,
               height: runtime.height,
               nudge: true,
@@ -231,6 +234,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return;
         }
 
+        // @ts-ignore
         inertia({
           min: { x: x1, y: y1 },
           max: { x: x2, y: y2 },
@@ -238,7 +242,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           bounceDamping: panBounceDamping,
           timeConstant: immediate ? 0 : panTimeConstant,
           power: panPower,
-          restDelta: 0,
+          restSpeed: 10,
+          restDelta: 0.5,
           from: viewer.get(),
           velocity: viewer.getVelocity(),
         }).start(viewer);
@@ -256,6 +261,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         const fromPos = runtime.getViewport();
         // set the new scale.
         const newPoints = runtime.getZoomedPosition(factor, { origin, minZoomFactor });
+
         // Need to update our observables, for pop-motion
         if (currentZoom) {
           currentZoom.stop();

@@ -122,7 +122,6 @@ const reconciler = createReconciler({
   appendChildToContainer(runtime: Runtime, world: any) {
     if (world instanceof World) {
       runtime.world = world;
-      runtime._updateScaleFactor();
     } else if (world instanceof WorldObject) {
       runtime.world.appendChild(world);
     } else if (world) {

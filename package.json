@@ -11,6 +11,7 @@
     "build": "NODE_ENV=production rollup -c && tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
     "start": "rollup -c --watch",
     "test": "jest",
+    "storybook": "start-storybook -p 6007",
     "build-types": "tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
     "prepare": "NODE_ENV=production rollup -c && tsc -p ./tsconfig.dist.json --emitDeclarationOnly"
   },
@@ -22,7 +23,7 @@
     "@popmotion/popcorn": "^0.4.4",
     "nanoid": "^3.1.9",
     "normalize-wheel": "^1.0.1",
-    "popmotion": "^8.6.8",
+    "popmotion": "^8.7.6",
     "react": "^16.12.0",
     "react-dom": "^16.12.0",
     "react-reconciler": "^0.25.1",

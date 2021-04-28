@@ -8,6 +8,9 @@ import { ModeContext } from './hooks/use-mode';
 import useMeasure from 'react-use-measure';
 import { AtlasContext, AtlasContextType } from './components/AtlasContext';
 import { BrowserEventManager } from '../browser-event-manager/browser-event-manager';
+import { WebGLRenderer } from '../webgl-renderer/webgl-renderer';
+import { CompositeRenderer } from '../composite-renderer/composite-renderer';
+import { OverlayRenderer } from '../overlay-renderer/overlay-renderer';
 
 type AtlasProps = {
   width: number;
@@ -15,12 +18,15 @@ type AtlasProps = {
   mode?: ViewerMode;
   onCreated?: (ctx: AtlasContextType) => void | Promise<void>;
   resetWorldOnChange?: boolean;
+  unstable_webglRenderer?: boolean;
 };
 
 export const Atlas: React.FC<AtlasProps> = ({
   onCreated,
   mode = 'explore',
   resetWorldOnChange = true,
+  // eslint-disable-next-line
+  unstable_webglRenderer = false,
   children,
   ...restProps
 }) => {
@@ -80,7 +86,6 @@ export const Atlas: React.FC<AtlasProps> = ({
       const rt: Runtime = state.current.runtime;
 
       rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
-      rt.goHome();
       state.current.viewport.width = restProps.width;
       state.current.viewport.height = restProps.height;
       rt.updateNextFrame();
@@ -106,7 +111,6 @@ export const Atlas: React.FC<AtlasProps> = ({
         const rt: Runtime = state.current.runtime;
 
         rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
-        rt._updateScaleFactor();
         state.current.viewport.width = restProps.width;
         state.current.viewport.height = restProps.height;
         rt.updateNextFrame();
@@ -125,6 +129,9 @@ export const Atlas: React.FC<AtlasProps> = ({
       };
 
       useEffect(() => {
+        if (state.current.runtime) {
+          state.current.runtime.goHome();
+        }
         const result = onCreated && onCreated(state.current);
         return void (result && result.then ? result.then(activate) : activate());
       }, []);
@@ -154,10 +161,14 @@ export const Atlas: React.FC<AtlasProps> = ({
     });
     state.current.controller = controller;
 
-    const renderer = new CanvasRenderer(currentCanvas, overlayRef.current, { debug: false });
+    const renderer = new CompositeRenderer([
+      // eslint-disable-next-line @typescript-eslint/camelcase
+      unstable_webglRenderer ? new WebGLRenderer(currentCanvas) : new CanvasRenderer(currentCanvas, { debug: false }),
+      overlayRef.current ? new OverlayRenderer(overlayRef.current) : undefined,
+    ]);
     state.current.renderer = renderer;
 
-    const runtime = new Runtime(renderer, new World(), state.current.viewport, [controller]);
+    const runtime = new Runtime(renderer, new World(1024, 1024), state.current.viewport, [controller]);
     state.current.runtime = runtime;
 
     const em = new BrowserEventManager(currentCanvas, runtime);

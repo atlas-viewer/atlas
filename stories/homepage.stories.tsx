@@ -71,3 +71,28 @@ export const AllEvents = () => {
     </>
   );
 };
+
+export const HTML_Performance = () => {
+  const boxes = [];
+  const number = 25;
+  const size = 150;
+  for (let i = 0; i < number; i++) {
+    for (let j = 0; j < number; j++) {
+      boxes.push(
+        <worldObject key={`${i}-${j}`} id={`${i}-${j}`} width={size} height={size} x={i * size} y={j * size}>
+          <box target={{ x: 0, y: 0, width: size, height: size }} backgroundColor={(j + i) % 2 ? 'red' : 'blue'} />
+        </worldObject>
+      );
+    }
+  }
+
+  return (
+    <Atlas
+      width={400}
+      height={400}
+      onCreated={rt => rt.runtime.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
+    >
+      {boxes}
+    </Atlas>
+  );
+};

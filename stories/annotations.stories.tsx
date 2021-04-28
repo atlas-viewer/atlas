@@ -7,6 +7,7 @@ import { RegionHighlight } from '../src/modules/react-reconciler/components/Regi
 import { useControlledAnnotationList } from '../src/modules/react-reconciler/hooks/use-controlled-annotation-list';
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { Runtime } from '../src/renderer/runtime';
+import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 
 export default { title: 'Annotations' };
 
@@ -22,22 +23,6 @@ const staticTiles = [
     height: 2743,
   },
 ];
-
-export const Wunder = ({ index = 0 }: any) => {
-  const [tiles, setTile] = useState<GetTile | undefined>();
-
-  useEffect(() => {
-    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then(s => {
-      setTile(s);
-    });
-  }, [index]);
-
-  if (!tiles) {
-    return <></>;
-  }
-
-  return <TileSet tiles={tiles} x={0} y={0} width={staticTiles[index].width} height={staticTiles[index].height} />;
-};
 
 const sizes = [
   { width: 800, height: 600 },
@@ -85,6 +70,7 @@ export const SelectionDemo = () => {
     },
   ]);
   const [tileIndex, setTileIndex] = useState(1);
+  const [isWebGL, setIsWebGL] = useState(false);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
 
   const goTo = (data: any) => {
@@ -125,16 +111,19 @@ export const SelectionDemo = () => {
         >
           Change size
         </button>
+        <button onClick={() => setIsWebGL(e => !e)}>Change renderer (current: {isWebGL ? 'WebGL' : 'canvas'})</button>
         <button onClick={() => setTileIndex(i => (i ? 0 : 1))}>Change image</button>
         <div style={{ display: 'flex' }}>
           <div style={{ flex: '1 1 0px' }}>
             <AtlasAuto
+              unstable_webglRenderer={isWebGL}
+              key={isWebGL ? 'webgl' : 'canvas'}
               onCreated={rt => (runtime.current = rt.runtime)}
               mode={isEditing ? 'sketch' : 'explore'}
               style={{ width: size.width + 200, height: size.height }}
             >
               <world onClick={onDeselect}>
-                <Wunder key="wunder" index={tileIndex} />
+                <ImageService key="wunder" {...staticTiles[tileIndex]} />
                 {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
                 {annotations.map(annotation => (
                   <RegionHighlight

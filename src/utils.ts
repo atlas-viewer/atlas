@@ -16,6 +16,22 @@ export function bestResourceAtRatio<T extends SpacialContent>(ratio: number, res
   return best;
 }
 
+export function bestResourceIndexAtRatio<T extends SpacialContent>(ratio: number, resources: T[]): number | never {
+  const len = resources.length;
+  if (len === 0) {
+    throw new Error('No resources passed in.');
+  }
+
+  let best = 0;
+  for (let i = 0; i < len; i++) {
+    if (!resources[i] || !resources[i].display) {
+      break;
+    }
+    best = Math.abs(resources[i].display.scale - ratio) < Math.abs(resources[best].display.scale - ratio) ? i : best;
+  }
+  return best;
+}
+
 export function distance1D(a: number, b: number) {
   return Math.abs(a - b);
 }

@@ -18,4 +18,5 @@ export interface SpacialContent {
   transform(op: Strand): void;
   loadFullResource?(): Promise<void>;
   dispatchEvent(event: string, e: any): void;
+  getImageUrl?: (index: number) => string;
 }

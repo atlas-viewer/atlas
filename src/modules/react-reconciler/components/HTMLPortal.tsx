@@ -27,8 +27,9 @@ export const HTMLPortal: React.FC<{
     if (props.relative) {
       const relativeBox = ref.current;
       if (relativeBox && runtime) {
-        if (lastScale.current !== runtime.scaleFactor) {
-          lastScale.current = runtime.scaleFactor;
+        const scaleFactor = runtime.getScaleFactor();
+        if (lastScale.current !== scaleFactor) {
+          lastScale.current = scaleFactor;
           relativeBox.style.transformOrigin = '0 0';
           relativeBox.style.transform = `scale(${1 / lastScale.current})`;
           relativeBox.style.width = `${lastScale.current * 100}%`;
