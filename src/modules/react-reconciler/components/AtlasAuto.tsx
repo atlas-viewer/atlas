@@ -2,6 +2,7 @@ import { Atlas } from '../Atlas';
 import React, { useEffect } from 'react';
 import useMeasure from 'react-use-measure';
 import { ViewerMode } from '../../../renderer/runtime';
+import { PopmotionControllerConfig } from '../../popmotion-controller/popmotion-controller';
 
 export const AtlasAuto: React.FC<{
   mode?: ViewerMode;
@@ -9,6 +10,7 @@ export const AtlasAuto: React.FC<{
   style?: React.CSSProperties;
   resizeHash?: number;
   unstable_webglRenderer?: boolean;
+  controllerConfig?: PopmotionControllerConfig;
 }> = ({ style, resizeHash, ...props }) => {
   const [ref, bounds, forceRefresh] = useMeasure();
 

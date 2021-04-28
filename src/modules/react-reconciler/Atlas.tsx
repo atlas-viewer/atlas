@@ -3,7 +3,7 @@ import { World } from '../../world';
 import { ReactAtlas } from './reconciler';
 import { CanvasRenderer } from '../canvas-renderer/canvas-renderer';
 import { Runtime, ViewerMode } from '../../renderer/runtime';
-import { popmotionController } from '../popmotion-controller/popmotion-controller';
+import { popmotionController, PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
 import useMeasure from 'react-use-measure';
 import { AtlasContext, AtlasContextType } from './components/AtlasContext';
@@ -19,6 +19,7 @@ type AtlasProps = {
   onCreated?: (ctx: AtlasContextType) => void | Promise<void>;
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
+  controllerConfig?: PopmotionControllerConfig;
 };
 
 export const Atlas: React.FC<AtlasProps> = ({
@@ -27,6 +28,7 @@ export const Atlas: React.FC<AtlasProps> = ({
   resetWorldOnChange = true,
   // eslint-disable-next-line
   unstable_webglRenderer = false,
+  controllerConfig,
   children,
   ...restProps
 }) => {
@@ -158,6 +160,7 @@ export const Atlas: React.FC<AtlasProps> = ({
       minZoomFactor: 0.5,
       maxZoomFactor: 3,
       enableClickToZoom: false,
+      ...(controllerConfig || {}),
     });
     state.current.controller = controller;
 
