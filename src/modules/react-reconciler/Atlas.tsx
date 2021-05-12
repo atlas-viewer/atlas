@@ -221,7 +221,7 @@ export const Atlas: React.FC<AtlasProps> = ({
       window.removeEventListener('keyup', keyupSpace);
     };
 
-    window.addEventListener('keydown', e => {
+    const keydownSpace = (e: KeyboardEvent) => {
       if (e.code === 'Space' && state.current.runtime && state.current.runtime.mode === 'sketch') {
         if (e.target && (e.target as any).tagName && (e.target as any).tagName.toLowerCase() === 'input') return;
         e.preventDefault();
@@ -229,10 +229,14 @@ export const Atlas: React.FC<AtlasProps> = ({
         setContainerClassName('mode-explore');
         window.addEventListener('keyup', keyupSpace);
       }
-    });
+    };
+
+    window.addEventListener('keydown', keydownSpace);
 
     return () => {
       // no-op
+      window.removeEventListener('keydown', keydownSpace);
+      window.removeEventListener('keyup', keyupSpace);
     };
   });
 

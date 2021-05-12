@@ -22,6 +22,7 @@ export type PopmotionControllerConfig = {
   devicePixelRatio?: number;
   enableWheel?: boolean;
   enableClickToZoom?: boolean;
+  onPanInSketchMode?: () => void;
 };
 
 export const defaultConfig: Required<PopmotionControllerConfig> = {
@@ -44,6 +45,9 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   // Flags
   enableWheel: true,
   enableClickToZoom: false,
+  onPanInSketchMode: () => {
+    // no-op
+  },
 };
 
 export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
@@ -73,6 +77,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         enableWheel,
         enableClickToZoom,
         devicePixelRatio,
+        onPanInSketchMode,
       } = {
         ...defaultConfig,
         ...config,
@@ -98,6 +103,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       // These two control the dragging, panning and zooming. The second has inertia
       // so it will slow down and bounce on the sides.
       runtime.world.activatedEvents.push('onMouseDown', 'onTouchStart');
+      let didWarn = false;
       listen(runtime.world as any, 'mousedown touchstart').start((e: { touches: [] }) => {
         const scaleFactor = runtime.getScaleFactor();
         if (runtime.mode === 'explore') {
@@ -109,6 +115,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             .pipe((v: Position): Position => ({ x: v.x * devicePixelRatio, y: v.y * devicePixelRatio }))
             .pipe((v: Position): Position => ({ x: -v.x / scaleFactor, y: -v.y / scaleFactor }))
             .start(viewer);
+        } else if (!didWarn) {
+          didWarn = true;
+          onPanInSketchMode();
         }
       });
 
@@ -147,47 +156,48 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       });
 
-      document.addEventListener('keydown', e => {
-        const scaleFactor = runtime.getScaleFactor();
-        switch (e.code) {
-          case 'ArrowLeft':
-            runtime.world.gotoRegion({
-              x: runtime.x - nudgeDistance / scaleFactor,
-              y: runtime.y,
-              width: runtime.width,
-              height: runtime.height,
-              nudge: true,
-            });
-            break;
-          case 'ArrowRight':
-            runtime.world.gotoRegion({
-              x: runtime.x + nudgeDistance / scaleFactor,
-              y: runtime.y,
-              width: runtime.width,
-              height: runtime.height,
-              nudge: true,
-            });
-            break;
-          case 'ArrowUp':
-            runtime.world.gotoRegion({
-              x: runtime.x,
-              y: runtime.y - nudgeDistance / scaleFactor,
-              width: runtime.width,
-              height: runtime.height,
-              nudge: true,
-            });
-            break;
-          case 'ArrowDown':
-            runtime.world.gotoRegion({
-              x: runtime.x,
-              y: runtime.y + nudgeDistance / scaleFactor,
-              width: runtime.width,
-              height: runtime.height,
-              nudge: true,
-            });
-            break;
-        }
-      });
+      // Removing nudge. This can be implemented in user-space.
+      // document.addEventListener('keydown', e => {
+      //   const scaleFactor = runtime.getScaleFactor();
+      //   switch (e.code) {
+      //     case 'ArrowLeft':
+      //       runtime.world.gotoRegion({
+      //         x: runtime.x - nudgeDistance / scaleFactor,
+      //         y: runtime.y,
+      //         width: runtime.width,
+      //         height: runtime.height,
+      //         nudge: true,
+      //       });
+      //       break;
+      //     case 'ArrowRight':
+      //       runtime.world.gotoRegion({
+      //         x: runtime.x + nudgeDistance / scaleFactor,
+      //         y: runtime.y,
+      //         width: runtime.width,
+      //         height: runtime.height,
+      //         nudge: true,
+      //       });
+      //       break;
+      //     case 'ArrowUp':
+      //       runtime.world.gotoRegion({
+      //         x: runtime.x,
+      //         y: runtime.y - nudgeDistance / scaleFactor,
+      //         width: runtime.width,
+      //         height: runtime.height,
+      //         nudge: true,
+      //       });
+      //       break;
+      //     case 'ArrowDown':
+      //       runtime.world.gotoRegion({
+      //         x: runtime.x,
+      //         y: runtime.y + nudgeDistance / scaleFactor,
+      //         width: runtime.width,
+      //         height: runtime.height,
+      //         nudge: true,
+      //       });
+      //       break;
+      //   }
+      // });
 
       // Click to zoom functionality.
       // @todo come back to this.
