@@ -1,4 +1,5 @@
 import React, { EventHandler, MouseEvent, TouchEvent, PointerEvent, DragEvent, UIEvent, WheelEvent } from 'react';
+import { UpdateTextureFunction } from '../../spacial-content/image-texture';
 
 type BaseElement = {
   id?: string;
@@ -69,6 +70,11 @@ declare global {
       } & AllEvents;
       worldImage: BaseElement & {
         uri: string;
+        target: any;
+        display: any;
+      } & AllEvents;
+      texture: BaseElement & {
+        getTexture: UpdateTextureFunction;
         target: any;
         display: any;
       } & AllEvents;

@@ -19,6 +19,7 @@ export default [
         format: 'umd',
         sourcemap: true,
         globals: {
+          crypto: 'crypto',
           react: 'React',
           'react-dom': 'ReactDOM',
           'react-reconciler': 'ReactReconciler',
@@ -26,10 +27,40 @@ export default [
         },
       },
     ],
-    external: ['react', 'react-dom', 'react-reconciler', 'scheduler'],
+    external: ['crypto', 'react', 'react-dom', 'react-reconciler', 'scheduler'],
     plugins: [
       typescript({ target: 'es5' }),
-      resolve(), // so Rollup can find `ms`
+      resolve({
+        browser: true,
+      }), // so Rollup can find `ms`
+      replace({
+        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
+        'process.env.VERSION': JSON.stringify(pkg.version),
+      }),
+      commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
+      isProduction && terser(),
+      isProduction && compiler(),
+    ].filter(Boolean),
+  },
+  {
+    input: 'src/standalone.ts',
+    output: [
+      {
+        file: `dist/standalone.umd.js`,
+        name: 'Atlas',
+        format: 'umd',
+        sourcemap: true,
+        globals: {
+          crypto: 'crypto',
+        },
+      },
+    ],
+    external: ['crypto'],
+    plugins: [
+      typescript({ target: 'es5' }),
+      resolve({
+        browser: true,
+      }), // so Rollup can find `ms`
       replace({
         'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
         'process.env.VERSION': JSON.stringify(pkg.version),

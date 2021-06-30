@@ -13,13 +13,13 @@
     "test": "jest",
     "storybook": "start-storybook -p 6007",
     "build-types": "tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
-    "prepare": "NODE_ENV=production rollup -c && tsc -p ./tsconfig.dist.json --emitDeclarationOnly"
+    "prepare": "NODE_ENV=production rollup -c && tsc -p ./tsconfig.dist.json --emitDeclarationOnly && cp ./experimental/web-components.js ./dist/web-components.js"
   },
   "dependencies": {
     "@atlas-viewer/dna": "^0.5.0",
-    "@atlas-viewer/iiif-image-api": "1.2.1",
-    "@hyperion-framework/types": "1.0.0-alpha.14",
-    "@hyperion-framework/vault": "1.0.0-alpha.19",
+    "@atlas-viewer/iiif-image-api": "^1.2.5",
+    "@hyperion-framework/types": "^1.0.0",
+    "@hyperion-framework/vault": "^1.0.0",
     "@popmotion/popcorn": "^0.4.4",
     "nanoid": "^3.1.9",
     "normalize-wheel": "^1.0.1",

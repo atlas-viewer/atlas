@@ -1,5 +1,5 @@
 import React from 'react';
-import { GetTile } from '../../iiif/get-tiles';
+import { GetTile } from '../../iiif/shared';
 
 export const TileSet: React.FC<{
   tiles: GetTile;

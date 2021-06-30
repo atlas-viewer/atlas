@@ -8,6 +8,7 @@ import { Strand } from '@atlas-viewer/dna';
 import { World } from '../../world';
 import { Paint } from '../../world-objects/paint';
 import { PositionPair } from '../../types';
+import { ImageTexture } from '../../spacial-content/image-texture';
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
@@ -140,7 +141,35 @@ export class WebGLRenderer implements Renderer {
         // create it if it does not exist.
         this.createImageHost(paint);
       }
+      if (paint instanceof ImageTexture) {
+        this.createTextureHost(paint);
+      }
     }
+  }
+
+  createTextureHost(paint: ImageTexture) {
+    paint.__host = paint.__host ? paint.__host : {};
+
+    const gl = this.gl;
+    const texture = this.gl.createTexture();
+    const initial = paint.getTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    if (initial.source) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+    }
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    paint.__host.webgl = {
+      height: paint.height,
+      width: paint.width,
+      texture,
+      lastImage: initial,
+    };
   }
 
   createImageHost(paint: SingleImage | TiledImage) {
@@ -175,7 +204,24 @@ export class WebGLRenderer implements Renderer {
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
     if (paint.type === 'spacial-content') {
       if (paint.__host && paint.__host.webgl) {
-        if (paint.__host.webgl.loading.indexOf(index) === -1 && paint.getImageUrl) {
+        if (paint.getTexture) {
+          const newText = paint?.getTexture();
+          if (newText && paint.__host.webgl.lastImage !== newText.hash && newText.source && !paint.__host.webgl.error) {
+            try {
+              const level = 0;
+              const internalFormat = this.gl.RGBA;
+              const srcFormat = this.gl.RGBA;
+              const srcType = this.gl.UNSIGNED_BYTE;
+              this.gl.bindTexture(this.gl.TEXTURE_2D, paint.__host.webgl.texture);
+              this.gl.texImage2D(this.gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, newText.source);
+              paint.__host.webgl.lastImage = newText.hash;
+            } catch (e) {
+              paint.__host.webgl.error = e;
+            }
+          }
+        }
+
+        if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) === -1 && paint.getImageUrl) {
           paint.__host.webgl.loading.push(index);
           const image = document.createElement('img');
           image.decoding = 'async';
@@ -187,7 +233,7 @@ export class WebGLRenderer implements Renderer {
           };
         }
 
-        const texture = paint.__host.webgl.textures[index];
+        const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
         if (texture) {
           this.gl.enableVertexAttribArray(this.attributes.texCoord);
 

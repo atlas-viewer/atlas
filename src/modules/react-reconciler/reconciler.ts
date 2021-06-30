@@ -11,6 +11,7 @@ import { CompositeResource } from '../../spacial-content/composite-resource';
 import { Text } from '../../objects/text';
 import { Box } from '../../objects/box';
 import { supportedEvents } from '../../events';
+import { ImageTexture } from '../../spacial-content/image-texture';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
@@ -89,6 +90,9 @@ const reconciler = createReconciler({
         break;
       case 'worldImage':
         instance = new SingleImage();
+        break;
+      case 'texture':
+        instance = new ImageTexture();
         break;
       case 'compositeImage':
         // @todo switch to applyProps

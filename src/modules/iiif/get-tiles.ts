@@ -6,21 +6,10 @@ import {
   ManifestNormalized,
 } from '@hyperion-framework/types';
 import { Vault } from '@hyperion-framework/vault';
+import { getId, GetTile } from './shared';
 
 const vault = new Vault();
 const loader = vault.getImageService();
-
-export type GetTile = {
-  id: string;
-  width: number;
-  height: number;
-  thumbnail?: { id: string; width: number; height: number };
-  imageService: ImageService;
-};
-
-export function getId(entity: any): string {
-  return entity.id || entity['@id'];
-}
 
 export async function getTileFromImageService(infoJsonId: string, width: number, height: number): Promise<GetTile> {
   const imageService = await loader.loadService({

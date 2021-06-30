@@ -1,6 +1,8 @@
 import * as React from 'react';
 import '../src/modules/react-reconciler/types';
 import { Atlas } from '../src/modules/react-reconciler/Atlas';
+import { useCallback, useRef } from 'react';
+import { UpdateTextureFunction } from '../src/spacial-content/image-texture';
 
 export default { title: 'Atlas demos' };
 
@@ -72,7 +74,7 @@ export const AllEvents = () => {
   );
 };
 
-export const HTML_Performance = () => {
+export const HTMLPerformance = () => {
   const boxes = [];
   const number = 25;
   const size = 150;
@@ -90,9 +92,42 @@ export const HTML_Performance = () => {
     <Atlas
       width={400}
       height={400}
-      onCreated={rt => rt.runtime.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
+      onCreated={rt => rt.runtime?.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
     >
       {boxes}
     </Atlas>
+  );
+};
+
+export const RawTexture = () => {
+  const video = useRef<HTMLVideoElement>(null);
+
+  const updateTexture: UpdateTextureFunction = useCallback(() => {
+    if (video.current) {
+      return { source: video.current, hash: video.current.currentTime };
+    }
+    return { source: undefined, hash: -1 };
+  }, [video]);
+
+  return (
+    <>
+      <Atlas width={1280} height={720} unstable_webglRenderer>
+        <worldObject x={0} y={0} height={1080} width={1920}>
+          <texture
+            getTexture={updateTexture}
+            target={{ x: 0, y: 0, height: 1080, width: 1920 }}
+            display={{ height: 1080, width: 1920 }}
+          />
+        </worldObject>
+      </Atlas>
+      <video
+        style={{ opacity: 0 }}
+        width={200}
+        ref={video}
+        src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+        crossOrigin="anonymous"
+      />
+      <button onClick={() => video.current?.play()}>play</button>
+    </>
   );
 };

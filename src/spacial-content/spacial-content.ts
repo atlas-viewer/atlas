@@ -2,6 +2,7 @@ import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
 import { Strand } from '@atlas-viewer/dna';
 import { CompositeResource } from './composite-resource';
+import { UpdateTextureFunction } from './image-texture';
 
 export interface SpacialContent {
   readonly id: string;
@@ -19,4 +20,5 @@ export interface SpacialContent {
   loadFullResource?(): Promise<void>;
   dispatchEvent(event: string, e: any): void;
   getImageUrl?: (index: number) => string;
+  getTexture?: UpdateTextureFunction;
 }

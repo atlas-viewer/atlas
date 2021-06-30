@@ -8,6 +8,7 @@ export * from './components/HTMLPortal';
 export * from './components/RegionHighlight';
 export * from './components/ResizeWorldItem';
 export * from './components/TileSet';
+export * from './components/ImageService';
 // Hooks
 export * from './hooks/use-after-frame';
 export * from './hooks/use-after-paint';
