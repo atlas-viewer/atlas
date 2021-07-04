@@ -106,14 +106,11 @@ export class BrowserEventManager {
   onWheelEvent = (e: WheelEvent) => {
     e.preventDefault();
 
-    const origin = this.runtime.viewerToWorld(e.pageX - this.bounds.left, e.pageY - this.bounds.top);
-    this.assignToEvent(e, origin.x, origin.y);
-
     this.onPointerEvent(e);
   };
 
   onTouchEvent = (e: TouchEvent) => {
-    const type = supportedEventMap[e.type as any];
+    const type = (supportedEventMap as any)[e.type as any];
     const atlasTouches = [];
     // const atlasTargetTouches = [];
     const len = e.touches.length;
@@ -142,9 +139,9 @@ export class BrowserEventManager {
   };
 
   onPointerEvent = (e: PointerEvent | MouseEvent) => {
-    const ev = supportedEventMap[e.type as any];
+    const ev = (supportedEventMap as any)[e.type as any];
     if (ev && this.runtime.world.activatedEvents.indexOf(ev) !== -1) {
-      const { x, y } = this.runtime.viewerToWorld(e.pageX - this.bounds.left, e.pageY - this.bounds.top);
+      const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
       this.assignToEvent(e, x, y);
       this.runtime.world.propagatePointerEvent(ev as any, e, x, y);
     }

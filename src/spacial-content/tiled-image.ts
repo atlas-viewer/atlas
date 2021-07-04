@@ -4,6 +4,7 @@ import { Paint } from '../world-objects';
 import { Memoize } from 'typescript-memoize';
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from './spacial-content';
+import { stripInfoJson } from '../utils';
 
 export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
@@ -14,7 +15,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
 
   constructor(data: { url: string; scaleFactor: number; points: Strand; width: number; height: number }) {
     super();
-    this.id = data.url;
+    this.id = stripInfoJson(data.url);
     this.points = transform(data.points, scale(data.scaleFactor));
     this.display = {
       width: data.width / data.scaleFactor,

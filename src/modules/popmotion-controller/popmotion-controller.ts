@@ -129,7 +129,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       let isPressing = false;
 
       runtime.world.activatedEvents.push('onTouchStart');
-      runtime.world.addEventListener('onTouchStart', e => {
+      runtime.world.addEventListener('touchstart', e => {
         if (runtime.mode === 'explore') {
           isPressing = true;
         }
@@ -143,7 +143,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       });
 
       runtime.world.activatedEvents.push('onMouseDown');
-      runtime.world.addEventListener('onMouseDown', e => {
+      runtime.world.addEventListener('mousedown', e => {
         isPressing = true;
       });
 
@@ -212,7 +212,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       if (enableWheel) {
         runtime.world.activatedEvents.push('onWheel');
-        runtime.world.addEventListener('onWheel', e => {
+        runtime.world.addEventListener('wheel', e => {
           const normalized = normalizeWheel(e);
 
           const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;

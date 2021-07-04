@@ -41,3 +41,11 @@ export function distance(a: { x: number; y: number }, b: { x: number; y: number 
   const yDelta = distance1D(a.y, b.y);
   return Math.sqrt(Math.pow(xDelta, 2) + Math.pow(yDelta, 2));
 }
+
+export function stripInfoJson(id: string): string {
+  const len = id.length;
+  if (id.indexOf('/info.json') === len - 10) {
+    return id.slice(0, -10);
+  }
+  return id;
+}

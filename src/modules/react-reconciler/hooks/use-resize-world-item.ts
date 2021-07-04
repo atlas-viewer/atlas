@@ -43,7 +43,7 @@ export const useResizeWorldItem = (
 
   const onPointerMoveCallback = useCallback(
     e => {
-      const position = e.atlasTouches ? e.atlasTouches[0] : e.atlas ? e.atlas : { x: e.pageX, y: e.pageY};
+      const position = e.atlasTouches ? e.atlasTouches[0] : e.atlas ? e.atlas : { x: e.pageX, y: e.pageY };
 
       if (!runtime || runtime.mode !== 'sketch') return;
       const box = portalRef.current;
@@ -93,8 +93,8 @@ export const useResizeWorldItem = (
     [runtime, props.width, props.height]
   );
 
-  useWorldEvent('onMouseMove', onPointerMoveCallback, [props.width, props.height]);
-  useWorldEvent('onPointerMove', onPointerMoveCallback, [props.width, props.height]);
+  useWorldEvent('mousemove', onPointerMoveCallback, [props.width, props.height]);
+  useWorldEvent('pointermove', onPointerMoveCallback, [props.width, props.height]);
 
   const windowPointerUp = useRef<() => void>();
 
@@ -130,7 +130,7 @@ export const useResizeWorldItem = (
     return () => {
       window.removeEventListener('pointerup', cb);
       window.removeEventListener('touchend', cb);
-    }
+    };
   }, []);
 
   // useEffect(() => {

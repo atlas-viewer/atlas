@@ -38,9 +38,9 @@ export function createDefaultEventMap(): SupportedEventMap {
 }
 
 export const supportedEventMap = supportedEvents.reduce((acc, ev) => {
-  acc[ev.slice(2).toLowerCase()] = ev;
+  (acc as any)[ev.slice(2).toLowerCase()] = ev;
   return acc;
-}, {} as { [ev: string]: string });
+}, {} as { [ev in SupportedEventNames]: keyof SupportedEvents });
 
 export type SupportedEvents = {
   onMouseDown(e: any): void;
@@ -72,6 +72,36 @@ export type SupportedEvents = {
   onDrag(e: any): void;
   onDragOver(e: any): void;
 };
+
+export type SupportedEventNames =
+  | 'mousedown'
+  | 'mouseenter'
+  | 'mouseleave'
+  | 'mousemove'
+  | 'mouseout'
+  | 'mouseover'
+  | 'mouseup'
+  | 'touchcancel'
+  | 'touchend'
+  | 'touchmove'
+  | 'touchstart'
+  | 'pointerdown'
+  | 'pointermove'
+  | 'pointerup'
+  | 'pointercancel'
+  | 'pointerenter'
+  | 'pointerleave'
+  | 'pointerover'
+  | 'pointerout'
+  | 'scroll'
+  | 'wheel'
+  | 'click'
+  | 'dragstart'
+  | 'dragend'
+  | 'dragenter'
+  | 'dragexit'
+  | 'drag'
+  | 'dragover';
 
 export type SupportedEventMap = {
   [Name in keyof SupportedEvents]: Array<SupportedEvents[Name]>;

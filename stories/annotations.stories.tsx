@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import * as React from 'react';
+import { useRef, useState } from 'react';
 import '../src/modules/react-reconciler/types';
-import { GetTile, getTileFromImageService } from '../src/modules/iiif/get-tiles';
-import { TileSet } from '../src/modules/react-reconciler/components/TileSet';
+import { GetTile } from '../src/modules/iiif/get-tiles';
 import { DrawBox } from '../src/modules/react-reconciler/components/BoxDraw';
 import { RegionHighlight } from '../src/modules/react-reconciler/components/RegionHighlight';
 import { useControlledAnnotationList } from '../src/modules/react-reconciler/hooks/use-controlled-annotation-list';

@@ -36,7 +36,8 @@ function applyProps(instance: any, oldProps: any, newProps: any) {
     instance.applyProps(newProps);
   }
   if (instance instanceof BaseObject) {
-    for (const event of supportedEvents) {
+    for (const ev of supportedEvents) {
+      const event = ev.slice(2).toLowerCase();
       if (newProps[event] !== oldProps[event]) {
         if (oldProps[event]) {
           instance.removeEventListener(event as any, oldProps[event]);

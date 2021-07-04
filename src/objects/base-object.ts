@@ -4,7 +4,13 @@ import { mutate, scaleAtOrigin, Strand, translate } from '@atlas-viewer/dna';
 import { Paint } from '../world-objects/paint';
 import { nanoid } from 'nanoid';
 import { CompositeResource } from '../spacial-content/composite-resource';
-import { createDefaultEventMap, SupportedEventMap, supportedEventMap, SupportedEvents } from '../events';
+import {
+  createDefaultEventMap,
+  SupportedEventMap,
+  supportedEventMap,
+  SupportedEventNames,
+  SupportedEvents,
+} from '../events';
 
 export abstract class BaseObject<Props = any, SupportedChildElements = never>
   implements AtlasObjectModel<Props, SupportedChildElements> {
@@ -40,17 +46,14 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     this.eventHandlers = createDefaultEventMap();
   }
 
-  addEventListener = <Name extends keyof SupportedEvents>(
+  addEventListener = <Name extends SupportedEventNames>(
     name: Name,
-    cb: SupportedEvents[Name],
+    cb: (e: any) => void,
     options?: { capture: boolean; passive: boolean }
   ) => {
-    let event = name;
-    if (!this.eventHandlers[name]) {
-      event = supportedEventMap[name] as any;
-      if (!this.eventHandlers[event]) {
-        throw new Error(`Unknown event ${event}`);
-      }
+    const event: keyof SupportedEvents = supportedEventMap[name];
+    if (!this.eventHandlers[event]) {
+      throw new Error(`Unknown event ${event}`);
     }
 
     if (this.eventHandlers[event].indexOf(cb) === -1) {
@@ -58,17 +61,14 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     }
   };
 
-  removeEventListener = <Name extends keyof SupportedEvents>(name: Name, cb: SupportedEvents[Name]) => {
-    let event = name;
-    if (!this.eventHandlers[name]) {
-      event = supportedEventMap[name] as any;
-      if (!this.eventHandlers[event]) {
-        console.warn(`Unknown event ${event}`);
-        return;
-      }
+  removeEventListener = <Name extends SupportedEventNames>(name: Name, cb: (e: any) => void) => {
+    const event = supportedEventMap[name];
+    if (!this.eventHandlers[event]) {
+      console.warn(`Unknown event ${event}`);
+      return;
     }
-    if (this.eventHandlers[name].indexOf(cb) !== -1) {
-      this.eventHandlers[name] = (this.eventHandlers[name] as any).filter((e: any) => e !== cb);
+    if (this.eventHandlers[event].indexOf(cb) !== -1) {
+      this.eventHandlers[event] = (this.eventHandlers[event] as any).filter((e: any) => e !== cb);
     }
   };
 
