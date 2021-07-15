@@ -44,10 +44,6 @@ export class CompositeResource extends AbstractContent
     this.addImages(data.images);
   }
 
-  getProps() {
-    return {};
-  }
-
   applyProps(props: CompositeResourceProps) {
     // @todo.
   }

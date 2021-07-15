@@ -1,5 +1,4 @@
 export interface AtlasObjectModel<Props, SupportedChildElements> {
-  getProps(): Props;
   applyProps(props: Props): void;
 
   appendChild(item: SupportedChildElements): void;

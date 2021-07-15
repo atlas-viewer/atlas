@@ -3,6 +3,9 @@ import '../src/modules/react-reconciler/types';
 import { Atlas } from '../src/modules/react-reconciler/Atlas';
 import { useCallback, useRef } from 'react';
 import { UpdateTextureFunction } from '../src/spacial-content/image-texture';
+// @ts-ignore
+import img from './assets/img.png';
+import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 
 export default { title: 'Atlas demos' };
 
@@ -11,13 +14,29 @@ export const Default = () => (
     <h1>Atlas</h1>
     <p>A thing.</p>
     <Atlas width={600} height={400}>
-      <worldObject id="1" height={1800} width={1200}>
-        <worldImage
-          uri="http://iiif.io/api/presentation/2.1/example/fixtures/resources/page1-full.png"
-          target={{ width: 1200, height: 1800 }}
+      <world-object id="1" height={900} width={600} x={300} y={300} scale={1}>
+        <world-image
+          uri={img}
+          target={{ width: 600, height: 900, x: 0, y: 0 }}
           display={{ width: 1200, height: 1800 }}
         />
-      </worldObject>
+      </world-object>
+
+      <world-object id="2" height={900} width={600} x={1200} y={300} scale={3}>
+        <world-image
+          uri={img}
+          target={{ width: 600, height: 900, x: 0, y: 0 }}
+          display={{ width: 1200, height: 1800 }}
+        />
+      </world-object>
+
+      <world-object id="3" height={500} width={500} x={3300} y={300} scale={3}>
+        <world-image
+          uri={img}
+          target={{ width: 1200, height: 1800, x: -200, y: -100 }}
+          display={{ width: 1200, height: 1800 }}
+        />
+      </world-object>
     </Atlas>
   </>
 );

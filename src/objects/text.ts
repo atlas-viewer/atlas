@@ -1,4 +1,4 @@
-import { TextWrapperOptions } from "../types";
+import { TextWrapperOptions } from '../types';
 import { BaseObject } from './base-object';
 import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
 import { SpacialContent } from '../spacial-content/spacial-content';
@@ -21,10 +21,6 @@ export type TextProps = TextWrapperOptions & {
 };
 
 export class Text extends BaseObject<TextProps> implements SpacialContent {
-  getProps(): any {
-    return {};
-  }
-
   type: 'spacial-content' = 'spacial-content';
   id: string;
   points: Strand;

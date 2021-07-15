@@ -1,4 +1,4 @@
-export const supportedEvents = [
+export const supportedEventAttributes = [
   'onMouseDown',
   'onMouseEnter',
   'onMouseLeave',
@@ -31,14 +31,15 @@ export const supportedEvents = [
 ];
 
 export function createDefaultEventMap(): SupportedEventMap {
-  return supportedEvents.reduce((acc, next) => {
+  return supportedEventAttributes.reduce((acc, next) => {
     (acc as any)[next] = [];
     return acc;
   }, {} as SupportedEventMap);
 }
 
-export const supportedEventMap = supportedEvents.reduce((acc, ev) => {
+export const supportedEventMap = supportedEventAttributes.reduce((acc, ev) => {
   (acc as any)[ev.slice(2).toLowerCase()] = ev;
+  (acc as any)[ev] = ev;
   return acc;
 }, {} as { [ev in SupportedEventNames]: keyof SupportedEvents });
 

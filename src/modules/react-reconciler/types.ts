@@ -68,7 +68,20 @@ declare global {
         x?: number;
         y?: number;
       } & AllEvents;
+      ['world-object']: BaseElement & {
+        children?: React.ReactNode;
+        height: number;
+        scale?: number;
+        width: number;
+        x?: number;
+        y?: number;
+      } & AllEvents;
       worldImage: BaseElement & {
+        uri: string;
+        target: any;
+        display: any;
+      } & AllEvents;
+      ['world-image']: BaseElement & {
         uri: string;
         target: any;
         display: any;
@@ -83,8 +96,20 @@ declare global {
         width: number;
         height: number;
         children?: React.ReactNode;
+      };
+      ['composite-image']: BaseElement & {
+        id?: string;
+        width: number;
+        height: number;
+        children?: React.ReactNode;
       } & AllEvents;
       tiledImage: BaseElement & {
+        uri: string;
+        display: { width: number; height: number };
+        tile: { width: number; height?: number };
+        scaleFactor: number;
+      } & AllEvents;
+      ['tiled-image']: BaseElement & {
         uri: string;
         display: { width: number; height: number };
         tile: { width: number; height?: number };

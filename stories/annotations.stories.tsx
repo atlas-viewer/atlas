@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { useRef, useState } from 'react';
 import '../src/modules/react-reconciler/types';
-import { GetTile } from '../src/modules/iiif/get-tiles';
 import { DrawBox } from '../src/modules/react-reconciler/components/BoxDraw';
 import { RegionHighlight } from '../src/modules/react-reconciler/components/RegionHighlight';
 import { useControlledAnnotationList } from '../src/modules/react-reconciler/hooks/use-controlled-annotation-list';
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { Runtime } from '../src/renderer/runtime';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
+import { Atlas } from '../src/modules/react-reconciler/Atlas';
 
 export default { title: 'Annotations' };
 
@@ -21,6 +21,12 @@ const staticTiles = [
     id: 'https://iiif.bodleian.ox.ac.uk/iiif/image/5009dea1-d1ae-435d-a43d-453e3bad283f/info.json',
     width: 4093,
     height: 2743,
+  },
+  {
+    id:
+      'https://iiif.ghentcdh.ugent.be/iiif/images/getuigenissen:brugse_vrije:RABrugge_I15_16999_V02:RABrugge_I15_16999_V02_01/info.json',
+    width: 2677,
+    height: 4117,
   },
 ];
 
@@ -112,7 +118,7 @@ export const SelectionDemo = () => {
           Change size
         </button>
         <button onClick={() => setIsWebGL(e => !e)}>Change renderer (current: {isWebGL ? 'WebGL' : 'canvas'})</button>
-        <button onClick={() => setTileIndex(i => (i ? 0 : 1))}>Change image</button>
+        <button onClick={() => setTileIndex(i => (i + 1) % staticTiles.length)}>Change image</button>
         <div style={{ display: 'flex' }}>
           <div style={{ flex: '1 1 0px' }}>
             <AtlasAuto

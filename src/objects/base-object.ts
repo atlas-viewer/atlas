@@ -25,6 +25,8 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   layers: SupportedChildElements[] = [];
   time: WorldTime[] = [];
 
+  crop?: Strand;
+
   // To be set by implementation constructor.
   id: string;
   abstract points: Strand;
@@ -107,8 +109,6 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   transform(op: Strand): void {
     mutate(this.points, op);
   }
-
-  abstract getProps(): Props;
 
   applyProps(props: Props): void {
     // do nothing.

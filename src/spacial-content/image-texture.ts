@@ -68,8 +68,4 @@ export class ImageTexture extends BaseObject implements SpacialContent {
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {
     return [[this as any, this.points, aggregate]];
   }
-
-  getProps(): any {
-    return {};
-  }
 }

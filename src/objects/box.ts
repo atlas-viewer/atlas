@@ -19,10 +19,6 @@ export type BoxProps = {
 };
 
 export class Box extends BaseObject<BoxProps> implements SpacialContent {
-  getProps(): any {
-    return {};
-  }
-
   id: string;
   type: 'spacial-content' = 'spacial-content';
   points: Strand;

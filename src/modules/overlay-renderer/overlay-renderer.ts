@@ -15,12 +15,14 @@ export class OverlayRenderer implements Renderer {
   previousVisible: Array<Text | Box | SpacialContent> = [];
   htmlIds: string[] = [];
   firstMeaningfulPaint = false;
+  options: { box?: boolean; text?: boolean } = {};
 
-  constructor(htmlContainer: HTMLDivElement) {
+  constructor(htmlContainer: HTMLDivElement, options: { box?: boolean; text?: boolean } = { box: true, text: true }) {
     this.htmlContainer = htmlContainer;
     const { width, height } = this.htmlContainer.getBoundingClientRect();
     this.width = width;
     this.height = height;
+    this.options = options;
   }
 
   createHtmlHost(paint: Text | Box) {
@@ -47,7 +49,7 @@ export class OverlayRenderer implements Renderer {
         div.style.pointerEvents = 'all';
       }
 
-      if (paint instanceof Text) {
+      if (this.options.text && paint instanceof Text) {
         if (paint.text) {
           div.innerText = paint.text;
         }
@@ -65,7 +67,7 @@ export class OverlayRenderer implements Renderer {
         }
         paint.__host.revision = paint.__revision;
       }
-      if (paint instanceof Box) {
+      if (this.options.box && paint instanceof Box) {
         if (paint.props.backgroundColor) {
           div.style.backgroundColor = paint.props.backgroundColor;
         }
@@ -125,7 +127,7 @@ export class OverlayRenderer implements Renderer {
   }
 
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
-    if (paint instanceof Text || paint instanceof Box) {
+    if ((this.options.text && paint instanceof Text) || (this.options.box && paint instanceof Box)) {
       this.visible.push(paint);
 
       if (this.htmlContainer) {

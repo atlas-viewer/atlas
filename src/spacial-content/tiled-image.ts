@@ -10,13 +10,23 @@ export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
   readonly type = 'spacial-content';
   readonly display: DisplayData;
+  tileWidth: number;
 
   points: Strand;
 
-  constructor(data: { url: string; scaleFactor: number; points: Strand; width: number; height: number }) {
+  constructor(data: {
+    url: string;
+    scaleFactor: number;
+    points: Strand;
+    displayPoints?: Strand;
+    tileWidth: number;
+    width: number;
+    height: number;
+  }) {
     super();
     this.id = stripInfoJson(data.url);
-    this.points = transform(data.points, scale(data.scaleFactor));
+    this.points = data.displayPoints ? data.displayPoints : transform(data.points, scale(data.scaleFactor));
+    this.tileWidth = data.tileWidth;
     this.display = {
       width: data.width / data.scaleFactor,
       height: data.height / data.scaleFactor,
@@ -27,10 +37,6 @@ export class TiledImage extends BaseObject implements SpacialContent {
 
   applyProps(props: any) {
     // @todo.
-  }
-
-  getProps() {
-    throw new Error('Method not implemented.');
   }
 
   static fromTile(
@@ -57,6 +63,13 @@ export class TiledImage extends BaseObject implements SpacialContent {
         const rx = x * tile.width;
         const ry = y * tile.height;
 
+        displayPoints.addPoints(
+          rx * scaleFactor,
+          ry * scaleFactor,
+          x === mWidth - 1 ? canvas.width : (rx + tile.width) * scaleFactor,
+          y === mHeight - 1 ? canvas.height : (ry + tile.height) * scaleFactor
+        );
+
         pointsFactory.addPoints(
           rx,
           ry,
@@ -70,8 +83,10 @@ export class TiledImage extends BaseObject implements SpacialContent {
       url,
       scaleFactor,
       points: pointsFactory.build(),
+      displayPoints: displayPoints.build(),
       width: canvas.width,
       height: canvas.height,
+      tileWidth: tile.width,
     });
   }
 
@@ -82,7 +97,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const y2 = im[4] - im[2];
     // This is not used.
     // const yCalculated = y2 / this.display.scale;
-    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${x2 / this.display.scale},/0/default.jpg`;
+    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${this.tileWidth},/0/default.jpg`;
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {

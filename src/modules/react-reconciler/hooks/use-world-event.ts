@@ -1,4 +1,4 @@
-import { SupportedEventNames, SupportedEvents } from '../../../events';
+import { supportedEventMap, SupportedEventNames } from '../../../events';
 import { useEffect } from 'react';
 import { useRuntime } from './use-runtime';
 
@@ -9,11 +9,13 @@ export const useWorldEvent = <Name extends SupportedEventNames>(name: Name, cb: 
   useEffect(() => {
     if (runtime) {
       const callback = cb;
-      runtime.world.activatedEvents.push(name);
-      runtime.world.addEventListener(name, callback);
+      const realName = supportedEventMap[name];
+      runtime.world.activatedEvents.push(realName);
+      const ev = realName.slice(2).toLowerCase();
+      runtime.world.addEventListener(ev as any, callback);
 
       return () => {
-        runtime.world.removeEventListener(name, callback);
+        runtime.world.removeEventListener(ev as any, callback);
       };
     }
     return () => {

@@ -10,7 +10,7 @@ import { TiledImage } from '../../spacial-content/tiled-image';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { Text } from '../../objects/text';
 import { Box } from '../../objects/box';
-import { supportedEvents } from '../../events';
+import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
@@ -36,13 +36,13 @@ function applyProps(instance: any, oldProps: any, newProps: any) {
     instance.applyProps(newProps);
   }
   if (instance instanceof BaseObject) {
-    for (const ev of supportedEvents) {
+    for (const ev of supportedEventAttributes) {
       const event = ev.slice(2).toLowerCase();
-      if (newProps[event] !== oldProps[event]) {
-        if (oldProps[event]) {
-          instance.removeEventListener(event as any, oldProps[event]);
+      if (newProps[ev] !== oldProps[ev]) {
+        if (oldProps[ev]) {
+          instance.removeEventListener(event as any, oldProps[ev]);
         }
-        instance.addEventListener(event as any, newProps[event]);
+        instance.addEventListener(event as any, newProps[ev]);
       }
     }
   }
@@ -52,10 +52,13 @@ function activateEvents(world: World, props: any) {
   const keys = Object.keys(props);
   let didActivate = false;
   for (const key of keys) {
-    if (supportedEvents.indexOf(key) !== -1) {
-      if (world.activatedEvents.indexOf(key) !== -1) continue;
-      didActivate = true;
-      world.activatedEvents.push(key);
+    if (supportedEventAttributes.indexOf(key) !== -1) {
+      const ev = (supportedEventMap as any)[key];
+      if (ev) {
+        if (world.activatedEvents.indexOf(ev) !== -1) continue;
+        didActivate = true;
+        world.activatedEvents.push(ev);
+      }
     }
   }
   if (didActivate) {
@@ -87,15 +90,18 @@ const reconciler = createReconciler({
         instance = new Box();
         break;
       case 'worldObject':
+      case 'world-object':
         instance = new WorldObject();
         break;
       case 'worldImage':
+      case 'world-image':
         instance = new SingleImage();
         break;
       case 'texture':
         instance = new ImageTexture();
         break;
       case 'compositeImage':
+      case 'composite-image':
         // @todo switch to applyProps
         instance = new CompositeResource({
           id: props.id,
@@ -105,6 +111,7 @@ const reconciler = createReconciler({
         });
         break;
       case 'tiledImage':
+      case 'tiled-image':
         instance = TiledImage.fromTile(props.uri, props.display, props.tile, props.scaleFactor);
         break;
       case 'paragraph':

@@ -144,31 +144,44 @@ export class WebGLRenderer implements Renderer {
       if (paint instanceof ImageTexture) {
         this.createTextureHost(paint);
       }
+      // if (paint instanceof Box) {
+      //   this.createTextureHost(paint);
+      // }
     }
   }
 
-  createTextureHost(paint: ImageTexture) {
+  createTextureHost(paint: ImageTexture | Box) {
     paint.__host = paint.__host ? paint.__host : {};
 
     const gl = this.gl;
     const texture = this.gl.createTexture();
-    const initial = paint.getTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    if (initial.source) {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+    let lastImage;
+
+    if (paint instanceof ImageTexture) {
+      const initial = paint.getTexture();
+      if (initial.source) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+      }
+      lastImage = initial;
+    } else {
+      // @todo draw box and set webgl.updateTexture function.
+      // const data = paint.props.backgroundColor === 'red' ? new Uint8Array([255, 0, 0]) : new Uint8Array([0, 0, 255]);
+      // const alignment = 1;
+      // gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
+      // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, data);
     }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.bindTexture(gl.TEXTURE_2D, null);
 
     paint.__host.webgl = {
       height: paint.height,
       width: paint.width,
       texture,
-      lastImage: initial,
+      lastImage,
     };
   }
 

@@ -8,20 +8,47 @@ type SingleImageProps = {
   uri: string;
   id?: string;
   display?: { width: number; height: number };
-  target: { width: number; height: number };
+  target: { width: number; height: number; x?: number; y?: number };
   scale?: number;
 };
 
 export class SingleImage extends BaseObject implements SpacialContent {
   readonly type = 'spacial-content';
+
+  /**
+   * An identifier for this image. Will default to the image URI.
+   */
   id: string;
+
+  /**
+   * The URI of the image being painted.
+   */
   uri: string;
+
+  /**
+   * The real height and width of the image. For example a 1000x1000 painted at 100x100 would contain
+   * the display data for 1000x1000 and `this.points` would scale that down to 100x100. This is used to
+   * calculate the scale.
+   */
   display: DisplayData;
+
+  /**
+   * Points are relative to the world object.
+   * Does not change when viewport moves
+   * Does not change if world object position changes.
+   * */
   points: Strand;
 
-  constructor(data?: { id?: string; uri: string; width: number; height: number; scale?: number }) {
+  constructor(data?: {
+    id?: string;
+    uri: string;
+    width: number;
+    height: number;
+    scale?: number;
+    x?: number;
+    y?: number;
+  }) {
     super();
-
     if (!data) {
       this.id = '';
       this.uri = '';
@@ -31,7 +58,7 @@ export class SingleImage extends BaseObject implements SpacialContent {
       const scale = data.scale || 1;
       this.id = data.id || data.uri;
       this.uri = data.uri;
-      this.points = DnaFactory.singleBox(data.width, data.height);
+      this.points = DnaFactory.singleBox(data.width, data.height, data.x, data.y);
 
       this.display = {
         scale: scale,
@@ -48,7 +75,7 @@ export class SingleImage extends BaseObject implements SpacialContent {
 
     this.id = props.id || props.uri;
     this.uri = props.uri;
-    this.points.set(DnaFactory.singleBox(props.target.width, props.target.height));
+    this.points.set(DnaFactory.singleBox(props.target.width, props.target.height, props.target.x, props.target.y));
 
     this.display.scale = scale;
     this.display.width = props.target.width / scale;
@@ -58,7 +85,7 @@ export class SingleImage extends BaseObject implements SpacialContent {
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {
-    return [[this as any, this.points, aggregate]];
+    return [[this as any, this.crop || this.points, aggregate]];
   }
 
   // This works, but should be improved.
@@ -84,9 +111,5 @@ export class SingleImage extends BaseObject implements SpacialContent {
 
   getImageUrl() {
     return this.uri;
-  }
-
-  getProps(): any {
-    return {};
   }
 }

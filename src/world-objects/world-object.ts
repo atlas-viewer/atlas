@@ -26,8 +26,21 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   type = 'world-object';
   scale: number;
   layers: Paintable[];
+
+  /**
+   * This position in the world local to the scale of the object.
+   * So a 1000x1000 drawn at 0.1 scale at x=5, y=10 on the world would have world points 50,100,1000,1000
+   *
+   * To get it's world-relative position you need to multiple the scale out.
+   */
   points: Strand;
+
+  /**
+   * These are relative to where to object is in the world at the scale of the world.
+   * So a 1000x1000 drawn at 0.1 scale at x=5, y=10 on the world would have world points 0,0,100,100
+   */
   worldPoints: Strand;
+
   intersectionBuffer = dna(5);
   aggregateBuffer = dna(9);
   invertedBuffer = dna(9);
@@ -59,14 +72,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const instance = new WorldObject();
     instance.applyProps(props);
     return instance;
-  }
-
-  getProps() {
-    return {
-      id: this.id,
-      width: this.points[3],
-      height: this.points[4],
-    };
   }
 
   applyProps(props: WorldObjectProps) {
@@ -169,6 +174,30 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   addLayers(paintables: Paintable[]) {
+    for (const paintable of paintables) {
+      // Check for crop.
+      if (
+        paintable.points.length === 5 &&
+        // Paint.x < 0
+        (paintable.points[1] < this.worldPoints[1] / this.scale ||
+          // Paint.y < 0
+          paintable.points[2] < this.worldPoints[2] / this.scale ||
+          // Paint.width > this.width
+          paintable.points[3] > this.worldPoints[3] / this.scale ||
+          // Paint.height > this.height
+          paintable.points[4] > this.worldPoints[4] / this.scale)
+      ) {
+        // @todo support for tiled crops.
+        paintable.crop = dna([
+          1,
+          Math.max(this.worldPoints[1] / this.scale, paintable.points[1]),
+          Math.max(this.worldPoints[2] / this.scale, paintable.points[2]),
+          Math.min(this.worldPoints[3] / this.scale, paintable.points[3]),
+          Math.min(this.worldPoints[4] / this.scale, paintable.points[4]),
+        ]);
+      }
+    }
+
     this.layers = this.layers.concat(paintables);
 
     this.filteredPointsBuffer = dna(this.layers.length * 5);

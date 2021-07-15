@@ -13,6 +13,7 @@ export interface SpacialContent {
   __host?: any;
 
   points: Strand;
+  crop?: Strand;
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> | null;
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[];

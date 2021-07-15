@@ -80,15 +80,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return instance;
   }
 
-  // Atlas object model.
-  getProps() {
-    return {
-      width: this._width,
-      height: this._height,
-      viewingDirection: this.viewingDirection,
-    };
-  }
-
   applyProps(props: WorldProps) {
     if (
       typeof props.width !== 'undefined' &&

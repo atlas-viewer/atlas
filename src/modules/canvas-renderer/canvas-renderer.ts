@@ -30,12 +30,36 @@ export type ImageBuffer = {
 const imageCache: { [id: string]: HTMLImageElement } = {};
 
 export class CanvasRenderer implements Renderer {
+  /**
+   * The primary viewing space for the viewer.
+   */
   canvas: HTMLCanvasElement;
+
+  /**
+   * Canvas context for `this.canvas`
+   */
   ctx: CanvasRenderingContext2D;
+
+  /**
+   * Rendering options added in the constructor.
+   */
   options: CanvasRendererOptions;
+
+  /**
+   * Number of images loading.
+   */
   imagesPending = 0;
+
+  /**
+   * Number of completed images, used to calculate pending images.
+   */
   imagesLoaded = 0;
+
+  /**
+   * Can be used to avoid or stop work when frame is or isn't rendering outside of the main loop.
+   */
   frameIsRendering = false;
+
   firstMeaningfulPaint = false;
   parallelTasks = 8; // @todo configuration.
   frameTasks = 3;
@@ -211,17 +235,33 @@ export class CanvasRenderer implements Renderer {
           return;
         }
 
-        this.ctx.drawImage(
-          imageBuffer.canvas,
-          paint.display.points[index * 5 + 1],
-          paint.display.points[index * 5 + 2],
-          paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1,
-          paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1,
-          x,
-          y,
-          width + 0.8,
-          height + 0.8
-        );
+        if (paint.crop) {
+          if (paint.crop[0]) {
+            this.ctx.drawImage(
+              imageBuffer.canvas,
+              paint.crop[index * 5 + 1],
+              paint.crop[index * 5 + 2],
+              paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1] - 1,
+              paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2] - 1,
+              x,
+              y,
+              width + 0.8,
+              height + 0.8
+            );
+          }
+        } else {
+          this.ctx.drawImage(
+            imageBuffer.canvas,
+            paint.display.points[index * 5 + 1],
+            paint.display.points[index * 5 + 2],
+            paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1,
+            paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1,
+            x,
+            y,
+            width + 0.8,
+            height + 0.8
+          );
+        }
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
       }
@@ -367,11 +407,13 @@ export class CanvasRenderer implements Renderer {
 
   pendingUpdate(): boolean {
     const ready =
-      this.imagesPending === 0 && this.loadingQueue.length === 0 && this.tasksRunning === 0 && this.visible.length > 0;
+        this.imagesPending === 0 &&
+        this.loadingQueue.length === 0 &&
+        this.tasksRunning === 0 /*&& this.visible.length > 0*/;
     if (!this.firstMeaningfulPaint && ready) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
-      // We've not rendered yet, can we render this frame?
+      // We've not rendered yet, can we render this  frame?
       this.firstMeaningfulPaint = ready;
       // We need to return true here to ensure our update is done.
       return true;
