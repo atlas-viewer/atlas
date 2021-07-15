@@ -96,9 +96,9 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const im = this.points.slice(index * 5, index * 5 + 5);
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];
-    // This is not used.
-    // const yCalculated = y2 / this.display.scale;
-    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${this.tileWidth},/0/default.jpg`;
+    const w = Math.ceil(x2 / this.display.scale);
+
+    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.jpg`;
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {
