@@ -56,6 +56,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const mHeight = Math.ceil(fullHeight / tile.height);
 
     const pointsFactory = DnaFactory.grid(mWidth, mHeight);
+    const displayPoints = DnaFactory.grid(mWidth, mHeight);
 
     // Create matrix
     for (let y = 0; y < mHeight; y++) {
