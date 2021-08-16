@@ -15,9 +15,12 @@ export class OverlayRenderer implements Renderer {
   previousVisible: Array<Text | Box | SpacialContent> = [];
   htmlIds: string[] = [];
   firstMeaningfulPaint = false;
-  options: { box?: boolean; text?: boolean } = {};
+  options: { box?: boolean; text?: boolean; triggerResize?: () => void } = {};
 
-  constructor(htmlContainer: HTMLDivElement, options: { box?: boolean; text?: boolean } = { box: true, text: true }) {
+  constructor(
+    htmlContainer: HTMLDivElement,
+    options: { triggerResize?: () => void; box?: boolean; text?: boolean } = { box: true, text: true }
+  ) {
     this.htmlContainer = htmlContainer;
     const { width, height } = this.htmlContainer.getBoundingClientRect();
     this.width = width;
@@ -34,6 +37,12 @@ export class OverlayRenderer implements Renderer {
       if (paint.__onCreate) {
         paint.__onCreate();
       }
+    }
+  }
+
+  triggerResize() {
+    if (this.options && this.options.triggerResize) {
+      this.options.triggerResize();
     }
   }
 

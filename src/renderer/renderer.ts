@@ -16,4 +16,5 @@ export interface Renderer {
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null;
   isReady(): boolean;
   resize(width: number, height: number): void;
+  triggerResize?: () => void;
 }

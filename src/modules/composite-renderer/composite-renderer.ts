@@ -36,6 +36,15 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
+  triggerResize() {
+    for (let i = 0; i < this.length; i++) {
+      const renderer = this.renderers[i];
+      if (renderer.triggerResize) {
+        renderer.triggerResize();
+      }
+    }
+  }
+
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
     return this.renderers[0].getPointsAt(world, target, aggregate, scaleFactor);
   }

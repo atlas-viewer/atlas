@@ -44,7 +44,7 @@ export const Atlas: React.FC<AtlasProps> = ({
   const overlayRef = useRef<HTMLDivElement>();
 
   // This measures the height and width of the Atlas element.
-  const [ref, bounds] = useMeasure({ scroll: true });
+  const [ref, bounds, forceRefresh] = useMeasure({ scroll: true });
 
   // This is a big messy global state of atlas that is updated outside of Reacts lifecycle.
   const state = useRef<AtlasContextType>({
@@ -167,7 +167,7 @@ export const Atlas: React.FC<AtlasProps> = ({
     const renderer = new CompositeRenderer([
       // eslint-disable-next-line @typescript-eslint/camelcase
       unstable_webglRenderer ? new WebGLRenderer(currentCanvas) : new CanvasRenderer(currentCanvas, { debug: false }),
-      overlayRef.current ? new OverlayRenderer(overlayRef.current) : undefined,
+      overlayRef.current ? new OverlayRenderer(overlayRef.current, { triggerResize: forceRefresh }) : undefined,
     ]);
     state.current.renderer = renderer;
 

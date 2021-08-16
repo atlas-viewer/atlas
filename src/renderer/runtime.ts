@@ -144,6 +144,12 @@ export class Runtime {
     }
   }
 
+  triggerResize() {
+    if (this.renderer.triggerResize) {
+      this.renderer.triggerResize();
+    }
+  }
+
   addController(controller: RuntimeController) {
     this.controllers.push(controller);
     if (this.controllersRunning) {
