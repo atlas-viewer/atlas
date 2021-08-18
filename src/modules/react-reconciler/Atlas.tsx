@@ -167,7 +167,9 @@ export const Atlas: React.FC<AtlasProps> = ({
     const renderer = new CompositeRenderer([
       // eslint-disable-next-line @typescript-eslint/camelcase
       unstable_webglRenderer ? new WebGLRenderer(currentCanvas) : new CanvasRenderer(currentCanvas, { debug: false }),
-      overlayRef.current ? new OverlayRenderer(overlayRef.current, { triggerResize: forceRefresh }) : undefined,
+      overlayRef.current
+        ? new OverlayRenderer(overlayRef.current, { box: true, text: true, triggerResize: forceRefresh })
+        : undefined,
     ]);
     state.current.renderer = renderer;
 
