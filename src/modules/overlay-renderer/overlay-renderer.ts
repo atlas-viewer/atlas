@@ -16,6 +16,7 @@ export class OverlayRenderer implements Renderer {
   htmlIds: string[] = [];
   firstMeaningfulPaint = false;
   options: { box?: boolean; text?: boolean; triggerResize?: () => void } = {};
+  paintTx = 1;
 
   constructor(
     htmlContainer: HTMLDivElement,
@@ -114,6 +115,7 @@ export class OverlayRenderer implements Renderer {
   }
 
   beforeFrame(world: World, delta: number, target: Strand): void {
+    this.paintTx++;
     this.visible = [];
   }
 
@@ -136,8 +138,12 @@ export class OverlayRenderer implements Renderer {
   }
 
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
-    if ((this.options.text && paint instanceof Text) || (this.options.box && paint instanceof Box)) {
+    if (
+      ((this.options.text && paint instanceof Text) || (this.options.box && paint instanceof Box)) &&
+      paint.__host.tx !== this.paintTx
+    ) {
       this.visible.push(paint);
+      paint.__host.tx = this.paintTx;
 
       if (this.htmlContainer) {
         this.updateHtmlHost(paint);

@@ -25,6 +25,10 @@ function removeChild(parent: AtlasObjectModel<any, any>, child: any) {
   }
 }
 
+function removeChildFromContainer(parent: Runtime, child: any) {
+  return removeChild(parent.world, child);
+}
+
 function insertBefore(parent: AtlasObjectModel<any, any>, child: any, before: any) {
   if (parent && parent.insertBefore) {
     parent.insertBefore(child, before);
@@ -142,7 +146,7 @@ const reconciler = createReconciler({
   },
   appendChild,
   appendInitialChild: appendChild,
-  removeChildFromContainer: removeChild,
+  removeChildFromContainer: removeChildFromContainer,
   removeChild,
   insertInContainerBefore: insertBefore,
   insertBefore: insertBefore,
