@@ -111,6 +111,10 @@ export class CompositeResource extends AbstractContent
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {
+    if (this.images.length === 0) {
+      return [];
+    }
+
     const bestIndex = bestResourceIndexAtRatio(1 / (scale || 1), this.images);
     const len = this.images.length;
     const newAggregate = aggregate ? compose(aggregate, translate(this.x, this.y)) : translate(this.x, this.y);

@@ -28,6 +28,11 @@ const staticTiles = [
     width: 2677,
     height: 4117,
   },
+  {
+    id: 'https://www.omeka.ugent.be/libraries.lw21/iiif-img/2/236',
+    height: 1843,
+    width: 1666,
+  },
 ];
 
 const sizes = [
