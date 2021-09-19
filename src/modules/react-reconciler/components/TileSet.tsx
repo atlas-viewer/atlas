@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { GetTile } from '../../iiif/shared';
 
 export const TileSet: React.FC<{
@@ -9,6 +9,15 @@ export const TileSet: React.FC<{
   height: number;
 }> = props => {
   const scale = props.width / props.tiles.width;
+  const tiles = props.tiles.imageService.tiles || [];
+  const sizes = props.tiles.imageService.sizes || [];
+  const canonicalId = useMemo(() => {
+    const id = props.tiles.imageService.id;
+    if (id.endsWith('/info.json')) {
+      return id.slice(0, -1 * '/info.json'.length);
+    }
+    return id;
+  }, [props.tiles.imageService.id]);
 
   return (
     <worldObject
@@ -32,7 +41,15 @@ export const TileSet: React.FC<{
             display={{ width: props.tiles.thumbnail.width, height: props.tiles.thumbnail.height }}
           />
         ) : null}
-        {(props.tiles.imageService.tiles || []).map((tile: any) =>
+        {sizes.map((size, n) => (
+          <worldImage
+            key={n}
+            uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
+            target={{ width: props.tiles.width, height: props.tiles.height }}
+            display={{ width: size.width, height: size.height }}
+          />
+        ))}
+        {tiles.map((tile: any) =>
           (tile.scaleFactors || []).map((size: number) => (
             <tiledImage
               key={`${tile}-${size}`}
