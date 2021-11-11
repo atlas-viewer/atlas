@@ -10,6 +10,7 @@ module.exports = {
     '@typescript-eslint/ban-ts-ignore': 1,
     '@typescript-eslint/no-var-requires': 0,
     '@typescript-eslint/no-unused-vars': 0,
+    '@typescript-eslint/camelcase': 0,
   },
   settings: {
     react: {

@@ -10,6 +10,7 @@ export const AtlasAuto: React.FC<{
   style?: React.CSSProperties;
   resizeHash?: number;
   unstable_webglRenderer?: boolean;
+  unstable_noReconciler?: boolean;
   controllerConfig?: PopmotionControllerConfig;
 }> = ({ style, resizeHash, ...props }) => {
   const [ref, bounds, forceRefresh] = useMeasure();

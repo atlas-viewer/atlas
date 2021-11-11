@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { World } from '../../world';
-import { ReactAtlas } from './reconciler';
 import { CanvasRenderer } from '../canvas-renderer/canvas-renderer';
 import { Runtime, ViewerMode } from '../../renderer/runtime';
 import { popmotionController, PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
@@ -11,6 +10,7 @@ import { BrowserEventManager } from '../browser-event-manager/browser-event-mana
 import { WebGLRenderer } from '../webgl-renderer/webgl-renderer';
 import { CompositeRenderer } from '../composite-renderer/composite-renderer';
 import { OverlayRenderer } from '../overlay-renderer/overlay-renderer';
+import { ReactAtlas } from './reconciler';
 
 type AtlasProps = {
   width: number;
@@ -19,6 +19,7 @@ type AtlasProps = {
   onCreated?: (ctx: AtlasContextType) => void | Promise<void>;
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
+  unstable_noReconciler?: boolean;
   controllerConfig?: PopmotionControllerConfig;
 };
 
@@ -28,6 +29,8 @@ export const Atlas: React.FC<AtlasProps> = ({
   resetWorldOnChange = true,
   // eslint-disable-next-line
   unstable_webglRenderer = false,
+  // eslint-disable-next-line
+  unstable_noReconciler = false,
   controllerConfig,
   children,
   ...restProps
@@ -203,14 +206,16 @@ export const Atlas: React.FC<AtlasProps> = ({
   }, [resetWorldOnChange]);
 
   useLayoutEffect(() => {
-    ReactAtlas.render(
-      <Canvas>
-        <ModeContext.Provider value={mode}>
-          <AtlasContext.Provider value={state.current as any}>{children}</AtlasContext.Provider>
-        </ModeContext.Provider>
-      </Canvas>,
-      state.current.runtime
-    );
+    if (!unstable_noReconciler) {
+      ReactAtlas.render(
+        <Canvas>
+          <ModeContext.Provider value={mode}>
+            <AtlasContext.Provider value={state.current as any}>{children}</AtlasContext.Provider>
+          </ModeContext.Provider>
+        </Canvas>,
+        state.current.runtime
+      );
+    }
   }, [state, mode, children]);
 
   // @todo move to controller.
@@ -271,7 +276,15 @@ export const Atlas: React.FC<AtlasProps> = ({
         }
       `}</style>
       <canvas {...restProps} ref={canvasRef as any} />
-      <div style={{ position: 'absolute', top: 0, left: 0 }} ref={overlayRef as any} />
+      <div style={{ position: 'absolute', top: 0, left: 0 }} ref={overlayRef as any}>
+        {unstable_noReconciler ? (
+          <Canvas>
+            <ModeContext.Provider value={mode}>
+              <AtlasContext.Provider value={state.current as any}>{children}</AtlasContext.Provider>
+            </ModeContext.Provider>
+          </Canvas>
+        ) : null}
+      </div>
     </div>
   );
 };
