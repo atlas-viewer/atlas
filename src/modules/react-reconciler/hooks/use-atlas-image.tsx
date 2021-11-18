@@ -83,7 +83,9 @@ export const useAtlasImage: (
           try {
             setImageUrl(canvasRef.current.toDataURL());
           } catch (e) {
-            setError(e.message);
+            if (e instanceof Error) {
+              setError(e.message);
+            }
           }
         }
       });
@@ -96,7 +98,7 @@ export const useAtlasImage: (
   useEffect(() => {
     const runtime = state.current.runtime;
     if (runtime) {
-      return runtime.world.addLayoutSubscriber(type => {
+      return runtime.world.addLayoutSubscriber((type) => {
         if (type === 'ready') {
           setReady(true);
         }
@@ -229,7 +231,7 @@ export const useAtlasImage: (
     }
 
     return () => {
-      controllers.forEach(controller => {
+      controllers.forEach((controller) => {
         controller.stop(runtime);
       });
       runtime.stop();
@@ -243,7 +245,7 @@ export const useAtlasImage: (
     if (state.current && state.current.runtime) {
       const rt = state.current.runtime;
       if (resetWorldOnChange) {
-        return rt.world.addLayoutSubscriber(type => {
+        return rt.world.addLayoutSubscriber((type) => {
           if (type === 'recalculate-world-size') {
             rt.goHome(cover);
           }

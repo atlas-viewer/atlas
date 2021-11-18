@@ -277,7 +277,7 @@ export class CanvasRenderer implements Renderer {
     try {
       const image = document.createElement('img');
       image.decoding = 'async';
-      image.onload = function() {
+      image.onload = function () {
         callback(image);
         imageCache[url] = image;
         image.onload = null;
@@ -310,7 +310,7 @@ export class CanvasRenderer implements Renderer {
       distance: priority,
       task: () =>
         // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
-        new Promise(resolve => {
+        new Promise<void>((resolve) => {
           // @todo this is a little slow.
           if (this.visible.indexOf(paint) === -1) {
             this.imagesPending--;
@@ -323,12 +323,12 @@ export class CanvasRenderer implements Renderer {
           // Load our image.
           this.loadImage(
             url,
-            image => {
+            (image) => {
               this.loadingQueue.push({
                 id,
                 distance: priority,
                 task: () => {
-                  return new Promise(innerResolve => {
+                  return new Promise<void>((innerResolve) => {
                     this.imagesLoaded++;
                     imageBuffer.loaded.push(index);
                     if (imageBuffer.loaded.length === imageBuffer.indices.length) {
@@ -344,7 +344,7 @@ export class CanvasRenderer implements Renderer {
               });
               resolve();
             },
-            err => {
+            (err) => {
               this.imagesPending--;
               imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
               console.log('Error loading image', err);
@@ -407,9 +407,9 @@ export class CanvasRenderer implements Renderer {
 
   pendingUpdate(): boolean {
     const ready =
-        this.imagesPending === 0 &&
-        this.loadingQueue.length === 0 &&
-        this.tasksRunning === 0 /*&& this.visible.length > 0*/;
+      this.imagesPending === 0 &&
+      this.loadingQueue.length === 0 &&
+      this.tasksRunning === 0; /*&& this.visible.length > 0*/
     if (!this.firstMeaningfulPaint && ready) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
