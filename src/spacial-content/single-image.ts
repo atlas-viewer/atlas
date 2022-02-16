@@ -10,6 +10,8 @@ type SingleImageProps = {
   display?: { width: number; height: number };
   target: { width: number; height: number; x?: number; y?: number };
   scale?: number;
+  priority?: boolean;
+  style?: any;
 };
 
 export class SingleImage extends BaseObject implements SpacialContent {
@@ -38,6 +40,16 @@ export class SingleImage extends BaseObject implements SpacialContent {
    * Does not change if world object position changes.
    * */
   points: Strand;
+
+  /**
+   * Displayed as priority
+   */
+  priority?: boolean;
+
+  /**
+   * Some simple styling options
+   */
+  style: { opacity: number } = { opacity: 1 };
 
   constructor(data?: {
     id?: string;
@@ -76,6 +88,10 @@ export class SingleImage extends BaseObject implements SpacialContent {
     this.id = props.id || props.uri;
     this.uri = props.uri;
     this.points.set(DnaFactory.singleBox(props.target.width, props.target.height, props.target.x, props.target.y));
+
+    if (props.style && typeof props.style.opacity !== 'undefined') {
+      this.style.opacity = props.style.opacity;
+    }
 
     this.display.scale = scale;
     this.display.width = props.target.width / scale;

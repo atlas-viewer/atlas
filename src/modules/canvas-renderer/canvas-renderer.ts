@@ -11,11 +11,17 @@ import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
 import { Box } from '../../objects/box';
 
+const shadowRegex =
+  /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
+const shadowRegexCache: any = {};
+
 export type CanvasRendererOptions = {
   beforeFrame?: (delta: number) => void;
   debug?: boolean;
   htmlContainer?: HTMLDivElement;
   crossOrigin?: boolean;
+  dpi?: number;
+  box?: boolean;
 };
 
 export type ImageBuffer = {
@@ -28,6 +34,7 @@ export type ImageBuffer = {
 
 // @todo be smarter.
 const imageCache: { [id: string]: HTMLImageElement } = {};
+const hostCache: Record<string, any> = {};
 
 export class CanvasRenderer implements Renderer {
   /**
@@ -61,12 +68,13 @@ export class CanvasRenderer implements Renderer {
   frameIsRendering = false;
 
   firstMeaningfulPaint = false;
-  parallelTasks = 8; // @todo configuration.
-  frameTasks = 3;
+  parallelTasks = 16; // @todo configuration.
+  frameTasks = 5;
   isGPUBusy = false;
   loadingQueueOrdered = true;
   loadingQueue: Array<{
     id: string;
+    scale: number;
     distance: number;
     task: () => Promise<any>;
   }> = [];
@@ -76,17 +84,21 @@ export class CanvasRenderer implements Renderer {
   averageJobTime = 1000; // ms
   visible: Array<SpacialContent> = [];
   previousVisible: Array<SpacialContent> = [];
+  rendererPosition: DOMRect;
+  dpi: number;
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
+    this.rendererPosition = canvas.getBoundingClientRect();
     // Not working as expected.
     // this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
-    this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    this.ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
     // Testing fade in.
     this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
+    this.dpi = options?.dpi || 1;
 
     if (this.options.debug) {
       this.stats = new Stats();
@@ -97,8 +109,12 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
+  getCanvasDims() {
+    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
+  }
+
   resize() {
-    // no-op.
+    this.rendererPosition = this.canvas.getBoundingClientRect();
   }
 
   isReady(): boolean {
@@ -112,7 +128,7 @@ export class CanvasRenderer implements Renderer {
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered && this.loadingQueue.length > this.parallelTasks) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
-        return b.distance - a.distance;
+        return a.scale - b.scale || b.distance - a.distance;
       });
       this.loadingQueueOrdered = true;
     }
@@ -138,7 +154,7 @@ export class CanvasRenderer implements Renderer {
       if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
         // Here's our clock for scheduling tasks, every 1ms it will try to call.
         if (!this._scheduled) {
-          this._scheduled = setInterval(this._doWork, 6);
+          this._scheduled = setInterval(this._doWork, 0);
         }
       }
     }
@@ -148,8 +164,8 @@ export class CanvasRenderer implements Renderer {
     // First we check if there is work to do.
     if (
       this.loadingQueue.length &&
-      this.tasksRunning < this.parallelTasks &&
-      this.frameTasks < this.parallelTasks &&
+      // this.tasksRunning < this.parallelTasks &&
+      // this.frameTasks < this.parallelTasks &&
       !this.isGPUBusy
     ) {
       // Let's pop something off the loading queue.
@@ -183,12 +199,13 @@ export class CanvasRenderer implements Renderer {
     this._worker();
   };
 
-  getScale(width: number, height: number): number {
+  getScale(width: number, height: number, dpi?: boolean): number {
     // It shouldn't happen, but it will. If the canvas is a different shape
     // to the viewport, then this will choose the largest scale to use.
-    const w = this.canvas.width / width;
-    const h = this.canvas.height / height;
-    return w < h ? h : w;
+    const canvas = this.getCanvasDims();
+    const w = canvas.width / width;
+    const h = canvas.height / height;
+    return (w < h ? h : w) * (dpi ? this.dpi || 1 : 1);
   }
 
   beforeFrame(world: World, delta: number, target: Strand): void {
@@ -205,18 +222,31 @@ export class CanvasRenderer implements Renderer {
     if (this.options.beforeFrame) {
       this.options.beforeFrame(delta);
     }
+
+    const canvas = this.getCanvasDims();
     // But we also need to clear the canvas.
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.globalAlpha = 1;
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    this.ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
+    const ga = this.ctx.globalAlpha;
+
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
       this.visible.push(paint);
+      if (typeof paint.style && (paint.style as any).opacity !== 'undefined') {
+        if (!paint.style.opacity) {
+          return;
+        }
+        this.ctx.globalAlpha = paint.style.opacity;
+      }
 
       try {
         // 1) Find cached image buffer.
         const imageBuffer: ImageBuffer = paint.__host.canvas;
+        const canvas = this.getCanvasDims();
 
         // 2) Schedule paint onto local buffer (async, yay!)
         if (imageBuffer.indices.indexOf(index) === -1) {
@@ -225,7 +255,7 @@ export class CanvasRenderer implements Renderer {
             imageBuffer,
             paint,
             index,
-            distance({ x: x + width / 2, y: y + width / 2 }, { x: this.canvas.width / 2, y: this.canvas.height / 2 })
+            distance({ x: x + width / 2, y: y + width / 2 }, { x: canvas.width / 2, y: canvas.height / 2 })
           );
         }
 
@@ -245,8 +275,8 @@ export class CanvasRenderer implements Renderer {
               paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2] - 1,
               x,
               y,
-              width + 0.8,
-              height + 0.8
+              width + Number.MIN_VALUE,
+              height + Number.MIN_VALUE
             );
           }
         } else {
@@ -258,25 +288,107 @@ export class CanvasRenderer implements Renderer {
             paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1,
             x,
             y,
-            width + 0.8,
-            height + 0.8
+            width + Number.MIN_VALUE,
+            height + Number.MIN_VALUE
           );
         }
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
       }
     }
+
+    if (this.options.box && paint instanceof Box && !paint.props.className && !paint.props.html) {
+      if (paint.props.style) {
+        const style = Object.assign(
+          //
+          {},
+          paint.props.style || {},
+          paint.hovering ? paint.props.hoverStyles : {},
+          paint.pressing ? paint.props.pressStyles : {}
+        );
+
+        const scale = paint.props.relativeStyle ? 1 : width / paint.width;
+
+        if (typeof style.opacity !== 'undefined') {
+          this.ctx.globalAlpha = style.opacity;
+        }
+
+        let bw = 0;
+        if (typeof style.borderWidth !== 'undefined') {
+          bw = parseInt(style.borderWidth, 10) * scale;
+        }
+
+        let ow = 0;
+        if (typeof style.outlineWidth !== 'undefined') {
+          ow = parseInt(style.outlineWidth, 10) * scale;
+        }
+
+        let oo = 0;
+        if (typeof style.outlineOffset !== 'undefined') {
+          oo = parseInt(style.outlineOffset, 10) * scale;
+        }
+
+        if (style.borderColor) {
+          this.ctx.strokeStyle = style.borderColor;
+        }
+
+        // Box shadow
+        if (style.boxShadow) {
+          const shadows = style.boxShadow.split(/,(?![^(]*\))/);
+          for (const shadow of shadows) {
+            const parsed = shadowRegexCache[shadow] || shadowRegex.exec(shadow) || shadowRegex.exec(shadow);
+            shadowRegexCache[shadow] = parsed;
+            if (parsed) {
+              this.ctx.save();
+              this.ctx.shadowOffsetX = parseInt(parsed[1]) * this.dpi * scale;
+              this.ctx.shadowOffsetY = parseInt(parsed[3]) * this.dpi * scale;
+              this.ctx.shadowBlur = parseInt(parsed[5]) * this.dpi * scale;
+              this.ctx.shadowColor = parsed[9];
+              this.ctx.fillStyle = 'rgba(0,0,0,1)';
+              this.ctx.fillRect(x + bw, y + bw, width, height);
+              this.ctx.restore();
+            }
+          }
+        }
+
+        this.ctx.fillStyle = style.backgroundColor || 'transparent';
+        this.ctx.lineWidth = bw;
+        if (bw) {
+          // Border
+          this.ctx.strokeRect(x + bw / 2, y + bw / 2, width + bw, height + bw);
+        }
+        // Fill
+        this.ctx.fillRect(x + bw, y + bw, width, height);
+
+        if (ow) {
+          if (style.outlineColor) {
+            this.ctx.strokeStyle = style.outlineColor;
+          }
+          this.ctx.lineWidth = ow;
+          // Outline
+          this.ctx.strokeRect(
+            //
+            x - ow / 2 - oo,
+            y - ow / 2 - oo,
+            width + bw * 2 + ow + oo * 2,
+            height + bw * 2 + ow + oo * 2
+          );
+        }
+      }
+
+      this.ctx.globalAlpha = ga;
+    }
   }
 
   loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void): void {
-    if (imageCache[url]) {
+    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
       callback(imageCache[url]);
       return;
     }
 
     try {
       const image = document.createElement('img');
-      image.decoding = 'async';
+      image.decoding = 'auto';
       image.onload = function () {
         callback(image);
         imageCache[url] = image;
@@ -307,6 +419,7 @@ export class CanvasRenderer implements Renderer {
     // And we push a "unit of work" to perform between frame renders.
     this.loadingQueue.push({
       id,
+      scale: paint.display.scale,
       distance: priority,
       task: () =>
         // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
@@ -326,6 +439,7 @@ export class CanvasRenderer implements Renderer {
             (image) => {
               this.loadingQueue.push({
                 id,
+                scale: paint.display.scale,
                 distance: priority,
                 task: () => {
                   return new Promise<void>((innerResolve) => {
@@ -372,9 +486,10 @@ export class CanvasRenderer implements Renderer {
     const canvas = document.createElement('canvas');
     canvas.width = paint.display.width;
     canvas.height = paint.display.height;
-
+    canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
     paint.__host.canvas = { canvas, indices: [], loaded: [], loading: false };
+    hostCache[paint.id] = paint.__host;
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
@@ -424,5 +539,9 @@ export class CanvasRenderer implements Renderer {
     }
 
     return !ready;
+  }
+
+  getRendererScreenPosition() {
+    return this.rendererPosition;
   }
 }

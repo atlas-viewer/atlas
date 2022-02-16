@@ -7,14 +7,12 @@ export function observeStrand(name: string, value: Strand, pollRateMs = 200) {
       return;
     }
     if (value.length !== lastValue.length) {
-      console.log(`${name}: change (length)`, value);
       lastValue.set(value);
       return;
     }
 
     for (let i = 0; i < value.length; i++) {
       if (value[i] !== lastValue[i]) {
-        console.log(`${name} change (value ${i}):`, value);
         lastValue.set(value);
         return;
       }
@@ -29,14 +27,12 @@ export function observeArray(name: string, value: Array<any>, pollRateMs = 200) 
       return;
     }
     if (value.length !== lastValue.length) {
-      console.log(`${name}: change (length)`, value);
       lastValue = [...value];
       return;
     }
 
     for (let i = 0; i < value.length; i++) {
       if (value[i] !== lastValue[i]) {
-        console.log(`${name} change (value ${i}):`, value);
         lastValue = [...value];
         return;
       }

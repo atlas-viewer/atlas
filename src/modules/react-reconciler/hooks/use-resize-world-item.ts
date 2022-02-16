@@ -3,8 +3,8 @@ import { Box } from '../../../objects/box';
 import { useMode } from './use-mode';
 import { useWorldEvent } from './use-world-event';
 import { useRuntime } from './use-runtime';
-import { useAtlas } from './use-atlas';
 import { useFrame } from './use-frame';
+import { useCanvasPosition } from './use-canvas-position';
 
 export const useResizeWorldItem = (
   props: { x: number; y: number; width: number; height: number },
@@ -12,7 +12,7 @@ export const useResizeWorldItem = (
 ) => {
   const mode = useMode();
   const runtime = useRuntime();
-  const atlas = useAtlas();
+  const canvasPosition = useCanvasPosition();
   const resizeMode = useRef<string>();
   const portalRef = useRef<Box | null>(null);
   const mouseStart = useRef<{ x: number; y: number } | undefined>();
@@ -21,8 +21,8 @@ export const useResizeWorldItem = (
 
   const mouseEvent = (direction: string) => (e: any) => {
     setIsEditing(true);
-    if (atlas.canvasPosition && runtime) {
-      const { top, left } = atlas.canvasPosition;
+    if (canvasPosition && runtime) {
+      const { top, left } = canvasPosition;
       const current = runtime.viewerToWorld(e.pageX - left, e.pageY - top);
       mouseStart.current = { x: current.x, y: current.y };
       resizeMode.current = direction;
@@ -42,7 +42,7 @@ export const useResizeWorldItem = (
   }, [runtime, isEditing]);
 
   const onPointerMoveCallback = useCallback(
-    e => {
+    (e) => {
       const position = e.atlasTouches ? e.atlasTouches[0] : e.atlas ? e.atlas : { x: e.pageX, y: e.pageY };
 
       if (!runtime || runtime.mode !== 'sketch') return;

@@ -5,14 +5,16 @@ import { Runtime, ViewerMode } from '../../../renderer/runtime';
 import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
 import { popmotionController } from '../../popmotion-controller/popmotion-controller';
 import { World } from '../../../world';
-import { AtlasContextType, AtlasContext } from '../components/AtlasContext';
+import { AtlasContext } from '../components/AtlasContext';
 import { ModeContext } from './use-mode';
+import { Preset } from '../presets/_types';
+import { usePreset } from './use-preset';
 
 type AtlasProps = {
   width: number;
   height: number;
   mode?: ViewerMode;
-  onCreated?: (ctx: AtlasContextType) => void | Promise<void>;
+  onCreated?: (ctx: Preset) => void | Promise<void>;
   containerRef?: { current?: HTMLElement };
   cover?: boolean;
   resetWorldOnChange?: boolean;
@@ -49,14 +51,9 @@ export const useAtlasImage: (
   }, [restProps.width, restProps.height]);
 
   // This is a big messy global state of atlas that is updated outside of Reacts lifecycle.
-  const state = useRef<AtlasContextType>({
-    ready: false,
-    viewport: { width: restProps.width, height: restProps.height, x: 0, y: 0, scale: 1 },
-    renderer: undefined,
-    runtime: undefined,
-    controller: undefined,
-    canvas: canvasRef,
-    canvasPosition: undefined,
+  const [presetName, preset, viewport, refs] = usePreset(undefined, {
+    width: restProps.width,
+    height: restProps.height,
   });
 
   // Create our in memory canvas.
@@ -76,8 +73,8 @@ export const useAtlasImage: (
   }, [bounds.width, bounds.height]);
 
   useEffect(() => {
-    const runtime = state.current.runtime;
-    if (runtime) {
+    if (preset) {
+      const runtime = preset.runtime;
       return runtime.registerHook('useAfterFrame', () => {
         if (canvasRef.current) {
           try {
@@ -96,8 +93,8 @@ export const useAtlasImage: (
   }, []);
 
   useEffect(() => {
-    const runtime = state.current.runtime;
-    if (runtime) {
+    if (preset) {
+      const runtime = preset.runtime;
       return runtime.world.addLayoutSubscriber((type) => {
         if (type === 'ready') {
           setReady(true);
@@ -113,10 +110,8 @@ export const useAtlasImage: (
   // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing
   // positions.
   useEffect(() => {
-    // @ts-ignore
-    state.current.canvasPosition = bounds;
-    if (state.current.em) {
-      state.current.em.updateBounds();
+    if (preset && preset.em) {
+      preset.em.updateBounds();
     }
   }, [bounds]);
 
@@ -124,26 +119,26 @@ export const useAtlasImage: (
   // be picked up by the renderer on the next method. There is not current way to detect this change.
   // @todo create a mode change event.
   useEffect(() => {
-    if (state.current && state.current.runtime) {
-      state.current.runtime.mode = mode;
+    if (preset) {
+      preset.runtime.mode = mode;
     }
-  }, [state, mode]);
+  }, [mode]);
 
   // When the width and height change this will resize the viewer and then reset the view to fit the element.
   // @todo improve or make configurable.
   // @todo resize event.
   useEffect(() => {
-    if (state.current.runtime) {
-      const rt: Runtime = state.current.runtime;
+    if (preset) {
+      const rt: Runtime = preset.runtime;
 
-      rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
+      rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
       if (cover) {
         rt.cover();
       } else {
         rt.goHome();
       }
-      state.current.viewport.width = restProps.width;
-      state.current.viewport.height = restProps.height;
+      viewport.current.width = restProps.width;
+      viewport.current.height = restProps.height;
       rt.updateNextFrame();
     }
   }, [restProps.width, restProps.height]);
@@ -163,12 +158,12 @@ export const useAtlasImage: (
   // @todo possibly move to controller.
   useLayoutEffect(() => {
     const windowResizeCallback = () => {
-      if (state.current.runtime) {
-        const rt: Runtime = state.current.runtime;
+      if (preset && preset.runtime) {
+        const rt: Runtime = preset.runtime;
 
-        rt.resize(state.current.viewport.width, restProps.width, state.current.viewport.height, restProps.height);
-        state.current.viewport.width = restProps.width;
-        state.current.viewport.height = restProps.height;
+        rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
+        viewport.current.width = restProps.width;
+        viewport.current.height = restProps.height;
         rt.updateNextFrame();
       }
     };
@@ -176,78 +171,40 @@ export const useAtlasImage: (
     window.addEventListener('resize', windowResizeCallback);
 
     return () => window.removeEventListener('resize', windowResizeCallback);
-  }, [restProps.height, restProps.width]);
+  }, [preset, restProps.height, restProps.width]);
 
   const Canvas = useCallback(
     function Canvas(props: { children: React.ReactElement }): JSX.Element {
       const activate = () => {
-        state.current.ready = true;
+        if (preset) {
+          preset.ready = true;
+        }
       };
 
       useEffect(() => {
-        const result = onCreated && onCreated(state.current);
-        return void (result && result.then ? result.then(activate) : activate());
+        if (preset) {
+          const result = onCreated && onCreated(preset);
+          return void (result && result.then ? result.then(activate) : activate());
+        }
+        return () => {
+          // no-op
+        }
       }, []);
 
       return props.children;
     },
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [preset]
   );
 
-  // Render v-dom into scene
-  useLayoutEffect(() => {
-    const currentCanvas = canvasRef.current;
-    if (!currentCanvas) {
-      throw new Error('Something went wrong mounting canvas.');
-    }
-
-    // @todo move this out.
-    currentCanvas.style.userSelect = 'none';
-
-    state.current.canvas = canvasRef;
-    const controllers: any[] = [];
-
-    if (containerRef && containerRef.current) {
-      const controller = popmotionController({
-        minZoomFactor: 0.5,
-        maxZoomFactor: 3,
-        enableClickToZoom: false,
-      });
-      state.current.controller = controller;
-      controllers.push(controller);
-    }
-
-    const renderer = new CanvasRenderer(currentCanvas, { crossOrigin: true, debug: false });
-    state.current.renderer = renderer;
-
-    const runtime = new Runtime(renderer, new World(), state.current.viewport, controllers);
-    state.current.runtime = runtime;
-
-    let em: any = undefined;
-    if (containerRef && containerRef.current) {
-      em = new BrowserEventManager(containerRef.current, runtime);
-      state.current.em = em;
-    }
-
-    return () => {
-      controllers.forEach((controller) => {
-        controller.stop(runtime);
-      });
-      runtime.stop();
-      if (em) {
-        em.stop();
-      }
-    };
-  }, []);
-
   useEffect(() => {
-    if (state.current && state.current.runtime) {
-      const rt = state.current.runtime;
+    if (preset && preset.runtime) {
+      const rt = preset.runtime;
       if (resetWorldOnChange) {
         return rt.world.addLayoutSubscriber((type) => {
           if (type === 'recalculate-world-size') {
-            rt.goHome(cover);
+            rt.goHome({ cover });
           }
         });
       }
@@ -255,18 +212,20 @@ export const useAtlasImage: (
     return () => {
       // no-op
     };
-  }, [cover, resetWorldOnChange]);
+  }, [preset, cover, resetWorldOnChange]);
 
   useLayoutEffect(() => {
-    ReactAtlas.render(
-      <Canvas>
-        <ModeContext.Provider value={mode}>
-          <AtlasContext.Provider value={state.current as any}>{children}</AtlasContext.Provider>
-        </ModeContext.Provider>
-      </Canvas>,
-      state.current.runtime
-    );
-  }, [state, mode, children]);
+    if (preset) {
+      ReactAtlas.render(
+        <Canvas>
+          <ModeContext.Provider value={mode}>
+            <AtlasContext.Provider value={preset}>{children}</AtlasContext.Provider>
+          </ModeContext.Provider>
+        </Canvas>,
+        preset.runtime
+      );
+    }
+  }, [preset, mode, children]);
 
   return {
     loading: !imageUrl && ready,

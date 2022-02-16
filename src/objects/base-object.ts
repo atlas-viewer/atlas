@@ -13,12 +13,14 @@ import {
 } from '../events';
 
 export abstract class BaseObject<Props = any, SupportedChildElements = never>
-  implements AtlasObjectModel<Props, SupportedChildElements> {
+  implements AtlasObjectModel<Props, SupportedChildElements>
+{
   __id: string;
   __revision = 0;
   __host: any;
   __onCreate?: () => void;
   __parent?: CompositeResource;
+  __state: any = {};
   // Base properties.
   eventHandlers: SupportedEventMap;
   scale = 1;
@@ -77,11 +79,18 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   dispatchEvent<Name extends keyof SupportedEvents>(name: Name, e: any) {
     const listeners = this.eventHandlers[name];
     const len = listeners ? listeners.length : 0;
+    let didFire = false;
     if (len) {
       for (let x = 0; x < len; x++) {
-        listeners[x](e);
+        try {
+          listeners[x](e);
+          didFire = true;
+        } catch (e) {
+          console.error(name, e);
+        }
       }
     }
+    return didFire;
   }
 
   get x(): number {

@@ -1,55 +1,16 @@
 import React, { EventHandler, MouseEvent, TouchEvent, PointerEvent, DragEvent, UIEvent, WheelEvent } from 'react';
 import { UpdateTextureFunction } from '../../spacial-content/image-texture';
+import { BoxStyle } from "../../objects/box";
+import { EventListenerProps } from "../../clean-objects/traits/evented";
 
 type BaseElement = {
   id?: string;
   ref?: any;
   key?: string | number;
+  priority?: boolean;
 };
 
-export type AllEvents = {
-  // Mouse Events
-  onMouseDown?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-  onMouseEnter?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-  onMouseLeave?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-  onMouseMove?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-  onMouseOut?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-  onMouseOver?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-  onMouseUp?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-
-  // Touch Events
-  onTouchCancel?: EventHandler<TouchEvent & { atlas: { x: number; y: number } }>;
-  onTouchEnd?: EventHandler<TouchEvent & { atlas: { x: number; y: number } }>;
-  onTouchMove?: EventHandler<TouchEvent & { atlas: { x: number; y: number } }>;
-  onTouchStart?: EventHandler<TouchEvent & { atlas: { x: number; y: number } }>;
-
-  // Pointer Events
-  onPointerDown?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerMove?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerUp?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerCancel?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerEnter?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerLeave?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerOver?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-  onPointerOut?: EventHandler<PointerEvent & { atlas: { x: number; y: number } }>;
-
-  // Drag events
-  onDragStart?: EventHandler<DragEvent & { atlas: { x: number; y: number } }>;
-  onDragEnd?: EventHandler<DragEvent & { atlas: { x: number; y: number } }>;
-  onDragEnter?: EventHandler<DragEvent & { atlas: { x: number; y: number } }>;
-  onDragExit?: EventHandler<DragEvent & { atlas: { x: number; y: number } }>;
-  onDrag?: EventHandler<DragEvent & { atlas: { x: number; y: number } }>;
-  onDragOver?: EventHandler<DragEvent & { atlas: { x: number; y: number } }>;
-
-  // UI Events
-  onScroll?: EventHandler<UIEvent & { atlas: { x: number; y: number } }>;
-
-  // Wheel Events
-  onWheel?: EventHandler<WheelEvent & { atlas: { x: number; y: number } }>;
-
-  // Other
-  onClick?: EventHandler<MouseEvent & { atlas: { x: number; y: number } }>;
-};
+export type AllEvents = EventListenerProps;
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -120,7 +81,11 @@ declare global {
         backgroundColor?: string;
         className?: string;
         border?: string;
-        target?: { x: number; y: number; width: number; height: number };
+        target?: { x?: number; y?: number; width: number; height: number };
+        style?: BoxStyle;
+        relativeSize?: boolean;
+        relativeStyle?: boolean;
+        html?: boolean;
       } & AllEvents;
       paragraph: BaseElement & {
         interactive?: boolean;

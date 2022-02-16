@@ -4,7 +4,7 @@ import commonjs from '@rollup/plugin-commonjs';
 import { terser } from 'rollup-plugin-terser';
 import visualizer from 'rollup-plugin-visualizer';
 import replace from '@rollup/plugin-replace';
-import compiler from '@ampproject/rollup-plugin-closure-compiler';
+// import compiler from '@ampproject/rollup-plugin-closure-compiler';
 import pkg from './package.json';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -39,7 +39,7 @@ export default [
       }),
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
       isProduction && terser(),
-      isProduction && compiler(),
+      // isProduction && compiler(),
     ].filter(Boolean),
   },
   {
@@ -67,7 +67,7 @@ export default [
       }),
       commonjs({ extensions: ['.js', '.ts'] }), // the ".ts" extension is required
       isProduction && terser(),
-      isProduction && compiler(),
+      // isProduction && compiler(),
     ].filter(Boolean),
   },
   {

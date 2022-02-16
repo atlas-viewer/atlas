@@ -5,11 +5,12 @@ import {
   ImageService,
   ManifestNormalized,
 } from '@hyperion-framework/types';
-import { Vault } from '@hyperion-framework/vault';
+import { Vault, getThumbnail } from '@hyperion-framework/vault';
 import { getId, GetTile } from './shared';
+import { ImageServiceLoader } from '@atlas-viewer/iiif-image-api';
 
 const vault = new Vault();
-const loader = vault.getImageService();
+const loader = new ImageServiceLoader();
 
 export async function getTileFromImageService(infoJsonId: string, width: number, height: number): Promise<GetTile> {
   const imageService = await loader.loadService({
@@ -37,7 +38,9 @@ export async function getTileFromCanvas(canvas: CanvasNormalized, thumbnailSize 
 
       const tile = await getTileFromImageService(serviceSnippet.id, canvas.width, canvas.height);
 
-      const { best: thumbnail } = (await vault.getThumbnail(
+      const { best: thumbnail } = (await (getThumbnail as any)(
+        vault,
+        loader as any,
         canvas,
         {
           maxHeight: thumbnailSize,
@@ -74,7 +77,7 @@ export async function getTiles(manifestId: string): Promise<Array<GetTile>> {
       return [];
     }
 
-    return getTilesFromManifest(manifest);
+    return getTilesFromManifest(manifest as any);
   } catch (err) {
     console.log('ERR', err);
     return [];

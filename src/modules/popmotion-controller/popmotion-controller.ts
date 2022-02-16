@@ -1,9 +1,9 @@
-import { ColdSubscription, easing, inertia, listen, pointer, tween, value } from 'popmotion';
 /** @ts-ignore */
 import normalizeWheel from 'normalize-wheel';
-import { clamp } from '@popmotion/popcorn';
-import { Projection } from '@atlas-viewer/dna';
-import { RuntimeController, Position } from '../../types';
+import { dna, transform, translate } from '@atlas-viewer/dna';
+import { RuntimeController } from '../../types';
+import { easingFunctions } from '../../utility/easing-functions';
+import { toBox } from '../../utility/to-box';
 
 export type PopmotionControllerConfig = {
   zoomOutFactor?: number;
@@ -32,7 +32,9 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   maxZoomFactor: 1,
   minZoomFactor: 0.05,
   zoomDuration: 300,
-  zoomWheelConstant: 18,
+  zoomWheelConstant: 20, // 30 = OSD
+  // zoomWheelConstant: 15, // 15 = fast
+  // zoomWheelConstant: 18,
   zoomClamp: 0.6,
   // Pan options.
   panBounceStiffness: 120,
@@ -51,278 +53,282 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
 };
 
 export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
-  const state: any = {
-    viewer: undefined,
-  };
-
   return {
-    updatePosition(x, y, width, height) {
-      if (state.viewer) {
-        state.viewer.stop();
-        state.viewer.update({ x, y, width, height });
-      }
-    },
-    start: function(runtime) {
-      const {
-        zoomDuration,
-        zoomWheelConstant,
-        zoomClamp,
-        minZoomFactor,
-        panBounceStiffness,
-        panBounceDamping,
-        panTimeConstant,
-        panPower,
-        nudgeDistance,
-        panPadding,
-        enableWheel,
-        enableClickToZoom,
-        devicePixelRatio,
-        onPanInSketchMode,
-      } = {
+    start: function (runtime) {
+      const { zoomWheelConstant, enableWheel, enableClickToZoom } = {
         ...defaultConfig,
         ...config,
       };
 
-      // Some user interactions, using popmotion. This is an observer, listening
-      //  to the x, y, height and width co-ordinates and updating the views.
-      // This acts as a bridge to popmotion, allowing us to tween these values as
-      // we see fit.
-      const viewer = value(
-        {
-          x: runtime.target[1],
-          y: runtime.target[2],
-          width: runtime.target[3] - runtime.target[1],
-          height: runtime.target[4] - runtime.target[2],
-        } as Projection,
-        // This takes in a {x, y, width, height} and updates the viewport.
-        runtime.setViewport
+      const state = {
+        pointerStart: { x: 0, y: 0 },
+        isPressing: false,
+        mousemoveBuffer: dna(5),
+      };
+
+      runtime.world.activatedEvents.push(
+        // List of events we are supporting.
+        'onMouseUp',
+        'onMouseDown',
+        'onMouseMove',
+        'onTouchStart',
+        'onTouchEnd',
+        'onTouchMove',
+        'onPointerUp',
+        'onPointerDown',
+        'onPointerMove'
       );
 
-      state.viewer = viewer;
-
-      // These two control the dragging, panning and zooming. The second has inertia
-      // so it will slow down and bounce on the sides.
-      runtime.world.activatedEvents.push('onMouseDown', 'onTouchStart');
-      let didWarn = false;
-      listen(runtime.world as any, 'mousedown touchstart').start((e: { touches: [] }) => {
-        const scaleFactor = runtime.getScaleFactor();
-        if (runtime.mode === 'explore') {
-          const { x, y } = viewer.get() as Position;
-          pointer({
-            x: (-x * scaleFactor) / devicePixelRatio,
-            y: (-y * scaleFactor) / devicePixelRatio,
-          })
-            .pipe((v: Position): Position => ({ x: v.x * devicePixelRatio, y: v.y * devicePixelRatio }))
-            .pipe((v: Position): Position => ({ x: -v.x / scaleFactor, y: -v.y / scaleFactor }))
-            .start(viewer);
-        } else if (!didWarn) {
-          didWarn = true;
-          onPanInSketchMode();
+      //  el.onpointerdown = pointerdown_handler;
+      //  el.onpointermove = pointermove_handler;
+      //
+      //  // Use same handler for pointer{up,cancel,out,leave} events since
+      //  // the semantics for these events - in this app - are the same.
+      //  el.onpointerup = pointerup_handler;
+      //  el.onpointercancel = pointerup_handler;
+      //  el.onpointerout = pointerup_handler;
+      //  el.onpointerleave = pointerup_handler;
+      const eventCache: PointerEvent[] = [];
+      const atlasPointsCache: any[] = [];
+      let prevDiff = -1;
+      function removeFromEventCache(e: PointerEvent) {
+        // Remove this event from the target's cache
+        for (let i = 0; i < eventCache.length; i++) {
+          if (eventCache[i].pointerId == e.pointerId) {
+            eventCache.splice(i, 1);
+            atlasPointsCache.splice(i, 1);
+            break;
+          }
         }
-      });
+      }
 
-      runtime.world.activatedEvents.push('onMouseUp', 'onTouchEnd');
-      listen(runtime.world as any, 'mouseup touchend').start(() => {
+      function pointerDown(e: PointerEvent) {
+        eventCache.push(e);
+        atlasPointsCache.push({ ...((e as any).atlas || {}) });
+      }
+      function pointerMove(e: PointerEvent) {
+        for (let i = 0; i < eventCache.length; i++) {
+          if (e.pointerId == eventCache[i].pointerId) {
+            eventCache[i] = e;
+            atlasPointsCache[i] = { ...((e as any).atlas || {}) };
+            break;
+          }
+        }
+        if (eventCache.length == 2) {
+          const curDiff = Math.abs(eventCache[0].clientX - eventCache[1].clientX);
+
+          // - - 2 - - 6- - - - 10
+          const xDiff =
+            atlasPointsCache[0].x > atlasPointsCache[1].x
+              ? atlasPointsCache[0].x - atlasPointsCache[1].x
+              : atlasPointsCache[1].x - atlasPointsCache[0].x;
+          const yDiff =
+            atlasPointsCache[0].y > atlasPointsCache[1].y
+              ? atlasPointsCache[0].y - atlasPointsCache[1].y
+              : atlasPointsCache[1].y - atlasPointsCache[0].y;
+
+          if (prevDiff > 0) {
+            if (curDiff > prevDiff) {
+              runtime.world.zoomTo(
+                // Generating a zoom from the wheel delta
+                0.95,
+                { x: xDiff / 2, y: yDiff / 2 },
+                true
+              );
+            }
+            if (curDiff < prevDiff) {
+              runtime.world.zoomTo(
+                // Generating a zoom from the wheel delta
+                1.05,
+                { x: xDiff / 2, y: yDiff / 2 },
+                true
+              );
+            }
+          }
+
+          // Cache the distance for the next move event
+          prevDiff = curDiff;
+        }
+      }
+
+      function pointerUp(e: PointerEvent) {
+        // Remove this pointer from the cache and reset the target's
+        // background and border
+        removeFromEventCache(e);
+        // If the number of pointers down is less than two then reset diff tracker
+        if (eventCache.length < 2) {
+          prevDiff = -1;
+        }
+      }
+
+      function onMouseUp() {
         runtime.world.constraintBounds();
-      });
+      }
 
-      let isPressing = false;
-
-      runtime.world.activatedEvents.push('onTouchStart');
-      runtime.world.addEventListener('touchstart', e => {
+      function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
         if (runtime.mode === 'explore') {
-          isPressing = true;
+
+          e.preventDefault();
+          state.pointerStart.x = e.atlas.x;
+          state.pointerStart.y = e.atlas.y;
+
+          runtime.transitionManager.stopTransition();
+
+          state.isPressing = true;
+
         }
-      });
+      }
 
-      window.addEventListener('touchend', e => {
-        if (isPressing) {
-          runtime.world.constraintBounds();
-          isPressing = false;
-        }
-      });
-
-      runtime.world.activatedEvents.push('onMouseDown');
-      runtime.world.addEventListener('mousedown', e => {
-        isPressing = true;
-      });
-
-      window.addEventListener('mouseup', e => {
-        if (isPressing) {
+      function onWindowMouseUp() {
+        if (state.isPressing) {
           if (runtime.mode === 'explore') {
             runtime.world.constraintBounds();
           }
-          isPressing = false;
+          state.isPressing = false;
         }
-      });
+      }
 
-      // Removing nudge. This can be implemented in user-space.
-      // document.addEventListener('keydown', e => {
-      //   const scaleFactor = runtime.getScaleFactor();
-      //   switch (e.code) {
-      //     case 'ArrowLeft':
-      //       runtime.world.gotoRegion({
-      //         x: runtime.x - nudgeDistance / scaleFactor,
-      //         y: runtime.y,
-      //         width: runtime.width,
-      //         height: runtime.height,
-      //         nudge: true,
-      //       });
-      //       break;
-      //     case 'ArrowRight':
-      //       runtime.world.gotoRegion({
-      //         x: runtime.x + nudgeDistance / scaleFactor,
-      //         y: runtime.y,
-      //         width: runtime.width,
-      //         height: runtime.height,
-      //         nudge: true,
-      //       });
-      //       break;
-      //     case 'ArrowUp':
-      //       runtime.world.gotoRegion({
-      //         x: runtime.x,
-      //         y: runtime.y - nudgeDistance / scaleFactor,
-      //         width: runtime.width,
-      //         height: runtime.height,
-      //         nudge: true,
-      //       });
-      //       break;
-      //     case 'ArrowDown':
-      //       runtime.world.gotoRegion({
-      //         x: runtime.x,
-      //         y: runtime.y + nudgeDistance / scaleFactor,
-      //         width: runtime.width,
-      //         height: runtime.height,
-      //         nudge: true,
-      //       });
-      //       break;
-      //   }
-      // });
+      function onTouchMove(e: TouchEvent) {
+        if (state.isPressing && e.touches.length === 1) {
+          const touch = e.touches[0];
+          const bounds = runtime.getRendererScreenPosition();
+          if (bounds) {
+            const { x, y } = runtime.viewerToWorld(touch.clientX - bounds.x, touch.clientY - bounds.y);
+            // const atlas = runtime.
+            runtime.transitionManager.customTransition((pendingTransition) => {
+              pendingTransition.from = dna(runtime.target);
+              pendingTransition.to = transform(
+                pendingTransition.from,
+                translate(state.pointerStart.x - x, state.pointerStart.y - y),
+                state.mousemoveBuffer
+              );
+              pendingTransition.elapsed_time = 0;
+              pendingTransition.total_time = 0;
+              pendingTransition.timingFunction = easingFunctions.easeInOutExpo;
+              pendingTransition.done = false;
+            });
+          }
+        }
+      }
 
-      // Click to zoom functionality.
-      // @todo come back to this.
-      // if (enableClickToZoom) {
-      //   runtime.world.activatedEvents.push('onClick');
-      //   runtime.world.addEventListener('onClick', ({ atlas }) => {
-      //     if (runtime.mode === 'explore') {
-      //       runtime.world.zoomIn(atlas);
-      //     }
-      //   });
-      // }
+      function onMouseMove(e: MouseEvent | PointerEvent) {
+        if (state.isPressing) {
+          const bounds = runtime.getRendererScreenPosition();
+          if (bounds) {
+            const { x, y } = runtime.viewerToWorld(e.clientX - bounds.x, e.clientY - bounds.y);
+            // const atlas = runtime.
+            runtime.transitionManager.customTransition((pendingTransition) => {
+              pendingTransition.from = dna(runtime.target);
+              pendingTransition.to = transform(
+                pendingTransition.from,
+                translate(state.pointerStart.x - x, state.pointerStart.y - y),
+                state.mousemoveBuffer
+              );
+              pendingTransition.elapsed_time = 0;
+              pendingTransition.total_time = 0;
+              pendingTransition.timingFunction = easingFunctions.easeInOutExpo;
+              pendingTransition.done = false;
+            });
+          }
+        }
+      }
+
+      function onClick(e: MouseEvent & { atlas: { x: number; y: number } }) {
+        if (runtime.mode === 'explore') {
+          runtime.world.zoomIn(e.atlas);
+        }
+      }
+
+      function onWheel(e: WheelEvent & { atlas: { x: number; y: number } }) {
+        const normalized = normalizeWheel(e);
+        const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;
+        runtime.world.zoomTo(
+          // Generating a zoom from the wheel delta
+          zoomFactor,
+          e.atlas,
+          true
+        );
+      }
+
+      // runtime.world.addEventListener('pointerup', pointerUp);
+      // runtime.world.addEventListener('pointerdown', pointerDown);
+      // runtime.world.addEventListener('pointermove', pointerMove);
+
+      runtime.world.addEventListener('mouseup', onMouseUp);
+      runtime.world.addEventListener('touchend', onMouseUp);
+      runtime.world.addEventListener('touchstart', onMouseDown);
+      runtime.world.addEventListener('mousedown', onMouseDown);
+
+      window.addEventListener('touchend', onWindowMouseUp);
+      window.addEventListener('mouseup', onWindowMouseUp);
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('touchmove', onTouchMove);
+
+      if (enableClickToZoom) {
+        runtime.world.activatedEvents.push('onClick');
+        runtime.world.addEventListener('click', onClick);
+      }
 
       if (enableWheel) {
         runtime.world.activatedEvents.push('onWheel');
-        runtime.world.addEventListener('wheel', e => {
-          const normalized = normalizeWheel(e);
-
-          const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;
-          runtime.world.zoomTo(
-            // Generating a zoom from the wheel delta
-            clamp(1 - zoomClamp, 1 + zoomClamp, zoomFactor),
-            e.atlas,
-            true
-          );
-        });
-      }
-
-      // Pt 2. The subscribers.
-
-      /**
-       * Constrains bounds
-       *
-       * @param immediate
-       */
-      function constrainBounds(immediate = false) {
-        const { x1, x2, y1, y2 } = runtime.getBounds(panPadding);
-
-        if (immediate) {
-          viewer.stop();
-          viewer.update({
-            x: x1,
-            y: y1,
-          });
-          return;
-        }
-
-        // @ts-ignore
-        inertia({
-          min: { x: x1, y: y1 },
-          max: { x: x2, y: y2 },
-          bounceStiffness: panBounceStiffness,
-          bounceDamping: panBounceDamping,
-          timeConstant: immediate ? 0 : panTimeConstant,
-          power: panPower,
-          restSpeed: 10,
-          restDelta: 0.5,
-          from: viewer.get(),
-          velocity: viewer.getVelocity(),
-        }).start(viewer);
-      }
-
-      // A generic zoom to function, with an optional origin parameter.
-      // All of the points referenced are world points. You can pass your
-      // own in or it will simply default to the middle of the viewport.
-      // Note: the factor changes the size of the VIEWPORT on the canvas.
-      // So smaller values will zoom in, and larger values will zoom out.
-      let currentZoom: ColdSubscription | undefined;
-
-      function zoomTo(factor: number, origin?: Position, stream = false) {
-        // Save the before for the tween.
-        const fromPos = runtime.getViewport();
-        // set the new scale.
-        const newPoints = runtime.getZoomedPosition(factor, { origin, minZoomFactor });
-
-        // Need to update our observables, for pop-motion
-        if (currentZoom) {
-          currentZoom.stop();
-        }
-        currentZoom = tween({
-          from: fromPos,
-          to: Object.create({
-            x: newPoints[1],
-            y: newPoints[2],
-            width: newPoints[3] - newPoints[1],
-            height: newPoints[4] - newPoints[2],
-          }),
-          duration: zoomDuration,
-          ease: stream ? easing.easeOut : easing.easeInOut,
-        }).start(viewer);
+        runtime.world.addEventListener('wheel', onWheel);
       }
 
       // Layout subscriber - move more into here.
-      runtime.world.addLayoutSubscriber((type, data: any) => {
+      const removeLayout = runtime.world.addLayoutSubscriber((type, data?: any) => {
         if (type === 'zone-changed') {
-          // @TODO this needs to be "goHome" equivalent
-          constrainBounds(true);
+          runtime.transitionManager.constrainBounds({
+            transition: { duration: 0 },
+          });
         }
-        if (type === 'zoom-to') {
-          zoomTo(data.factor, data.point, data.stream);
+        if (type === 'zoom-to' && data) {
+          // zoomTo(data.factor, data.point, data.stream);
+          runtime.transitionManager.zoomTo(data.factor, {
+            origin: data.point,
+            stream: data.stream,
+          });
+        }
+        if (type === 'go-home') {
+          const transition = data.immediate ? { duration: 0 } : undefined;
+          runtime.transitionManager.goToRegion(toBox(runtime.homePosition), { transition });
         }
         if (type === 'goto-region' && data) {
-          const clampedRegion = runtime.clampRegion(data);
-          const fromPos = runtime.getViewport();
-
-          if (data.immediate) {
-            viewer.stop();
-            viewer.update(clampedRegion);
-            return;
-          }
-
-          tween({
-            from: fromPos,
-            to: clampedRegion,
-            duration: data.nudge ? zoomDuration : 1000,
-            ease: easing.easeInOut,
-          }).start(viewer);
+          const transition = data.immediate ? { duration: 0 } : {};
+          runtime.transitionManager.goToRegion(data, { transition });
         }
-        if (type === 'constrain-bounds' && data) {
-          constrainBounds(data.immediate);
+        if (type === 'constrain-bounds') {
+          runtime.transitionManager.constrainBounds({
+            transition: data?.immediate ? { duration: 0 } : undefined,
+          });
         }
       });
+
+      return () => {
+        runtime.world.removeEventListener('mouseup', onMouseUp);
+        runtime.world.removeEventListener('touchend', onMouseUp);
+        runtime.world.removeEventListener('touchstart', onMouseDown);
+        runtime.world.removeEventListener('mousedown', onMouseDown);
+
+        window.removeEventListener('touchend', onWindowMouseUp);
+        window.removeEventListener('mouseup', onWindowMouseUp);
+
+        runtime.world.removeEventListener('mousemove', onMouseMove);
+        runtime.world.removeEventListener('touchmove', onMouseMove);
+
+        if (enableClickToZoom) {
+          runtime.world.removeEventListener('click', onClick);
+        }
+
+        if (enableWheel) {
+          runtime.world.removeEventListener('wheel', onWheel);
+        }
+
+        removeLayout();
+      };
     },
-    stop() {
-      // no-op.
-      // @todo remove world events.
+    updatePosition() {
+      // no-op
     },
   };
 };

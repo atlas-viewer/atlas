@@ -5,14 +5,16 @@ import { Memoize } from 'typescript-memoize';
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from './spacial-content';
 import { stripInfoJson } from '../utils';
+import { ImageService } from '@hyperion-framework/types';
 
 export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
   readonly type = 'spacial-content';
   readonly display: DisplayData;
   tileWidth: number;
-
+  style: { opacity: number } = { opacity: 1 };
   points: Strand;
+  service?: ImageService;
 
   constructor(data: {
     url: string;
@@ -36,14 +38,20 @@ export class TiledImage extends BaseObject implements SpacialContent {
   }
 
   applyProps(props: any) {
-    // @todo.
+    if (props.style && typeof props.style.opacity !== 'undefined') {
+      this.style.opacity = props.style.opacity;
+    }
+    if (props.service !== this.service) {
+      this.service = props.service;
+    }
   }
 
   static fromTile(
     url: string,
     canvas: { width: number; height: number },
     tile: { width: number; height?: number },
-    scaleFactor: number
+    scaleFactor: number,
+    service?: ImageService
   ): TiledImage {
     // Always set a height.
     tile.height = tile.height ? tile.height : tile.width;
@@ -80,7 +88,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
       }
     }
 
-    return new TiledImage({
+    const tiledImage = new TiledImage({
       url,
       scaleFactor,
       points: pointsFactory.build(),
@@ -89,10 +97,20 @@ export class TiledImage extends BaseObject implements SpacialContent {
       height: canvas.height,
       tileWidth: tile.width,
     });
+
+    tiledImage.applyProps({
+      service,
+    });
+
+    return tiledImage;
   }
 
   @Memoize()
   getImageUrl(index: number): string {
+    // Replace this with image service wrapper that recalculates its toString()
+    // when SETTING new variables, so that this becomes just a return.
+    // We can store these based on the index.
+
     const im = this.points.slice(index * 5, index * 5 + 5);
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];

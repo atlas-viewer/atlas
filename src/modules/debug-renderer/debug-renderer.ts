@@ -129,4 +129,8 @@ export class DebugRenderer implements Renderer {
   getViewportBounds(world: World, target: Float32Array, padding: number): PositionPair | null {
     return null;
   }
+
+  getRendererScreenPosition() {
+    return this.canvas.getBoundingClientRect();
+  }
 }

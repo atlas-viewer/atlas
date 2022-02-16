@@ -13,6 +13,7 @@ import {
 } from '@atlas-viewer/dna';
 import { Renderer } from './renderer';
 import { Paint } from '../world-objects/paint';
+import { TransitionManager } from '../modules/transition-manager/transition-manager';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -24,8 +25,13 @@ export type RuntimeHooks = {
 type UnwrapHook<T> = T extends Array<infer R> ? R : never;
 type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
 
-type useFrame = UnwrapHook<RuntimeHooks['useFrame']>;
 export type ViewerMode = 'static' | 'explore' | 'sketch';
+
+type RuntimeOptions = {
+  visibilityRatio: number;
+  maxOverZoom: number;
+  maxUnderZoom: number;
+};
 
 export class Runtime {
   ready = false;
@@ -81,18 +87,24 @@ export class Runtime {
   renderer: Renderer;
   world: World;
   target: Strand;
+  homePosition: Strand;
+  manualHomePosition: boolean;
+  manualFocalPosition: boolean;
+  focalPosition: Strand;
+  transitionManager: TransitionManager;
   aggregate: Strand;
   transformBuffer = dna(500);
   lastTarget = dna(5);
   zoomBuffer = dna(5);
   logNextRender = false;
-  pendingUpdate = false;
+  pendingUpdate = true;
   firstRender = true;
   lastTime: number;
   stopId?: number;
   mode: ViewerMode = 'explore';
   controllers: RuntimeController[] = [];
   controllersRunning = false;
+  controllerStopFunctions: Array<() => void> = [];
   maxScaleFactor = 1;
   _viewerToWorld = { x: 0, y: 0 };
   hooks: RuntimeHooks = {
@@ -102,15 +114,42 @@ export class Runtime {
     useAfterFrame: [],
   };
   fpsLimit: number | undefined;
+  options: RuntimeOptions;
 
-  constructor(renderer: Renderer, world: World, target: Viewer, controllers: RuntimeController[] = []) {
+  constructor(
+    renderer: Renderer,
+    world: World,
+    target: Viewer,
+    controllers: RuntimeController[] = [],
+    options?: Partial<RuntimeOptions>
+  ) {
     this.renderer = renderer;
     this.world = world;
+    this.options = {
+      maxOverZoom: 1,
+      maxUnderZoom: 1,
+      visibilityRatio: 1,
+      ...(options || {}),
+    };
     this.target = DnaFactory.projection(target);
+    this.manualHomePosition = false;
+    this.pendingUpdate = true;
+    this.homePosition = DnaFactory.projection(this.world);
+    this.manualFocalPosition = false;
+    this.focalPosition = this.target; // Follow target by default.
+    this.updateFocalPosition();
+    this.transitionManager = new TransitionManager(this);
     this.aggregate = scale(1);
     this.world.addLayoutSubscriber((type: string) => {
       if (type === 'repaint') {
         this.pendingUpdate = true;
+      }
+      if (type === 'recalculate-world-size') {
+        if (!this.manualHomePosition) {
+          this.setHomePosition();
+          this.goHome();
+        }
+        this.updateFocalPosition();
       }
     });
     this.lastTime = performance.now();
@@ -119,12 +158,17 @@ export class Runtime {
     this.startControllers();
   }
 
+  setHomePosition(position?: Projection) {
+    this.homePosition.set(DnaFactory.projection(position ? position : this.world));
+    this.pendingUpdate = true;
+  }
+
   startControllers() {
     if (this.controllersRunning) {
       return;
     }
     for (const controller of this.controllers) {
-      controller.start(this);
+      this.controllerStopFunctions.push(controller.start(this));
     }
     this.controllersRunning = true;
   }
@@ -133,9 +177,11 @@ export class Runtime {
     if (!this.controllersRunning) {
       return;
     }
-    for (const controller of this.controllers) {
-      controller.stop(this);
+    for (const controller of this.controllerStopFunctions) {
+      controller();
     }
+    this.controllersRunning = false;
+    this.controllerStopFunctions = [];
   }
 
   updateControllerPosition() {
@@ -148,6 +194,7 @@ export class Runtime {
     if (this.renderer.triggerResize) {
       this.renderer.triggerResize();
     }
+    this.pendingUpdate = true;
   }
 
   addController(controller: RuntimeController) {
@@ -155,41 +202,67 @@ export class Runtime {
     if (this.controllersRunning) {
       controller.start(this);
     }
+    this.pendingUpdate = true;
   }
 
   cover() {
-    return this.goHome(true);
+    return this.goHome({ cover: true });
   }
 
-  goHome(cover?: boolean) {
+  getRendererScreenPosition() {
+    return this.renderer.getRendererScreenPosition();
+  }
+
+  updateRendererScreenPosition() {
+    this.pendingUpdate = true;
+    this.renderer.resize();
+  }
+
+  goHome(options: { cover?: boolean; position?: Strand } = {}) {
     if (this.world.width <= 0 || this.world.height <= 0) return;
 
     const scaleFactor = this.getScaleFactor();
 
+    const target = options.position
+      ? {
+          x: options.position[1],
+          y: options.position[2],
+          width: options.position[3] - options.position[1],
+          height: options.position[4] - options.position[2],
+        }
+      : {
+          x: this.homePosition[1],
+          y: this.homePosition[2],
+          width: this.homePosition[3] - this.homePosition[1],
+          height: this.homePosition[4] - this.homePosition[2],
+        };
+
     const width = this.width * scaleFactor;
     const height = this.height * scaleFactor;
 
-    const widthScale = this.world.width / width;
-    const heightScale = this.world.height / height;
+    const widthScale = target.width / width;
+    const heightScale = target.height / height;
     const ar = width / height;
 
-    if (cover ? widthScale > heightScale : widthScale < heightScale) {
-      const fullWidth = ar * this.world.height;
-      const space = (fullWidth - this.world.width) / 2;
+    if (options.cover ? widthScale > heightScale : widthScale < heightScale) {
+      const fullWidth = ar * target.height;
+      const space = (fullWidth - target.width) / 2;
 
-      this.target[1] = -space;
-      this.target[2] = 0;
-      this.target[3] = fullWidth - space;
-      this.target[4] = this.world.height;
+      this.target[1] = -space + target.x;
+      this.target[2] = target.y;
+      this.target[3] = fullWidth - space + target.x;
+      this.target[4] = target.height + target.y;
     } else {
-      const fullHeight = this.world.width / ar;
-      const space = (fullHeight - this.world.height) / 2;
+      const fullHeight = target.width / ar;
+      const space = (fullHeight - target.height) / 2;
 
-      this.target[1] = 0;
-      this.target[2] = -space;
-      this.target[3] = this.world.width;
-      this.target[4] = fullHeight - space;
+      this.target[1] = target.x;
+      this.target[2] = target.y - space;
+      this.target[3] = target.x + target.width;
+      this.target[4] = target.y + fullHeight - space;
     }
+
+    this.constrainBounds(this.target);
 
     this.updateControllerPosition();
   }
@@ -206,14 +279,82 @@ export class Runtime {
    * @param toHeight
    */
   resize(fromWidth: number, toWidth: number, fromHeight: number, toHeight: number) {
-    // Challenge 1. Equal space on all sides.
+    // Step 1. Do we need to calculate a new focal point?
+
+    // @todo figure out if there is some focal point that we can trim, given the resize request.
+    //      for example if it expand beyond the world, we can crop the focal point.
+    this.updateFocalPosition(fromWidth - toWidth, fromHeight - toHeight);
+
     const widthRatio = toWidth / fromWidth;
     const heightRatio = toHeight / fromHeight;
 
     this.target[3] = this.target[1] + (this.target[3] - this.target[1]) * widthRatio;
     this.target[4] = this.target[2] + (this.target[4] - this.target[2]) * heightRatio;
-    this.goHome();
+
+    // console.log('resize -> ', toBox(this.target), toBox(this.focalPosition));
+    // 1st bad case
+    // 1302 738 500 500
+    // {x: 0, y: -352.8966979980469, width: 580.4239501953125, height: 1729.7934265136719}
+    // {x: 0, y: 0.0000152587890625, width: 1024, height: 1023.9999847412109}
+    // 2nd bad case
+    // 738 295.9891062144095 500 500
+    // {x: 0, y: 0, width: 295.9891052246094, height: 500}
+    // {x: 119, y: 0, width: 500, height: 500}
+
+    this.goHome({ position: this.focalPosition });
     this.renderer.resize(toWidth, toHeight);
+    this.pendingUpdate = true;
+  }
+
+  updateFocalPosition(widthDiff?: number, heightDiff?: number) {
+    if (!this.manualFocalPosition) {
+      const w = this.width;
+      const h = this.height;
+      const min = Math.min(w, h);
+
+      const marginTrimWidth = 0;
+      const marginTrimHeight = 0;
+
+      // console.log(widthDiff, heightDiff);
+      // @todo An way to trim margins - breaks reversible resizing.
+      // if (
+      //   (widthDiff || widthDiff === 0) &&
+      //   this.x + this.width > this.world.width &&
+      //   (heightDiff || heightDiff === 0) &&
+      //   this.y + this.height > this.world.height
+      // ) {
+      //   // const maxMarginW = this.width - this.world.width;
+      //   // marginTrimWidth = (maxMarginW < widthDiff ? maxMarginW : widthDiff) * 2;
+      //   // const maxMarginH = this.height - this.world.height;
+      //   // marginTrimHeight = maxMarginH < heightDiff ? maxMarginH : heightDiff;
+      //   // console.log('A');
+      // }
+
+      const baseX = this.x + marginTrimWidth;
+      const baseY = this.y + marginTrimHeight;
+
+      if (w < h) {
+        const diff = this.height - this.width;
+        // []
+        this.focalPosition = DnaFactory.projection({
+          x: baseX,
+          y: baseY + diff / 2,
+          width: min - marginTrimWidth * 2,
+          height: min - marginTrimHeight * 2,
+        });
+        this.pendingUpdate = true;
+      } else {
+        const diff = this.width - this.height;
+        // [   ]
+        this.focalPosition = DnaFactory.projection({
+          x: baseX + diff / 2,
+          y: baseY,
+          width: min - marginTrimWidth * 2,
+          height: min - marginTrimHeight * 2,
+        });
+        this.pendingUpdate = true;
+      }
+    }
   }
 
   _viewport = { x: 0, y: 0, width: 0, height: 0 };
@@ -263,7 +404,41 @@ export class Runtime {
     if (Math.abs(this.target[2] - y) > 0.01) {
       this.target[2] = y;
     }
+
+    this.pendingUpdate = true;
   };
+
+  constrainBounds(target: Strand, { panPadding = 0, ref = false }: { ref?: boolean; panPadding?: number } = {}) {
+    const { minX, maxX, minY, maxY } = this.getBounds({ target, padding: panPadding });
+
+    let isConstrained = false;
+    const constrained = ref ? target : dna(target);
+    const width = target[3] - target[1];
+    const height = target[4] - target[2];
+
+    if (minX > target[1]) {
+      isConstrained = true;
+      constrained[1] = minX;
+      constrained[3] = minX + width;
+    }
+    if (minY > target[2]) {
+      isConstrained = true;
+      constrained[2] = minY;
+      constrained[4] = minY + height;
+    }
+    if (maxX < target[1]) {
+      isConstrained = true;
+      constrained[1] = maxX;
+      constrained[3] = maxX + width;
+    }
+    if (maxY < target[2]) {
+      isConstrained = true;
+      constrained[2] = maxY;
+      constrained[4] = maxY + height;
+    }
+
+    return [isConstrained, constrained] as const;
+  }
 
   /**
    * Get bounds
@@ -272,95 +447,118 @@ export class Runtime {
    * more of an issue. It has to take into account the current layout. There also needs to be a new method for creating
    * a "home" view  that will fit the content to the view.
    */
-  getBounds(padding: number) {
+  getBounds(options: { padding: number; target?: Strand }) {
+    const target = options.target || this.target;
+    const padding = options.padding;
+    const visRatio = this.options.visibilityRatio;
+    const hiddenRatio = Math.abs(1 - visRatio);
+
     if (this.world.hasActiveZone()) {
       const zone = this.world.getActiveZone();
 
       if (zone) {
-        const xCon = this.target[3] - this.target[1] < zone.points[3] - zone.points[1];
-        const yCon = this.target[4] - this.target[2] < zone.points[4] - zone.points[2];
+        const xCon = target[3] - target[1] < zone.points[3] - zone.points[1];
+        const yCon = target[4] - target[2] < zone.points[4] - zone.points[2];
         return {
-          x1: xCon
+          minX: xCon
             ? zone.points[1] - padding
-            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (this.target[3] - this.target[1]) / 2,
-          y1: yCon
+            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
+          maxX: yCon
             ? zone.points[2] - padding
-            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (this.target[4] - this.target[2]) / 2,
-          x2: xCon
+            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
+          minY: xCon
             ? zone.points[3] + padding
-            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (this.target[3] - this.target[1]) / 2,
-          y2: yCon
+            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
+          maxY: yCon
             ? zone.points[4] + padding
-            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (this.target[4] - this.target[2]) / 2,
+            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
         };
       }
     }
 
-    // world.width = 200
-    // world.height = 400
-    // viewer.width = 800
-    // viewer.height = 400
-    // x1 = -300
-    // x2 = 600
-    // y1 = 0
-    // y2 = 400
-    // width/2 = 400
-    // world.width/2 = 100
-    // width/2 - world.width/2 = -300
-    // world.height/2 = 200
-    // height/2 = 200
-    // height/2 - world.height/2 = 0
-
-    // Is it constrained horizontally?
-
-    // @todo we need to return max and min X and Y
-    // minX = -300
-    // maxX = 0
-
-    // x1 = correct but needs scale
-    // x2 = 0 +
-
-    const visRatio = 1;
-    const wt = this.target[3] - this.target[1];
+    const wt = target[3] - target[1];
     const ww = this.world.width;
 
-    const addConstraintPaddingX = ww < wt;
+    // const addConstraintPaddingX = ww / visRatio < wt;
 
-    const minX = addConstraintPaddingX ? ww - wt : 0;
-    const maxX = addConstraintPaddingX ? 0 : ww - this.width;
+    // Add constrain padding = false (zoomed in)
+    const xB = -wt * hiddenRatio;
+    const xD = ww - wt - xB;
 
-    const ht = this.target[4] - this.target[2];
+    // ADd constrain padding = true (zoomed out)
+    // const xA = ww * visRatio - wt;
+    // const xC = ww * visRatio;
+    // const xA = -500 / this.getScaleFactor(true);
+    // const xC = -200 / this.getScaleFactor(true);
+    // const xC = Math.min(-((wt - ww) / 2), ww * hiddenRatio);
+    // const xA = Math.max(xC, ww - wt);
+
+    // const minX = addConstraintPaddingX ? xA : xB;
+    // const maxX = addConstraintPaddingX ? xC : xD;
+
+    const ht = target[4] - target[2];
     const hw = this.world.height;
 
-    const addConstraintPaddingY = hw < ht;
+    // Add constrain padding = false (zoomed in)
+    const yB = -ht * hiddenRatio;
+    const yD = hw - ht - yB;
 
-    const minY = addConstraintPaddingY ? hw - ht : 0;
-    const maxY = addConstraintPaddingY ? 0 : hw - this.height;
+    // Add constrain padding = true (zoomed out)
+    // const yA = hw * visRatio - ht;
+    // const yC = hw * visRatio;
+    // const yC = Math.min(-((ht - hw) / 2), hw * hiddenRatio);
+    // const yA = Math.max(yC, hw * hiddenRatio - ht);
+    //
+    // const addConstraintPaddingY = hw / visRatio < ht;
 
-    return { x1: minX, x2: maxX, y1: minY, y2: maxY };
+    // const minY = addConstraintPaddingY ? yA : yB;
+    // const maxY = addConstraintPaddingY ? yC : yD;
+
+    const maxX = Math.max(xB, xD);
+    const minX = Math.min(xB, xD);
+    const maxY = Math.max(yB, yD);
+    const minY = Math.min(yB, yD);
+
+    return { minX, maxX, minY, maxY } as const;
   }
 
-  getScaleFactor() {
-    return this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2]);
+  getScaleFactor(dpi = false) {
+    return this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2], dpi);
   }
 
   /**
    * Zoom
    */
-  getZoomedPosition(factor: number, { origin }: { minZoomFactor?: number; origin?: { x: number; y: number } }) {
+  getZoomedPosition(
+    factor: number,
+    {
+      origin,
+      fromPos: _fromPos,
+    }: {
+      origin?: { x: number; y: number };
+      fromPos?: Strand;
+    }
+  ) {
+    const fromPos = _fromPos ? { width: _fromPos[3] - _fromPos[1], height: _fromPos[4] - _fromPos[2] } : undefined;
     // Fresh scale factor.
-    const scaleFactor = this.getScaleFactor();
+    const scaleFactor = fromPos ? this.renderer.getScale(fromPos.width, fromPos.height) : this.getScaleFactor();
+    const w = fromPos ? fromPos.width : this.width;
+    const h = fromPos ? fromPos.height : this.height;
 
-    const maxUnderZoom = 1; // @todo config
-    const maxOverZoom = 1; // @todo config
+    const sWidth = this.getRendererScreenPosition()?.width;
+    const wWidth = this.world.width;
+    const ratio = sWidth ? sWidth / wWidth : 1;
+
+    const maxUnderZoom = this.options.maxUnderZoom;
+    const maxOverZoom = Math.max(ratio || 1, this.options.maxOverZoom);
 
     const realFactor = 1 / factor;
     const proposedFactor = scaleFactor * realFactor;
     const isZoomingOut = realFactor < 1;
 
     if (isZoomingOut) {
-      const width = this.width * scaleFactor;
-      const height = this.height * scaleFactor;
+      const width = w * scaleFactor;
+      const height = h * scaleFactor;
 
       const widthScale = this.world.width / width;
       const heightScale = this.world.height / height;
@@ -370,22 +568,22 @@ export class Runtime {
         // If the proposed world display height.
         const proposedWorldDisplayWidth = this.world.width * proposedFactor;
         // Is greater than the display width.
-        const displayWidth = ~~(this.width * scaleFactor);
+        const displayWidth = ~~(w * scaleFactor);
         const displayWidthAdjusted = displayWidth * maxUnderZoom;
 
         if (proposedWorldDisplayWidth < displayWidthAdjusted) {
-          factor = (this.world.width * scaleFactor) / (this.width * scaleFactor * maxUnderZoom);
+          factor = (this.world.width * scaleFactor) / (w * scaleFactor * maxUnderZoom);
         }
       } else {
         // Constrain height.
         // If the proposed world display height.
         const proposedWorldDisplayHeight = this.world.height * proposedFactor;
         // Is greater than the display height.
-        const displayHeight = ~~(this.height * scaleFactor);
+        const displayHeight = ~~(h * scaleFactor);
         const displayHeightAdjusted = displayHeight * maxUnderZoom;
 
         if (proposedWorldDisplayHeight < displayHeightAdjusted) {
-          factor = (this.world.height * scaleFactor) / (this.height * scaleFactor * maxUnderZoom);
+          factor = (this.world.height * scaleFactor) / (h * scaleFactor * maxUnderZoom);
         }
       }
     } else {
@@ -396,7 +594,7 @@ export class Runtime {
     }
 
     // set the new scale.
-    return transform(
+    const proposedStrand = transform(
       this.target,
       scaleAtOrigin(
         factor,
@@ -405,6 +603,10 @@ export class Runtime {
       ),
       this.zoomBuffer
     );
+
+    this.constrainBounds(proposedStrand, { ref: true, panPadding: 100 });
+
+    return proposedStrand;
   }
 
   clampRegion({
@@ -412,7 +614,7 @@ export class Runtime {
     y,
     width,
     height,
-    padding = 20,
+    padding = 0,
   }: {
     x: number;
     y: number;
@@ -506,6 +708,7 @@ export class Runtime {
         origin ? origin.y : this.target[2] + (this.target[4] - this.target[2]) / 2
       )
     );
+    this.pendingUpdate = true;
   }
 
   /**
@@ -519,6 +722,7 @@ export class Runtime {
   syncTo(runtime: Runtime) {
     const oldTarget = this.target;
     this.target = runtime.target;
+    this.pendingUpdate = true;
 
     // Return an unsubscribe.
     return () => {
@@ -564,7 +768,7 @@ export class Runtime {
   registerHook<Name extends keyof RuntimeHooks, Hook = UnwrapHook<Name>>(name: Name, hook: Hook) {
     this.hooks[name].push(hook as any);
     return () => {
-      this.hooks[name] = (this.hooks[name] as any[]).filter(e => e !== (hook as any));
+      this.hooks[name] = (this.hooks[name] as any[]).filter((e) => e !== (hook as any));
     };
   }
 
@@ -594,6 +798,13 @@ export class Runtime {
 
     const pendingUpdate = this.pendingUpdate;
     const rendererPendingUpdate = this.renderer.pendingUpdate();
+
+    if (this.transitionManager.hasPending()) {
+      this.transitionManager.runTransition(this.target, delta);
+
+      this.pendingUpdate = true;
+      this.updateControllerPosition();
+    }
 
     if (
       !this.firstRender &&

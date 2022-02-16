@@ -7,8 +7,10 @@ import { BaseObject } from '../objects/base-object';
 /**
  * @deprecated
  */
-export abstract class AbstractContent<Props = any, SupportedLayers = never> extends BaseObject<Props, SupportedLayers>
-  implements SpacialContent {
+export abstract class AbstractContent<Props = any, SupportedLayers = never>
+  extends BaseObject<Props, SupportedLayers>
+  implements SpacialContent
+{
   abstract readonly id: string;
   readonly type: 'spacial-content' = 'spacial-content';
   abstract points: Strand;

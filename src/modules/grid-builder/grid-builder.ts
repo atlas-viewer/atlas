@@ -30,7 +30,7 @@ export class GridBuilder {
 
   addContent(content: AbstractObject[]) {
     this.content.push(
-      ...content.map(item =>
+      ...content.map((item) =>
         this.world.addObjectAt(item, {
           width: 0,
           height: 0,

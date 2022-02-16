@@ -7,3 +7,4 @@ notes.md
 .jest-cache
 stats.html
 storybook-static
+coverage

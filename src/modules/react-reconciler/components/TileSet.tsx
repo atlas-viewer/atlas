@@ -7,20 +7,20 @@ export const TileSet: React.FC<{
   y: number;
   width: number;
   height: number;
-}> = props => {
+}> = (props) => {
   const scale = props.width / props.tiles.width;
   const tiles = props.tiles.imageService.tiles || [];
   const sizes = props.tiles.imageService.sizes || [];
   const canonicalId = useMemo(() => {
-    const id = props.tiles.imageService.id;
-    if (id.endsWith('/info.json')) {
+    const id = props.tiles.imageService.id || (props.tiles.imageService['@id'] as string);
+    if (id && id.endsWith('/info.json')) {
       return id.slice(0, -1 * '/info.json'.length);
     }
     return id;
   }, [props.tiles.imageService.id]);
 
   return (
-    <worldObject
+    <world-object
       key={props.tiles.imageService.id}
       scale={scale}
       height={props.tiles.height}
@@ -28,21 +28,22 @@ export const TileSet: React.FC<{
       x={props.x}
       y={props.y}
     >
-      <compositeImage
+      <composite-image
         key={props.tiles.imageService.id}
         id={props.tiles.imageService.id}
         width={props.tiles.width}
         height={props.tiles.height}
       >
         {props.tiles.thumbnail ? (
-          <worldImage
+          <world-image
+            priority
             uri={props.tiles.thumbnail.id}
             target={{ width: props.tiles.width, height: props.tiles.height }}
             display={{ width: props.tiles.thumbnail.width, height: props.tiles.thumbnail.height }}
           />
         ) : null}
         {sizes.map((size, n) => (
-          <worldImage
+          <world-image
             key={n}
             uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
             target={{ width: props.tiles.width, height: props.tiles.height }}
@@ -51,8 +52,8 @@ export const TileSet: React.FC<{
         ))}
         {tiles.map((tile: any) =>
           (tile.scaleFactors || []).map((size: number) => (
-            <tiledImage
-              key={`${tile}-${size}`}
+            <tiled-image
+              key={`${props.tiles.imageService.id}-tile-${size}`}
               uri={props.tiles.imageService.id}
               display={{ width: props.tiles.width, height: props.tiles.height }}
               tile={tile}
@@ -60,7 +61,7 @@ export const TileSet: React.FC<{
             />
           ))
         )}
-      </compositeImage>
-    </worldObject>
+      </composite-image>
+    </world-object>
   );
 };

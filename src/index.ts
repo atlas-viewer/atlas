@@ -1,6 +1,9 @@
+export * from './events';
 export * from './spacial-content/index';
 export * from './world';
 export * from './world-objects/index';
+export * from './objects/box';
+export * from './objects/text';
 export * from './renderer/renderer';
 export * from './renderer/runtime';
 export * from './types';
@@ -15,6 +18,8 @@ export * from './modules/overlay-renderer/overlay-renderer';
 export * from './modules/browser-event-manager/browser-event-manager';
 export * from './modules/static-renderer/static-renderer';
 export * from './modules/webgl-renderer/webgl-renderer';
+export * from './utility/easing-functions';
+export * from './utility/merge-styles';
 
 if (process.env.NODE_ENV !== 'production') {
   console.log('Atlas', process.env.VERSION);

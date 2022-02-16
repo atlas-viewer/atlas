@@ -11,9 +11,11 @@ export interface SpacialContent {
   __id?: string;
   __parent?: CompositeResource;
   __host?: any;
+  priority?: boolean;
 
   points: Strand;
   crop?: Strand;
+  style?: { opacity: number };
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> | null;
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[];

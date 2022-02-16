@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import '../src/modules/react-reconciler/types';
 import { DrawBox } from '../src/modules/react-reconciler/components/BoxDraw';
 import { RegionHighlight } from '../src/modules/react-reconciler/components/RegionHighlight';
@@ -7,7 +7,6 @@ import { useControlledAnnotationList } from '../src/modules/react-reconciler/hoo
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { Runtime } from '../src/renderer/runtime';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
-import { Atlas } from '../src/modules/react-reconciler/Atlas';
 
 export default { title: 'Annotations' };
 
@@ -23,8 +22,7 @@ const staticTiles = [
     height: 2743,
   },
   {
-    id:
-      'https://iiif.ghentcdh.ugent.be/iiif/images/getuigenissen:brugse_vrije:RABrugge_I15_16999_V02:RABrugge_I15_16999_V02_01/info.json',
+    id: 'https://iiif.ghentcdh.ugent.be/iiif/images/getuigenissen:brugse_vrije:RABrugge_I15_16999_V02:RABrugge_I15_16999_V02_01/info.json',
     width: 2677,
     height: 4117,
   },
@@ -37,7 +35,8 @@ const staticTiles = [
 
 const sizes = [
   { width: 800, height: 600 },
-  { width: 400, height: 300 },
+  { width: 400, height: 600 },
+  { width: 800, height: 300 },
   { width: 900, height: 600 },
   { width: 1000, height: 600 },
   { width: '100%', height: '100vh' },
@@ -80,9 +79,11 @@ export const SelectionDemo = () => {
       y: 900,
     },
   ]);
-  const [tileIndex, setTileIndex] = useState(1);
+  const [tileIndex, setTileIndex] = useState(0);
   const [isWebGL, setIsWebGL] = useState(false);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
+
+  const [renderPreset, setRenderPreset] = useState<any>('default-preset');
 
   const goTo = (data: any) => {
     if (runtime.current) {
@@ -122,30 +123,43 @@ export const SelectionDemo = () => {
         >
           Change size
         </button>
-        <button onClick={() => setIsWebGL(e => !e)}>Change renderer (current: {isWebGL ? 'WebGL' : 'canvas'})</button>
-        <button onClick={() => setTileIndex(i => (i + 1) % staticTiles.length)}>Change image</button>
+        <button onClick={() => setIsWebGL((e) => !e)}>Change renderer (current: {isWebGL ? 'WebGL' : 'canvas'})</button>
+        <button onClick={() => setTileIndex((i) => (i + 1) % staticTiles.length)}>Change image</button>|
+        <button onClick={() => setRenderPreset(['default-preset', { canvasBox: true }])}>Default preset</button>
+        <button onClick={() => setRenderPreset(['static-preset', {}])}>Static preset</button>
         <div style={{ display: 'flex' }}>
           <div style={{ flex: '1 1 0px' }}>
             <AtlasAuto
-              unstable_webglRenderer={isWebGL}
+              unstable_webglRenderer={isWebGL && tileIndex !== 0}
               key={isWebGL ? 'webgl' : 'canvas'}
-              onCreated={rt => (runtime.current = rt.runtime)}
+              onCreated={(rt) => {
+                runtime.current = rt.runtime;
+              }}
               mode={isEditing ? 'sketch' : 'explore'}
               style={{ width: size.width + 200, height: size.height }}
+              renderPreset={renderPreset}
             >
               <world onClick={onDeselect}>
                 <ImageService key="wunder" {...staticTiles[tileIndex]} />
                 {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
-                {annotations.map(annotation => (
+                {annotations.map((annotation) => (
                   <RegionHighlight
                     key={annotation.id}
                     region={annotation}
                     isEditing={selectedAnnotation === annotation.id}
                     onSave={onUpdateAnnotation}
-                    onClick={anno => {
+                    onClick={(anno) => {
                       console.log('click annotation');
                       setIsEditing(true);
                       setSelectedAnnotation(anno.id);
+                    }}
+                    style={{
+                      backgroundColor:
+                        selectedAnnotation === annotation.id ? 'rgba(0, 150, 30, 0.6)' : 'rgba(255, 0, 0, .6)',
+                      ':hover': {
+                        backgroundColor:
+                          selectedAnnotation === annotation.id ? 'rgba(0, 150, 30, 0.6)' : 'rgba(20, 50, 200, .7)',
+                      },
                     }}
                   />
                 ))}
@@ -156,7 +170,7 @@ export const SelectionDemo = () => {
             <button onClick={goHome}>Go home</button>
             <button onClick={zoomIn}>Zoom in</button>
             <button onClick={zoomOut}>Zoom out</button>
-            {annotations.map(annotation => (
+            {annotations.map((annotation) => (
               <div key={annotation.id}>
                 {annotation.id} <button onClick={() => editAnnotation(annotation.id)}>edit</button>{' '}
                 <button onClick={() => goTo(annotation)}>go to</button>
@@ -167,5 +181,20 @@ export const SelectionDemo = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+export const mobileSize = () => {
+  return (
+    <>
+      <div style={{ height: '100vh', width: '100%', background: 'red' }}>
+        <AtlasAuto renderPreset={['default-preset', { canvasBox: true }]} style={{ height: '100vh' }}>
+          <world>
+            <ImageService key="wunder" {...staticTiles[1]} />
+          </world>
+        </AtlasAuto>
+      </div>
+      <style>{`body[style]{padding: 0 !important}`}</style>
+    </>
   );
 };

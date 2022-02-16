@@ -11,6 +11,7 @@ import {
   hidePointsOutsideRegion,
 } from '@atlas-viewer/dna';
 import { BaseObject } from '../objects/base-object';
+import { SpacialContent } from '../spacial-content';
 
 type WorldObjectProps = {
   id: string;
@@ -113,7 +114,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   removeChild(item: Paintable) {
-    this.layers = this.layers.filter(layer => layer !== item);
+    this.layers = this.layers.filter((layer) => layer !== item);
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
 
@@ -132,7 +133,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     console.warn('hideInstance: not yet implemented');
   }
 
-  getObjectsAt(target: Strand): Paintable[] {
+  getObjectsAt(target: Strand, all?: boolean): Paintable[] {
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
     if (filteredPoints[0] === 0) {
       return [];
@@ -141,7 +142,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const len = this.layers.length;
     const objects: Paintable[] = [];
     for (let index = 0; index < len; index++) {
-      const layer = this.layers[index];
+      const layer = this.layers[index] as SpacialContent | WorldObject;
 
       const filter = hidePointsOutsideRegion(
         transform(layer.points, translate(this.x, this.y)),
@@ -150,7 +151,12 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       );
 
       if (filter[0] !== 0) {
-        objects.push(layer);
+        objects.push(layer as SpacialContent);
+      }
+
+      if (all) {
+        const object = layer as WorldObject;
+        objects.push(...object.getObjectsAt(target, all));
       }
     }
     return objects;

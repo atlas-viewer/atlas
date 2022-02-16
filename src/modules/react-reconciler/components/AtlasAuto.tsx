@@ -1,31 +1,56 @@
-import { Atlas } from '../Atlas';
-import React, { useEffect } from 'react';
+import { Atlas, AtlasProps } from '../Atlas';
+import React, { useEffect, useMemo } from 'react';
 import useMeasure from 'react-use-measure';
-import { ViewerMode } from '../../../renderer/runtime';
-import { PopmotionControllerConfig } from '../../popmotion-controller/popmotion-controller';
 
-export const AtlasAuto: React.FC<{
-  mode?: ViewerMode;
-  onCreated?: (ctx: any) => void | Promise<void>;
-  style?: React.CSSProperties;
-  resizeHash?: number;
-  unstable_webglRenderer?: boolean;
-  unstable_noReconciler?: boolean;
-  controllerConfig?: PopmotionControllerConfig;
-}> = ({ style, resizeHash, ...props }) => {
-  const [ref, bounds, forceRefresh] = useMeasure();
+export const AtlasAuto: React.FC<
+  AtlasProps & {
+    resizeHash?: number;
+    containerProps?: any;
+    aspectRatio?: number;
+  }
+> = ({ resizeHash, aspectRatio, containerProps = {}, ...props }) => {
+  const [ref, _bounds, forceRefresh] = useMeasure();
 
-  const { width, height } = style || {};
+  const { height, width, ...restProps } = props as any;
 
   useEffect(() => {
     forceRefresh();
   }, [width, height, resizeHash, forceRefresh]);
 
+  const bounds = useMemo(() => {
+    if (!aspectRatio) {
+      return _bounds;
+    }
+
+    const boundsAr = (_bounds.width || 1) / (_bounds.height || 1);
+
+    if (boundsAr < aspectRatio) {
+      return {
+        width: _bounds.width,
+        height: _bounds.width * (1 / aspectRatio),
+      };
+    } else {
+      return {
+        height: _bounds.height,
+        width: _bounds.height * aspectRatio,
+      };
+    }
+  }, [_bounds, aspectRatio]);
+
   return (
-    <div ref={ref} style={{ width: '100%', height: 600, ...style }}>
-      <Atlas width={bounds.width || 100} height={bounds.height || 100} {...props}>
-        {props.children}
-      </Atlas>
+    <div
+      ref={ref}
+      style={{
+        width: width || '100%',
+        height: height || 600,
+      }}
+      {...containerProps}
+    >
+      {bounds.width ? (
+        <Atlas width={bounds.width || 100} height={bounds.height || 100} {...restProps}>
+          {props.children}
+        </Atlas>
+      ) : null}
     </div>
   );
 };

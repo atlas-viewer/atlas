@@ -57,6 +57,10 @@ export class CompositeRenderer implements Renderer {
     return this.renderers[0].getViewportBounds(world, target, padding);
   }
 
+  getRendererScreenPosition() {
+    return this.renderers[0].getRendererScreenPosition();
+  }
+
   isReady(): boolean {
     for (let i = 0; i < this.length; i++) {
       if (!this.renderers[i].isReady()) {
@@ -87,7 +91,7 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
-  resize(width: number, height: number): void {
+  resize(width?: number, height?: number): void {
     for (let i = 0; i < this.length; i++) {
       this.renderers[i].resize(width, height);
     }

@@ -4,12 +4,14 @@ import { render } from 'react-dom';
 import { useFrame } from '../hooks/use-frame';
 import { useRuntime } from '../hooks/use-runtime';
 
-export const HTMLPortal: React.FC<{
-  backgroundColor?: string;
-  interactive?: boolean;
-  relative?: boolean;
-  target?: { x: number; y: number; width: number; height: number };
-} & React.RefAttributes<Box>> = React.forwardRef<
+export const HTMLPortal: React.FC<
+  {
+    backgroundColor?: string;
+    interactive?: boolean;
+    relative?: boolean;
+    target?: { x: number; y: number; width: number; height: number };
+  } & React.RefAttributes<Box>
+> = React.forwardRef<
   Box,
   {
     backgroundColor?: string;
@@ -65,5 +67,5 @@ export const HTMLPortal: React.FC<{
     }
   }, [fwdRef, children, boxRef, props.relative]);
 
-  return <box {...props} ref={boxRef} />;
+  return <box html {...props} ref={boxRef} />;
 });
