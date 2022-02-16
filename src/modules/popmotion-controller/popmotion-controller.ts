@@ -1,6 +1,7 @@
 /** @ts-ignore */
 import normalizeWheel from 'normalize-wheel';
-import { dna, transform, translate } from '@atlas-viewer/dna';
+import { distance } from '../../utils';
+import { compose, dna, scale, scaleAtOrigin, transform, translate } from '@atlas-viewer/dna';
 import { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
 import { toBox } from '../../utility/to-box';
@@ -64,6 +65,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         pointerStart: { x: 0, y: 0 },
         isPressing: false,
         mousemoveBuffer: dna(5),
+        multiTouch: {
+          distance: 0,
+        },
       };
 
       runtime.world.activatedEvents.push(
@@ -163,11 +167,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       function onMouseUp() {
         runtime.world.constraintBounds();
+        currentDistance = 0;
       }
 
       function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
         if (runtime.mode === 'explore') {
-
           e.preventDefault();
           state.pointerStart.x = e.atlas.x;
           state.pointerStart.y = e.atlas.y;
@@ -175,7 +179,6 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.transitionManager.stopTransition();
 
           state.isPressing = true;
-
         }
       }
 
@@ -188,18 +191,80 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
-      function onTouchMove(e: TouchEvent) {
+      let currentDistance = 0;
+      function onTouchStart(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
+        if (runtime.mode === 'explore') {
+          if (e.atlasTouches.length === 1) {
+            e.preventDefault();
+            state.pointerStart.x = e.atlasTouches[0].x;
+            state.pointerStart.y = e.atlasTouches[0].y;
+          }
+          if (e.atlasTouches.length === 2) {
+            e.preventDefault();
+            const x1 = e.atlasTouches[0].x;
+            const x2 = e.atlasTouches[1].x;
+            state.pointerStart.x = (x1 + x2) / 2;
+            const y1 = e.atlasTouches[0].y;
+            const y2 = e.atlasTouches[1].y;
+            state.pointerStart.y = (y1 + y2) / 2;
+
+            currentDistance = distance(
+              { x: e.touches[0].clientX, y: e.touches[0].clientY },
+              { x: e.touches[1].clientX, y: e.touches[1].clientY }
+            );
+          }
+
+          runtime.transitionManager.stopTransition();
+
+          state.isPressing = true;
+        }
+      }
+
+      function onTouchMove(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
+        let clientX = null;
+        let clientY = null;
+        let isMulti = false;
+        let newDistance = 0;
+
+        if (state.isPressing && e.touches.length === 2) {
+          // We have 2?
+          const x1 = e.touches[0].clientX;
+          const x2 = e.touches[1].clientX;
+          clientX = (x1 + x2) / 2;
+          const y1 = e.touches[0].clientY;
+          const y2 = e.touches[1].clientY;
+          clientY = (y1 + y2) / 2;
+
+          newDistance = distance(
+            { x: e.touches[0].clientX, y: e.touches[0].clientY },
+            { x: e.touches[1].clientX, y: e.touches[1].clientY }
+          );
+          isMulti = true;
+        }
         if (state.isPressing && e.touches.length === 1) {
           const touch = e.touches[0];
+          clientX = touch.clientX;
+          clientY = touch.clientY;
+        }
+
+        // Translate.
+        if (clientX !== null && clientY !== null) {
           const bounds = runtime.getRendererScreenPosition();
           if (bounds) {
-            const { x, y } = runtime.viewerToWorld(touch.clientX - bounds.x, touch.clientY - bounds.y);
-            // const atlas = runtime.
+            const { x, y } = runtime.viewerToWorld(clientX - bounds.x, clientY - bounds.y);
+
+            const deltaDistance = newDistance && currentDistance ? newDistance / currentDistance : 1;
+
+            const dd = (deltaDistance * window.devicePixelRatio) - (window.devicePixelRatio -1);
+
             runtime.transitionManager.customTransition((pendingTransition) => {
               pendingTransition.from = dna(runtime.target);
               pendingTransition.to = transform(
                 pendingTransition.from,
-                translate(state.pointerStart.x - x, state.pointerStart.y - y),
+                compose(
+                  translate(state.pointerStart.x - x, state.pointerStart.y - y),
+                  scaleAtOrigin(1 / dd, x, y)
+                ),
                 state.mousemoveBuffer
               );
               pendingTransition.elapsed_time = 0;
@@ -208,6 +273,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               pendingTransition.done = false;
             });
           }
+          currentDistance = newDistance;
         }
       }
 
@@ -256,14 +322,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       runtime.world.addEventListener('mouseup', onMouseUp);
       runtime.world.addEventListener('touchend', onMouseUp);
-      runtime.world.addEventListener('touchstart', onMouseDown);
+      runtime.world.addEventListener('touchstart', onTouchStart);
       runtime.world.addEventListener('mousedown', onMouseDown);
 
       window.addEventListener('touchend', onWindowMouseUp);
       window.addEventListener('mouseup', onWindowMouseUp);
 
       window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('touchmove', onTouchMove);
+      window.addEventListener('touchmove', onTouchMove as any);
 
       if (enableClickToZoom) {
         runtime.world.activatedEvents.push('onClick');
@@ -307,7 +373,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       return () => {
         runtime.world.removeEventListener('mouseup', onMouseUp);
         runtime.world.removeEventListener('touchend', onMouseUp);
-        runtime.world.removeEventListener('touchstart', onMouseDown);
+        runtime.world.removeEventListener('touchstart', onTouchStart);
         runtime.world.removeEventListener('mousedown', onMouseDown);
 
         window.removeEventListener('touchend', onWindowMouseUp);
