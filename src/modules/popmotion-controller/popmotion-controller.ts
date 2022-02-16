@@ -255,16 +255,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
             const deltaDistance = newDistance && currentDistance ? newDistance / currentDistance : 1;
 
-            const dd = (deltaDistance * window.devicePixelRatio) - (window.devicePixelRatio -1);
-
             runtime.transitionManager.customTransition((pendingTransition) => {
               pendingTransition.from = dna(runtime.target);
               pendingTransition.to = transform(
                 pendingTransition.from,
-                compose(
-                  translate(state.pointerStart.x - x, state.pointerStart.y - y),
-                  scaleAtOrigin(1 / dd, x, y)
-                ),
+                compose(translate(state.pointerStart.x - x, state.pointerStart.y - y), scaleAtOrigin(1 / deltaDistance, x, y)),
                 state.mousemoveBuffer
               );
               pendingTransition.elapsed_time = 0;
