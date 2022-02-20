@@ -24,4 +24,8 @@ export * from './hooks/use-runtime';
 export * from './hooks/use-world-event';
 // Other
 export * from './utility/can-drag';
+export * from './presets/index';
+export * from './presets/_types';
+export * from './presets/default-preset';
+export * from './presets/static-preset';
 export * from './types';

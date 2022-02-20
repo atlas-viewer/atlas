@@ -2,7 +2,6 @@ import { PresetNames, Presets, presets } from '../presets';
 import { Preset, PresetArgs } from '../presets/_types';
 import { defaultPreset } from '../presets/default-preset';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { toBox } from '../../../utility/to-box';
 
 const defaultArgs = {};
 
