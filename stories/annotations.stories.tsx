@@ -7,6 +7,7 @@ import { useControlledAnnotationList } from '../src/modules/react-reconciler/hoo
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { Runtime } from '../src/renderer/runtime';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
+import { Atlas } from '../src';
 
 export default { title: 'Annotations' };
 
@@ -136,11 +137,13 @@ export const SelectionDemo = () => {
                 runtime.current = rt.runtime;
               }}
               mode={isEditing ? 'sketch' : 'explore'}
-              style={{ width: size.width + 200, height: size.height }}
               renderPreset={renderPreset}
+              width={size.width}
+              height={size.height}
+              enableNavigator
             >
               <world onClick={onDeselect}>
-                <ImageService key="wunder" {...staticTiles[tileIndex]} />
+                <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} />
                 {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
                 {annotations.map((annotation) => (
                   <RegionHighlight
@@ -188,7 +191,7 @@ export const mobileSize = () => {
   return (
     <>
       <div style={{ height: '100vh', width: '100%', background: 'red' }}>
-        <AtlasAuto renderPreset={['default-preset', { canvasBox: true }]} style={{ height: '100vh' }}>
+        <AtlasAuto renderPreset={['default-preset', { canvasBox: true }]} height={'100vh'}>
           <world>
             <ImageService key="wunder" {...staticTiles[1]} />
           </world>

@@ -894,12 +894,11 @@ export class Runtime {
     }
     // Flush world subscriptions.
     this.world.flushSubscriptions();
-    // @todo this could be improved, but will work for now.
     const updates = this.world.getScheduledUpdates(this.target, scaleFactor);
     const len = updates.length;
     if (len > 0) {
       for (let i = 0; i < len; i++) {
-        const update = updates[len - i]();
+        const update = updates[len - i - 1]();
         if (update) {
           update.then(() => {
             this.pendingUpdate = true;

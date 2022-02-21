@@ -215,7 +215,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     }
 
     const idx = this.appendWorldObject(item);
-    this.renderOrder.splice(beforeIndex, 0, idx / 5);
+    this.renderOrder.splice(beforeIndex - 1, 0, idx / 5);
   }
 
   hideInstance() {
@@ -288,7 +288,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     this.objects.push(object);
     this.filteredPointsBuffer = dna(this.objects.length * 5);
-    // this.recalculateWorldSize();
     this.needsRecalculate = true;
 
     this.triggerRepaint();
@@ -301,11 +300,14 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     if (this.needsRecalculate) {
       const wBuffer = new Int32Array(this.objects.length);
       const hBuffer = new Int32Array(this.objects.length);
-      const totalObjects = this.objects.length;
-      for (let x = 0; x < totalObjects; x++) {
-        if (!this.objects[x]) continue;
-        wBuffer[x] = this.points[x * 5 + 3];
-        hBuffer[x] = this.points[x * 5 + 4];
+      const len = this.renderOrder.length;
+      for (let _index = 0; _index < len; _index++) {
+        const index = this.renderOrder[_index];
+        const object = this.objects[index];
+        if (object) {
+          wBuffer[_index] = this.points[index * 5 + 3];
+          hBuffer[_index] = this.points[index * 5 + 4];
+        }
       }
       const newWidth = Math.max(...wBuffer);
       if (newWidth !== this._width) {
@@ -473,9 +475,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
+
     const layers: Paint[] = [];
     for (let index = 0; index < len; index++) {
-      layers.push(...objects[index][0].getAllPointsAt(target, transformer, scaleFactor));
+      if (objects[index]) {
+        layers.push(...objects[index][0].getAllPointsAt(target, transformer, scaleFactor));
+      }
     }
     return layers;
   }

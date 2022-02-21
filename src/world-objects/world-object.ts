@@ -172,6 +172,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const t = transform(inter, compose(scale(1 / this.scale), translate(-this.x, -this.y), this.invertedBuffer));
     const agg = aggregate ? compose(aggregate, transformer, this.aggregateBuffer) : transformer;
     const s = scaleFactor * this.scale;
+
     for (let i = 0; i < len; i++) {
       // Crop intersection.
       arr.push(...this.layers[i].getAllPointsAt(t, agg, s));

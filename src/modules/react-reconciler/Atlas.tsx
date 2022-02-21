@@ -25,6 +25,7 @@ export type AtlasProps = {
   hideInlineStyle?: boolean;
   homePosition?: Projection;
   className?: string;
+  enableNavigator?: boolean;
 };
 
 export const Atlas: React.FC<
@@ -46,6 +47,7 @@ export const Atlas: React.FC<
   children,
   overlayStyle,
   containerStyle,
+  enableNavigator,
   className,
   containerProps = {},
   homePosition,
@@ -115,8 +117,6 @@ export const Atlas: React.FC<
     if (preset) {
       const rt: Runtime = preset.runtime;
 
-      // console.log('resize?', viewport.current.width, restProps.width, viewport.current.height, restProps.height);
-
       rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
       viewport.current.width = restProps.width;
       viewport.current.height = restProps.height;
@@ -162,6 +162,42 @@ export const Atlas: React.FC<
     return () => window.removeEventListener('resize', windowResizeCallback);
   }, [preset, restProps.height, restProps.width]);
 
+  const navigatorOptions = {
+    width: 120,
+  };
+
+  const recalculateNavigatorDimensions = () => {
+    if (preset && preset.navigator) {
+      const wHeight = preset.runtime.world.height;
+      const wWidth = preset.runtime.world.width;
+
+      const ratio = window.devicePixelRatio || 1;
+      const canvasWidth = navigatorOptions.width;
+      const canvasHeight = (navigatorOptions.width / wWidth) * wHeight;
+
+      preset.navigator.width = canvasWidth * ratio;
+      preset.navigator.height = canvasHeight * ratio;
+      preset.navigator.style.width = canvasWidth + 'px';
+      preset.navigator.style.height = canvasHeight + 'px';
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (preset) {
+      recalculateNavigatorDimensions();
+      const rt = preset.runtime;
+      return rt.world.addLayoutSubscriber((type) => {
+        if (type === 'recalculate-world-size') {
+          recalculateNavigatorDimensions();
+          rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
+        }
+      });
+    }
+    return () => {
+      // no-op
+    };
+  }, [preset]);
+
   const Canvas = useCallback(
     function Canvas(props: { children: React.ReactElement }): JSX.Element {
       const activate = () => {
@@ -199,7 +235,7 @@ export const Atlas: React.FC<
     return () => {
       // no-op
     };
-  }, [resetWorldOnChange]);
+  }, [preset, resetWorldOnChange]);
 
   useEffect(() => {
     if (preset) {
@@ -271,7 +307,7 @@ export const Atlas: React.FC<
         .trim()}
       style={{
         ...containerStyle,
-        ...(hideInlineStyle ? { width: restProps.width, height: restProps.height } : {}),
+        ...(hideInlineStyle ? {} : { width: restProps.width, height: restProps.height }),
       }}
     >
       {presetName === 'static-preset' ? (
@@ -306,6 +342,11 @@ export const Atlas: React.FC<
           </AtlasWithReconciler>
         )}
       </div>
+      {enableNavigator ? (
+        <div className="atlas-navigator">
+          <canvas className="atlas-navigator-canvas" ref={refs.navigator as any} />
+        </div>
+      ) : null}
       {hideInlineStyle ? null : (
         <style>{`
         .atlas { position: relative; user-select: none; display: flex; background: #000; z-index: 10; touch-action: none; tab-index: -1 }
@@ -316,6 +357,8 @@ export const Atlas: React.FC<
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
         .atlas-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
         .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
+        .atlas-navigator { position: absolute; top: 10px; right: 10px; opacity: .7 }
+        .atlas-navigator-canvas { width: 100%; }
       `}</style>
       )}
     </div>

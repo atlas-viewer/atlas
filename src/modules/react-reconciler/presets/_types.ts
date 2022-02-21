@@ -19,6 +19,7 @@ export type Preset = {
   canvas?: HTMLCanvasElement;
   overlay?: HTMLDivElement;
   container?: HTMLDivElement;
+  navigator?: HTMLCanvasElement;
 };
 
 export type PresetArgs = {
@@ -27,4 +28,5 @@ export type PresetArgs = {
   containerElement?: HTMLDivElement;
   canvasElement?: HTMLCanvasElement;
   overlayElement?: HTMLDivElement;
+  navigatorElement?: HTMLCanvasElement;
 };

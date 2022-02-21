@@ -8,6 +8,7 @@ import { World } from '../../../world';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
 import { Preset, PresetArgs } from './_types';
 import { unmountComponentAtNode } from '../reconciler';
+import { DebugRenderer } from "../../debug-renderer/debug-renderer";
 
 export type DefaultPresetName = 'default-preset';
 
@@ -29,6 +30,7 @@ export function defaultPreset({
   unstable_webglRenderer,
   dpi,
   canvasBox = true,
+  navigatorElement,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -56,6 +58,7 @@ export function defaultPreset({
           triggerResize: forceRefresh,
         })
       : undefined,
+    navigatorElement ? new DebugRenderer(navigatorElement) : undefined,
   ]);
 
   const runtime = new Runtime(renderer, new World(1024, 1024), viewport, controller ? [controller] : []);
@@ -69,6 +72,7 @@ export function defaultPreset({
     renderer,
     controller,
     canvas: canvasElement,
+    navigator: navigatorElement,
     unmount() {
       unmountComponentAtNode(runtime);
       runtime.stopControllers();

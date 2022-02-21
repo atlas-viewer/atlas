@@ -4,6 +4,8 @@ import useMeasure from 'react-use-measure';
 
 export const AtlasAuto: React.FC<
   AtlasProps & {
+    height?: number | string;
+    width?: number | string;
     resizeHash?: number;
     containerProps?: any;
     aspectRatio?: number;

@@ -149,7 +149,6 @@ export class CompositeResource
 
       const diff = Math.abs(image.display.scale - lastScale);
       if (diff < 0.25 || image.priority) {
-        // console.log(image.priority ? `P` : 'N', `w: ${image.display.width} | min: ${this.renderOptions.minSize}`);
         const otherImage = this.images.pop();
         if (otherImage && (otherImage instanceof SingleImage || otherImage.priority)) {
           if (image.priority) {
@@ -194,7 +193,7 @@ export class CompositeResource
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> | null {
     if (this._scheduleSortByScales) {
-      this._sortByScales();
+      return [this._sortByScales] as any[];
     }
     if (this.isFullyLoaded) {
       return null;

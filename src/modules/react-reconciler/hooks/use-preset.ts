@@ -11,6 +11,7 @@ export function usePreset(
 ) {
   const overlayRef = useRef<HTMLDivElement>();
   const canvasRef = useRef<HTMLCanvasElement>();
+  const navigatorRef = useRef<HTMLCanvasElement>();
   const containerRef = useRef<HTMLElement>();
   const viewport = useRef<{ width: number; height: number; didUpdate?: boolean }>({
     width: options.width,
@@ -28,12 +29,14 @@ export function usePreset(
     const canvasElement = canvasRef.current;
     const containerElement = containerRef.current;
     const overlayElement = overlayRef.current;
+    const navigatorElement = navigatorRef.current;
     const presetFn = ((presets as any)[presetName as any] as (config: PresetArgs) => Preset) || defaultPreset;
 
     const createdPreset = presetFn({
       containerElement,
       canvasElement,
       overlayElement,
+      navigatorElement,
       viewport: viewport.current,
       dpi: window.devicePixelRatio || 1,
       forceRefresh: options.forceRefresh,
@@ -55,6 +58,7 @@ export function usePreset(
       canvas: canvasRef,
       overlay: overlayRef,
       container: containerRef,
+      navigator: navigatorRef,
     }),
     []
   );

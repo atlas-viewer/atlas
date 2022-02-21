@@ -26,6 +26,7 @@ export type CanvasRendererOptions = {
 
 export type ImageBuffer = {
   canvas: HTMLCanvasElement;
+  canvases: HTMLCanvasElement[];
   indices: number[];
   loaded: number[];
   fallback?: ImageBuffer;
@@ -265,32 +266,35 @@ export class CanvasRenderer implements Renderer {
           return;
         }
 
-        if (paint.crop) {
-          if (paint.crop[0]) {
+        const canvasToPaint = imageBuffer.canvases[index];
+        if (canvasToPaint) {
+          if (paint.crop) {
+            if (paint.crop[0]) {
+              this.ctx.drawImage(
+                canvasToPaint,
+                paint.display.points[index * 5 + 1] - paint.crop[index * 5 + 1],
+                paint.display.points[index * 5 + 2] - paint.crop[index * 5 + 2],
+                paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1] - 1,
+                paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2] - 1,
+                x,
+                y,
+                width + Number.MIN_VALUE,
+                height + Number.MIN_VALUE
+              );
+            }
+          } else {
             this.ctx.drawImage(
-              imageBuffer.canvas,
-              paint.crop[index * 5 + 1],
-              paint.crop[index * 5 + 2],
-              paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1] - 1,
-              paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2] - 1,
+              canvasToPaint,
+              0, // paint.display.points[index * 5 + 1],
+              0, // paint.display.points[index * 5 + 2],
+              paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1,
+              paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1,
               x,
               y,
               width + Number.MIN_VALUE,
               height + Number.MIN_VALUE
             );
           }
-        } else {
-          this.ctx.drawImage(
-            imageBuffer.canvas,
-            paint.display.points[index * 5 + 1],
-            paint.display.points[index * 5 + 2],
-            paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1,
-            paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1,
-            x,
-            y,
-            width + Number.MIN_VALUE,
-            height + Number.MIN_VALUE
-          );
         }
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
@@ -410,6 +414,8 @@ export class CanvasRenderer implements Renderer {
     this.imagesPending++;
     // We push the index we want to load onto the image buffer.
     imageBuffer.indices.push(index);
+    // New canvas.
+    imageBuffer.canvases[index] = document.createElement('canvas');
     // Mark as loading.
     paint.__host.canvas.loading = true;
     // Unique id for paint.
@@ -449,8 +455,11 @@ export class CanvasRenderer implements Renderer {
                       imageBuffer.loading = false;
                     }
                     const points = paint.display.points.slice(index * 5, index * 5 + 5);
-                    const ctx = imageBuffer.canvas.getContext('2d') as CanvasRenderingContext2D;
-                    ctx.drawImage(image, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+                    const canvas = imageBuffer.canvases[index];
+                    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+                    canvas.width = points[3] - points[1];
+                    canvas.height = points[4] - points[2];
+                    ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
                     this.isGPUBusy = !this.firstMeaningfulPaint && true;
                     innerResolve();
                   });
@@ -488,7 +497,7 @@ export class CanvasRenderer implements Renderer {
     canvas.height = paint.display.height;
     canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
-    paint.__host.canvas = { canvas, indices: [], loaded: [], loading: false };
+    paint.__host.canvas = { canvas, canvases: [], indices: [], loaded: [], loading: false };
     hostCache[paint.id] = paint.__host;
   }
 

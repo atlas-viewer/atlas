@@ -5,7 +5,7 @@ import { World } from '../src/world';
 import { StaticRenderer } from '../src/modules/static-renderer/static-renderer';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { WorldObject } from '../src/world-objects/world-object';
-import { GetTile, getTileFromImageService } from '../src/modules/iiif/get-tiles';
+import { getTileFromImageService } from '../src/modules/iiif/get-tiles';
 import { SingleImage } from '../src/spacial-content/single-image';
 import { BrowserEventManager } from '../src/modules/browser-event-manager/browser-event-manager';
 import { popmotionController } from '../src/modules/popmotion-controller/popmotion-controller';
@@ -32,11 +32,11 @@ const staticTiles = [
 
 export const DefaultStatic: React.FC = () => {
   const index = 0;
-  const [tiles, setTile] = useState<GetTile | undefined>();
+  const [tiles, setTile] = useState<any | undefined>();
   const viewer = useRef<any>();
 
   useEffect(() => {
-    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then(s => {
+    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then((s) => {
       setTile(s);
     });
   }, [index]);
@@ -92,13 +92,15 @@ export const DefaultStatic: React.FC = () => {
 
 export const DefaultStaticTiles: React.FC = () => {
   const index = 0;
-  const [tiles, setTile] = useState<GetTile | undefined>();
+  const [tiles, setTile] = useState<any | undefined>();
   const viewer = useRef<any>();
 
   useEffect(() => {
-    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then(s => {
-      setTile(s);
-    });
+    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then(
+      (s: any) => {
+        setTile(s);
+      }
+    );
   }, [index]);
 
   useLayoutEffect(() => {
@@ -117,8 +119,8 @@ export const DefaultStaticTiles: React.FC = () => {
       // Similar to creating HTML elements, we start from the inside and work our way out appending items.
       // Tiles images are more complex.
 
-      const tiledImages = (tiles.imageService.tiles || []).flatMap(tile => {
-        return tile.scaleFactors.map(size => {
+      const tiledImages = (tiles.imageService.tiles || []).flatMap((tile: any) => {
+        return tile.scaleFactors.map((size: any) => {
           return TiledImage.fromTile(
             tiles.imageService.id,
             { height: staticTiles[index].height, width: staticTiles[index].width },
