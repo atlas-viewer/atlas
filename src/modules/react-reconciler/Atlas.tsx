@@ -309,7 +309,7 @@ export const Atlas: React.FC<
       {hideInlineStyle ? null : (
         <style>{`
         .atlas { position: relative; user-select: none; display: flex; background: #000; z-index: 10; touch-action: none; tab-index: -1 }
-        .atlas-width-${className} { width: ${restProps.width}px; height: ${restProps.height}px; }
+        .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: 2px solid darkorange }

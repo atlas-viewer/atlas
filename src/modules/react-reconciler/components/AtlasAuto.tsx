@@ -22,19 +22,11 @@ export const AtlasAuto: React.FC<
       return _bounds;
     }
 
-    const boundsAr = (_bounds.width || 1) / (_bounds.height || 1);
-
-    if (boundsAr < aspectRatio) {
-      return {
-        width: _bounds.width,
-        height: _bounds.width * (1 / aspectRatio),
-      };
-    } else {
-      return {
-        height: _bounds.height,
-        width: _bounds.height * aspectRatio,
-      };
-    }
+    // Need to find the case where this is not the solution.
+    return {
+      width: _bounds.width,
+      height: _bounds.width * (1 / aspectRatio),
+    };
   }, [_bounds, aspectRatio]);
 
   return (
@@ -42,7 +34,7 @@ export const AtlasAuto: React.FC<
       ref={ref}
       style={{
         width: width || '100%',
-        height: height || 600,
+        height: height ? height : aspectRatio ? bounds.height : 512,
       }}
       {...containerProps}
     >
