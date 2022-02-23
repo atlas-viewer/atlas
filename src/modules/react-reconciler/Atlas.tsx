@@ -357,7 +357,7 @@ export const Atlas: React.FC<
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
         .atlas-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
         .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
-        .atlas-navigator { position: absolute; top: 10px; right: 10px; opacity: .7 }
+        .atlas-navigator { position: absolute; top: 10px; right: 10px; opacity: .8 }
         .atlas-navigator-canvas { width: 100%; }
       `}</style>
       )}
