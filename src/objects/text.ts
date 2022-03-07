@@ -39,6 +39,9 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
   html?: boolean;
   interactive = false;
   props: TextWrapperOptions & {
+    title?: string;
+    href?: string;
+    hrefTarget?: string;
     interactive?: boolean;
     relativeSize?: boolean;
     relativeStyle?: boolean;

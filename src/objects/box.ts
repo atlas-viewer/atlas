@@ -17,6 +17,9 @@ export type BoxProps = {
   };
 
   className?: string;
+  href?: string;
+  title?: string;
+  hrefTarget?: string;
   interactive?: boolean;
   relativeSize?: boolean;
   relativeStyle?: boolean;
@@ -116,6 +119,9 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
   hovering?: boolean;
   pressing?: boolean;
   props: {
+    href?: string;
+    hrefTarget?: string;
+    title?: string;
     backgroundColor?: string;
     border?: string;
     interactive?: boolean;
@@ -247,6 +253,21 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
         }
         didUpdate = true;
       }
+    }
+
+    if (props.href !== this.props.href) {
+      this.props.href = props.href;
+      didUpdate = true;
+    }
+
+    if (props.hrefTarget !== this.props.hrefTarget) {
+      this.props.hrefTarget = props.hrefTarget;
+      didUpdate = true;
+    }
+
+    if (props.title !== this.props.title) {
+      this.props.title = props.title;
+      didUpdate = true;
     }
 
     if (props.className !== this.props.className) {

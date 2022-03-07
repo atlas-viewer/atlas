@@ -64,9 +64,20 @@ export class OverlayRenderer implements Renderer {
   }
 
   createHtmlHost(paint: Text | Box) {
-    if (this.htmlContainer && (this.options.box || paint.props.className || paint.props.html)) {
-      const div = document.createElement('div');
+    if (this.htmlContainer && (this.options.box || paint.props.className || paint.props.html || paint.props.href)) {
+      const div = document.createElement(paint.props.href ? 'a' : 'div');
+      if (paint.props.href) {
+        div.style.display = 'block';
+        (div as HTMLAnchorElement).href = paint.props.href;
+        const target = paint.props.hrefTarget || '_blank';
+        (div as HTMLAnchorElement).target = target;
+        if (target !== '_self') {
+          (div as HTMLAnchorElement).rel = 'noopener noreferrer';
+        }
+      }
+      div.title = paint.props.title || '';
       if (this.options.inlineStyles) {
+        div.style.display = 'block';
         div.style.position = 'absolute';
         div.style.overflow = 'hidden';
         div.style.transformOrigin = '0px 0px';
@@ -102,6 +113,24 @@ export class OverlayRenderer implements Renderer {
         } else {
           classes.push(this.classes.nonInteractive);
         }
+      }
+
+      if (paint.props.href) {
+        div.style.display = 'block';
+        (div as HTMLAnchorElement).href = paint.props.href;
+        const target = paint.props.hrefTarget || '_blank';
+        (div as HTMLAnchorElement).target = target;
+        if (target !== '_self') {
+          (div as HTMLAnchorElement).rel = 'noopener noreferrer';
+        } else {
+          (div as HTMLAnchorElement).rel = '';
+        }
+      } else if ((div as HTMLAnchorElement).href) {
+        (div as HTMLAnchorElement).removeAttribute('href');
+      }
+
+      if (paint.props.title) {
+        div.title = paint.props.title || '';
       }
 
       if (paint.props.className) {

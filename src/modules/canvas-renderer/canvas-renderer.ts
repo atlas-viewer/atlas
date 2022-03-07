@@ -83,6 +83,7 @@ export class CanvasRenderer implements Renderer {
   tasksRunning = 0;
   stats?: Stats;
   averageJobTime = 1000; // ms
+  lastKnownScale = 1;
   visible: Array<SpacialContent> = [];
   previousVisible: Array<SpacialContent> = [];
   rendererPosition: DOMRect;
@@ -203,10 +204,20 @@ export class CanvasRenderer implements Renderer {
   getScale(width: number, height: number, dpi?: boolean): number {
     // It shouldn't happen, but it will. If the canvas is a different shape
     // to the viewport, then this will choose the largest scale to use.
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return this.lastKnownScale;
+    }
+
     const canvas = this.getCanvasDims();
     const w = canvas.width / width;
     const h = canvas.height / height;
-    return (w < h ? h : w) * (dpi ? this.dpi || 1 : 1);
+    const scale = (w < h ? h : w) * (dpi ? this.dpi || 1 : 1);
+
+    if (!Number.isNaN(scale)) {
+      this.lastKnownScale = scale;
+    }
+
+    return this.lastKnownScale;
   }
 
   beforeFrame(world: World, delta: number, target: Strand): void {
@@ -227,8 +238,8 @@ export class CanvasRenderer implements Renderer {
     const canvas = this.getCanvasDims();
     // But we also need to clear the canvas.
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
-    this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // this.ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+    this.ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
@@ -301,7 +312,7 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
-    if (this.options.box && paint instanceof Box && !paint.props.className && !paint.props.html) {
+    if (this.options.box && paint instanceof Box && !paint.props.className && !paint.props.html && !paint.props.href) {
       if (paint.props.style) {
         const style = Object.assign(
           //
