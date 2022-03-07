@@ -10,6 +10,7 @@ import { Preset } from './presets/_types';
 import { usePreset } from './hooks/use-preset';
 import { Projection } from '@atlas-viewer/dna';
 import { useClassname } from './hooks/use-classname';
+import { Container } from './components/Container';
 
 export type AtlasProps = {
   mode?: ViewerMode;
@@ -299,7 +300,7 @@ export const Atlas: React.FC<
   const widthClassName = useClassname([restProps.width, restProps.height]);
 
   return (
-    <div
+    <Container
       ref={ref}
       className={['atlas', hideInlineStyle ? '' : `atlas-width-${widthClassName}`, containerClassName, className]
         .filter(Boolean)
@@ -311,7 +312,7 @@ export const Atlas: React.FC<
       }}
     >
       {presetName === 'static-preset' ? (
-        <div
+        <Container
           className="atlas-static-container"
           style={preset && preset.controller ? undefined : { pointerEvents: 'none' }}
           ref={refs.container as any}
@@ -319,9 +320,17 @@ export const Atlas: React.FC<
           {...containerProps}
         />
       ) : (
-        <canvas className="atlas-canvas" tabIndex={0} {...canvasProps} {...containerProps} ref={refs.canvas as any} />
+        <canvas
+          className="atlas-canvas"
+          /*@ts-ignore*/
+          part="atlas-canvas"
+          tabIndex={0}
+          {...canvasProps}
+          {...containerProps}
+          ref={refs.canvas as any}
+        />
       )}
-      <div className="atlas-overlay" style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
+      <Container className="atlas-overlay" style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
         {unstable_noReconciler ? (
           <Canvas>
             <BoundsContext.Provider value={bounds}>
@@ -341,26 +350,31 @@ export const Atlas: React.FC<
             {children}
           </AtlasWithReconciler>
         )}
-      </div>
+      </Container>
       {enableNavigator ? (
-        <div className="atlas-navigator">
-          <canvas className="atlas-navigator-canvas" ref={refs.navigator as any} />
-        </div>
+        <Container className="atlas-navigator">
+          <canvas
+            className="atlas-navigator-canvas"
+            /*@ts-ignore*/
+            part="atlas-navigator-canvas"
+            ref={refs.navigator as any}
+          />
+        </Container>
       ) : null}
       {hideInlineStyle ? null : (
         <style>{`
-        .atlas { position: relative; user-select: none; display: flex; background: #000; z-index: 10; touch-action: none; tab-index: -1 }
+        .atlas { position: relative; user-select: none; display: flex; background: var(--atlas-background, #000); z-index: 10; touch-action: none; }
         .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
-        .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: 2px solid darkorange }
+        .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
         .atlas-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
         .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
-        .atlas-navigator { position: absolute; top: 10px; right: 10px; opacity: .8 }
+        .atlas-navigator { position: absolute; top: var(--atlas-navigator-top, 10px); right: var(--atlas-navigator-bottom, 10px); left: var(--atlas-navigator-left); bottom: var(--atlas-navigator-bottom); opacity: .8 }
         .atlas-navigator-canvas { width: 100%; }
       `}</style>
       )}
-    </div>
+    </Container>
   );
 };

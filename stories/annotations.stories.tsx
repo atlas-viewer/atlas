@@ -190,7 +190,13 @@ export const SelectionDemo = () => {
 export const mobileSize = () => {
   return (
     <>
-      <div style={{ height: '100vh', width: '100%', background: 'red' }}>
+      <style>{`
+        .my-atlas {
+          --atlas-background: #fff; 
+          --atlas-focus: 5px solid green;
+        }
+      `}</style>
+      <div className="my-atlas" style={{ height: '100vh', width: '100%', background: 'red' }}>
         <AtlasAuto renderPreset={['default-preset', { canvasBox: true }]} height={'100vh'}>
           <world>
             <ImageService key="wunder" {...staticTiles[1]} />
