@@ -24,6 +24,7 @@ export class StaticRenderer implements Renderer {
   options: StaticRendererOptions;
   stylesheet: Stylesheet;
   zIndex = 0;
+  lastKnownScale = 1;
   rendererPosition: DOMRect;
 
   constructor(container: HTMLElement, options?: Partial<StaticRendererOptions>) {
@@ -91,9 +92,21 @@ export class StaticRenderer implements Renderer {
   }
 
   getScale(width: number, height: number): number {
+    // It shouldn't happen, but it will. If the canvas is a different shape
+    // to the viewport, then this will choose the largest scale to use.
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return this.lastKnownScale;
+    }
+
     const w = this.width / width;
     const h = this.height / height;
-    return w < h ? h : w;
+    const scale = w < h ? h : w;
+
+    if (!Number.isNaN(scale)) {
+      this.lastKnownScale = scale;
+    }
+
+    return this.lastKnownScale;
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {

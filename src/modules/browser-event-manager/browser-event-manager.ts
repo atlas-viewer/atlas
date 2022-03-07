@@ -218,6 +218,10 @@ export class BrowserEventManager {
     this.pointerMoveEvent = undefined;
     const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
 
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      return;
+    }
+
     this.assignToEvent(e, x, y);
 
     // We have to propagate both, but only get a new list from one.

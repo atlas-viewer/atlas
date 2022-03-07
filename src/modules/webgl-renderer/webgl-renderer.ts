@@ -290,10 +290,29 @@ export class WebGLRenderer implements Renderer {
     // no-op.
   }
 
-  getScale(width: number, height: number): number {
-    const w = this.canvas.width / width;
-    const h = this.canvas.height / height;
-    return w < h ? h : w;
+  lastKnownScale = 1;
+
+  getScale(width: number, height: number, dpi?: boolean): number {
+    // It shouldn't happen, but it will. If the canvas is a different shape
+    // to the viewport, then this will choose the largest scale to use.
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return this.lastKnownScale;
+    }
+
+    const canvas = this.getCanvasDims();
+    const w = canvas.width / width;
+    const h = canvas.height / height;
+    const scale = (w < h ? h : w) * (dpi ? this.dpi || 1 : 1);
+
+    if (!Number.isNaN(scale)) {
+      this.lastKnownScale = scale;
+    }
+
+    return this.lastKnownScale;
+  }
+
+  getCanvasDims() {
+    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {

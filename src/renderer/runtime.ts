@@ -107,6 +107,7 @@ export class Runtime {
   controllerStopFunctions: Array<() => void> = [];
   maxScaleFactor = 1;
   _viewerToWorld = { x: 0, y: 0 };
+  _lastGoodScale = 1;
   hooks: RuntimeHooks = {
     useFrame: [],
     useBeforeFrame: [],
@@ -523,7 +524,12 @@ export class Runtime {
   }
 
   getScaleFactor(dpi = false) {
-    return this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2], dpi);
+    const scale = this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2], dpi);
+    if (scale === 0) {
+      return this._lastGoodScale;
+    }
+    this._lastGoodScale = scale;
+    return scale;
   }
 
   /**
