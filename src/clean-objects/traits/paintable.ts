@@ -13,10 +13,18 @@ import { Evented, isEvented } from './evented';
 export interface PaintableObject<
   Node extends NodeDefinition | ContainerDefinition<PaintableObject> = NodeDefinition | ContainerDefinition<any>
 > extends GenericObject<Node>,
-    Evented {}
+    Evented {
+  prepareArea?(target: Strand): void;
+}
 
 export function isPaintable(obj: unknown): obj is PaintableObject {
   return isGeneric(obj) && isEvented(obj);
+}
+
+export function prepareArea(object: PaintableObject, target: Strand) {
+  if (object.prepareArea) {
+    object.prepareArea(target);
+  }
 }
 
 export function getObjectsAt(
