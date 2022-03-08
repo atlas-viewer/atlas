@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Runtime, ViewerMode } from '../../renderer/runtime';
 import { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
@@ -26,6 +26,7 @@ export type AtlasProps = {
   hideInlineStyle?: boolean;
   homePosition?: Projection;
   className?: string;
+  background?: string;
   enableNavigator?: boolean;
 };
 
@@ -35,7 +36,7 @@ export const Atlas: React.FC<
     height: number;
   }
 > = ({
-  renderPreset,
+  renderPreset: _renderPreset,
   onCreated,
   mode: _mode = 'explore',
   resetWorldOnChange = true,
@@ -52,13 +53,28 @@ export const Atlas: React.FC<
   className,
   containerProps = {},
   homePosition,
+  background: _background,
   ...restProps
 }) => {
+  const [background, setBackground] = useState(_background);
   const [mode, setMode] = useState(_mode);
   // Reference to the current HTML Canvas element
   // Set by React by passing <canvas ref={...} />
   // Used to instantiate the controller and viewer with the correct HTML element.
   const [isReady, setIsReady] = useState(false);
+
+  const renderPreset = useMemo<PresetNames | Presets>(() => {
+    if (typeof _renderPreset === 'string') {
+      return _renderPreset;
+    }
+    if (background) {
+      if (_renderPreset) {
+        return [_renderPreset[0], { background, ...(_renderPreset[1] || {}) }];
+      }
+      return ['default-preset', { background }];
+    }
+    return _renderPreset || 'default-preset';
+  }, [_renderPreset, background]);
 
   // This is an HTML element that sits above the Canvas element that is passed to the controller.
   // Additional non-canvas drawn elements can be placed here and positioned. CSS is applied to this
@@ -66,7 +82,12 @@ export const Atlas: React.FC<
   // on the parent element and matches the size of it.
 
   // This measures the height and width of the Atlas element.
-  const [ref, bounds, forceRefresh] = useMeasure({ scroll: true });
+  const [_ref, bounds, forceRefresh] = useMeasure({ scroll: true });
+  const outerContainerRef = useRef<HTMLDivElement>();
+  const ref = (component: HTMLDivElement) => {
+    outerContainerRef.current = component;
+    _ref(component);
+  };
 
   const [presetName, preset, viewport, refs] = usePreset(renderPreset, {
     width: restProps.width,
@@ -295,6 +316,16 @@ export const Atlas: React.FC<
       window.removeEventListener('keyup', keyupSpace);
     };
   }, [preset]);
+
+  useLayoutEffect(() => {
+    if (outerContainerRef.current && !background) {
+      const computed = getComputedStyle(outerContainerRef.current);
+      const _background = computed.getPropertyValue('--atlas-background');
+      if (_background) {
+        setBackground(_background);
+      }
+    }
+  }, [background]);
 
   const { height: _, width: __, ...canvasProps } = restProps;
   const widthClassName = useClassname([restProps.width, restProps.height]);

@@ -8,7 +8,7 @@ import { World } from '../../../world';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
 import { Preset, PresetArgs } from './_types';
 import { unmountComponentAtNode } from '../reconciler';
-import { DebugRenderer } from "../../debug-renderer/debug-renderer";
+import { DebugRenderer } from '../../debug-renderer/debug-renderer';
 
 export type DefaultPresetName = 'default-preset';
 
@@ -18,6 +18,7 @@ export type DefaultPresetOptions = {
   interactive?: boolean;
   dpi?: number;
   canvasBox?: boolean;
+  background?: string;
 };
 
 export function defaultPreset({
@@ -31,6 +32,7 @@ export function defaultPreset({
   dpi,
   canvasBox = true,
   navigatorElement,
+  background,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -49,8 +51,8 @@ export function defaultPreset({
 
   const renderer = new CompositeRenderer([
     unstable_webglRenderer
-      ? new WebGLRenderer(canvasElement)
-      : new CanvasRenderer(canvasElement, { dpi, debug: false, box: canvasBox }),
+      ? new WebGLRenderer(canvasElement, { dpi })
+      : new CanvasRenderer(canvasElement, { dpi, debug: false, box: canvasBox, background }),
     overlayElement
       ? new OverlayRenderer(overlayElement, {
           box: unstable_webglRenderer || !canvasBox,

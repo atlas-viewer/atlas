@@ -22,6 +22,7 @@ export type CanvasRendererOptions = {
   crossOrigin?: boolean;
   dpi?: number;
   box?: boolean;
+  background?: string;
 };
 
 export type ImageBuffer = {
@@ -238,8 +239,8 @@ export class CanvasRenderer implements Renderer {
     const canvas = this.getCanvasDims();
     // But we also need to clear the canvas.
     this.ctx.globalAlpha = 1;
-    // this.ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-    this.ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.ctx.fillStyle = this.options.background || 'rgba(0, 0, 0, 0)';
+    this.ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {

@@ -171,6 +171,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
+        if (e.which > 1) {
+          state.isPressing = false;
+          return;
+        }
         if (runtime.mode === 'explore') {
           e.preventDefault();
           state.pointerStart.x = e.atlas.x;
@@ -259,7 +263,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               pendingTransition.from = dna(runtime.target);
               pendingTransition.to = transform(
                 pendingTransition.from,
-                compose(translate(state.pointerStart.x - x, state.pointerStart.y - y), scaleAtOrigin(1 / deltaDistance, x, y)),
+                compose(
+                  translate(state.pointerStart.x - x, state.pointerStart.y - y),
+                  scaleAtOrigin(1 / deltaDistance, x, y)
+                ),
                 state.mousemoveBuffer
               );
               pendingTransition.elapsed_time = 0;

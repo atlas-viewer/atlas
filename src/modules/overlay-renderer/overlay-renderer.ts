@@ -14,6 +14,7 @@ export type OverlayRendererOptions = {
   text: boolean;
   inlineStyles: boolean;
   triggerResize: () => void;
+  background: string;
 };
 
 export class OverlayRenderer implements Renderer {
@@ -43,11 +44,20 @@ export class OverlayRenderer implements Renderer {
       text: false,
       sheetPrefix: '',
       inlineStyles: false,
+      background: '',
       ...(options || {}),
     };
     this.stylesheet = new Stylesheet({ sheetPrefix: this.options.sheetPrefix });
     if (!this.options.inlineStyles) {
       this.htmlContainer.appendChild(this.stylesheet.getElement());
+    }
+
+    if (this.options.background) {
+      this.htmlContainer.classList.add(
+        this.stylesheet.addStylesheet(`
+        background: ${this.options.background};
+      `)
+      );
     }
 
     // Default classes.

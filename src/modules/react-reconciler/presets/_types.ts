@@ -29,4 +29,5 @@ export type PresetArgs = {
   canvasElement?: HTMLCanvasElement;
   overlayElement?: HTMLDivElement;
   navigatorElement?: HTMLCanvasElement;
+  background?: string;
 };

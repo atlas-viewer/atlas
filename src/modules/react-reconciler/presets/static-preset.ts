@@ -22,6 +22,7 @@ export function staticPreset({
   containerElement,
   overlayElement,
   controllerConfig,
+  background,
 }: PresetArgs & StaticPresetOptions): Preset {
   if (!containerElement) {
     throw new Error('Invalid container');
@@ -41,6 +42,7 @@ export function staticPreset({
     addPart: false,
     setDraggableFalse: false,
     imageClass: 'atlas-static-image',
+    background,
   });
   const renderer = overlayElement
     ? new CompositeRenderer([

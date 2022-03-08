@@ -14,6 +14,7 @@ type StaticRendererOptions = {
   setDraggableFalse: boolean;
   widthStylesheet: boolean;
   sheetPrefix: string;
+  background: string;
 };
 
 export class StaticRenderer implements Renderer {
@@ -39,9 +40,15 @@ export class StaticRenderer implements Renderer {
       imageClass: '',
       widthStylesheet: false,
       sheetPrefix: 'position-',
+      background: '#000',
       ...(options || {}),
     };
     this.stylesheet = new Stylesheet({ sheetPrefix: this.options.sheetPrefix });
+    this.container.classList.add(
+      this.stylesheet.addStylesheet(`
+        background: ${this.options.background};
+      `)
+    );
     if (this.options.widthStylesheet) {
       this.container.appendChild(this.stylesheet.getElement());
     }

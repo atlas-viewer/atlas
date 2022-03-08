@@ -7,7 +7,7 @@ const defaultArgs = {};
 
 export function usePreset(
   renderPreset: PresetNames | Presets | undefined,
-  options: { width: number; height: number; forceRefresh?: any; unstable_webglRenderer?: boolean }
+  options: { width: number; height: number; forceRefresh?: any; unstable_webglRenderer?: boolean; background?: string }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
   const canvasRef = useRef<HTMLCanvasElement>();
