@@ -239,7 +239,7 @@ export class CanvasRenderer implements Renderer {
     const canvas = this.getCanvasDims();
     // But we also need to clear the canvas.
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = this.options.background || 'rgba(0, 0, 0, 0)';
+    this.ctx.fillStyle = this.options.background || 'rgb(0, 0, 0)';
     this.ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
