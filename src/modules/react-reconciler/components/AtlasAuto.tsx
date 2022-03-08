@@ -1,6 +1,8 @@
 import { Atlas, AtlasProps } from '../Atlas';
 import React, { useEffect, useMemo } from 'react';
 import useMeasure from 'react-use-measure';
+import { Container } from './Container';
+import { toPx } from '../utility/to-px';
 
 export const AtlasAuto: React.FC<
   AtlasProps & {
@@ -32,19 +34,22 @@ export const AtlasAuto: React.FC<
   }, [_bounds, aspectRatio]);
 
   return (
-    <div
-      ref={ref}
-      style={{
-        width: width || '100%',
-        height: height ? height : aspectRatio ? bounds.height : 512,
-      }}
-      {...containerProps}
-    >
+    <Container ref={ref} className="atlas-container" {...containerProps}>
       {bounds.width ? (
         <Atlas width={bounds.width || 100} height={bounds.height || 100} {...restProps}>
           {props.children}
         </Atlas>
       ) : null}
-    </div>
+      {props.hideInlineStyle ? null : (
+        <style>{`
+          .atlas-container { 
+            display: var(--atlas-container-display, block);
+            flex: var(--atlas-container-flex, none);
+            width: var(--atlas-container-width, ${width ? `${width}px` : '100%'});
+            height: var(--atlas-container-height, ${toPx(height ? height : aspectRatio ? bounds.height : 512)})  
+          }
+      `}</style>
+      )}
+    </Container>
   );
 };

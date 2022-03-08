@@ -207,3 +207,31 @@ export const mobileSize = () => {
     </>
   );
 };
+
+export const flexbox = () => {
+  return (
+    <>
+      <style>{`
+        .atlas-flex {
+          height: 100vh;
+          box-sizing: border-box;
+          padding: 1em;
+          display: flex;
+          flex-direction: column;
+          
+          --atlas-background: #f0f0f0;
+          --atlas-focus: 5px solid green;
+          --atlas-container-flex: 1 1 0px;
+        }
+      `}</style>
+      <div className="atlas-flex">
+        <AtlasAuto renderPreset={['default-preset', { canvasBox: true }]}>
+          <world>
+            <ImageService key="wunder" {...staticTiles[1]} />
+          </world>
+        </AtlasAuto>
+      </div>
+      <style>{`body[style]{padding: 0 !important}`}</style>
+    </>
+  );
+};

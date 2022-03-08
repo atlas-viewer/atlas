@@ -361,9 +361,12 @@ export const Atlas: React.FC<
           />
         </Container>
       ) : null}
-      {hideInlineStyle ? null : (
+      {hideInlineStyle ? (
+        // We still need this, even if inline styles are hidden, this classname is unique to this viewport.
+        <style>{`.atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }`}</style>
+      ) : (
         <style>{`
-        .atlas { position: relative; user-select: none; display: flex; background: var(--atlas-background, #000); z-index: 10; touch-action: none; }
+        .atlas { position: relative; user-select: none; display: flex; background: var(--atlas-background, #000); z-index: var(--atlas-z-index, 10); touch-action: none; }
         .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
