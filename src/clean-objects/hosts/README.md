@@ -1,4 +1,4 @@
-# Hosts
+ # Hosts
 
 Hosts are external integrations (e.g. the DOM) used to hold resources. Renderers 
 may share similar methods and hosts. An image host for the DOM may be used for

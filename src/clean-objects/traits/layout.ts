@@ -67,7 +67,7 @@ type AllLayoutEvents =
   | ConstrainBoundsLayoutEvent
   | ZoomToLayoutEvent;
 
-export function revisionDefaults(): Layout {
+export function layoutDefaults(): Layout {
   return {
     layout: {
       triggerQueue: [],
@@ -115,16 +115,17 @@ export function flushLayoutSubscriptions(input: Layout) {
     object.layout.flushed = [];
     const queueLen = object.layout.triggerQueue.length;
     for (let x = 0; x < queueLen; x++) {
-      if (!object.layout.triggerQueue[x] || object.layout.flushed.indexOf(object.layout.triggerQueue[x].type) !== -1) {
+      const queueItem = object.layout.triggerQueue[x];
+      if (!queueItem || object.layout.flushed.indexOf(queueItem.type) !== -1) {
         continue;
       }
-      if (typeof object.layout.triggerQueue[x].data === 'undefined') {
-        object.layout.flushed.push(object.layout.triggerQueue[x].type);
+      if (typeof queueItem.data === 'undefined') {
+        object.layout.flushed.push(queueItem.type);
       }
       const len = object.layout.subscriptions.length;
       for (let i = 0; i < len; i++) {
         // eslint-disable-next-line prefer-spread
-        (object.layout.subscriptions[i] as any).apply(null, object.layout.triggerQueue[x]);
+        (object.layout.subscriptions[i] as any)(queueItem);
       }
     }
     object.layout.triggerQueue = [];

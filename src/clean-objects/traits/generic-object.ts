@@ -98,14 +98,17 @@ export function isGeneric(t: unknown): t is GenericObject {
   return !!(t && (t as any).id);
 }
 
-export function genericObjectDefaults(type: 'node'): GenericObject<NodeDefinition>;
-export function genericObjectDefaults(type: 'container'): GenericObject<ContainerDefinition>;
-export function genericObjectDefaults(type: 'container' | 'node'): GenericObject<NodeDefinition | ContainerDefinition>;
-export function genericObjectDefaults(type: 'container' | 'node'): GenericObject {
+export function genericObjectDefaults(type: 'node', id?: string): GenericObject<NodeDefinition>;
+export function genericObjectDefaults(type: 'container', id?: string): GenericObject<ContainerDefinition>;
+export function genericObjectDefaults(
+  type: 'container' | 'node',
+  id?: string
+): GenericObject<NodeDefinition | ContainerDefinition>;
+export function genericObjectDefaults(type: 'container' | 'node', id?: string): GenericObject {
   const points = dna(5);
   points.set([1], 0);
   return {
-    id: nanoid(9),
+    id: id || nanoid(9),
     type: '',
     display: {
       width: 0,

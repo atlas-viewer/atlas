@@ -1,8 +1,5 @@
 import { AllEvents } from '../../modules/react-reconciler';
-import { WorldObject } from '../../world-objects';
-import { SpacialContent } from '../../spacial-content';
 import { GenericObject, getTopParent } from './generic-object';
-import { BaseObject } from '../base.object';
 import { triggerLayout } from './layout';
 import { DnaFactory } from '@atlas-viewer/dna';
 import { getObjectsAt, PaintableObject } from './paintable';
@@ -99,48 +96,50 @@ export type SupportedEventTypeMapping = {
   click: 'onClick';
 };
 
+export type AtlasEvent<BaseEvent extends Event> = BaseEvent & { atlas: { x: number; y: number }; cancelled?: boolean };
+
 export type SupportedEventFunctions = {
   // Mouse Events
-  onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }): void;
-  onMouseEnter(e: MouseEvent & { atlas: { x: number; y: number } }): void;
-  onMouseLeave(e: MouseEvent & { atlas: { x: number; y: number } }): void;
-  onMouseMove(e: MouseEvent & { atlas: { x: number; y: number } }): void;
-  onMouseOut(e: MouseEvent & { atlas: { x: number; y: number } }): void;
-  onMouseOver(e: MouseEvent & { atlas: { x: number; y: number } }): void;
-  onMouseUp(e: MouseEvent & { atlas: { x: number; y: number } }): void;
+  onMouseDown(e: AtlasEvent<MouseEvent>): void;
+  onMouseEnter(e: AtlasEvent<MouseEvent>): void;
+  onMouseLeave(e: AtlasEvent<MouseEvent>): void;
+  onMouseMove(e: AtlasEvent<MouseEvent>): void;
+  onMouseOut(e: AtlasEvent<MouseEvent>): void;
+  onMouseOver(e: AtlasEvent<MouseEvent>): void;
+  onMouseUp(e: AtlasEvent<MouseEvent>): void;
 
   // Touch Events
-  onTouchCancel(e: TouchEvent & { atlas: { x: number; y: number } }): void;
-  onTouchEnd(e: TouchEvent & { atlas: { x: number; y: number } }): void;
-  onTouchMove(e: TouchEvent & { atlas: { x: number; y: number } }): void;
-  onTouchStart(e: TouchEvent & { atlas: { x: number; y: number } }): void;
+  onTouchCancel(e: AtlasEvent<TouchEvent>): void;
+  onTouchEnd(e: AtlasEvent<TouchEvent>): void;
+  onTouchMove(e: AtlasEvent<TouchEvent>): void;
+  onTouchStart(e: AtlasEvent<TouchEvent>): void;
 
   // Pointer Events
-  onPointerDown(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerMove(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerUp(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerCancel(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerEnter(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerLeave(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerOver(e: PointerEvent & { atlas: { x: number; y: number } }): void;
-  onPointerOut(e: PointerEvent & { atlas: { x: number; y: number } }): void;
+  onPointerDown(e: AtlasEvent<PointerEvent>): void;
+  onPointerMove(e: AtlasEvent<PointerEvent>): void;
+  onPointerUp(e: AtlasEvent<PointerEvent>): void;
+  onPointerCancel(e: AtlasEvent<PointerEvent>): void;
+  onPointerEnter(e: AtlasEvent<PointerEvent>): void;
+  onPointerLeave(e: AtlasEvent<PointerEvent>): void;
+  onPointerOver(e: AtlasEvent<PointerEvent>): void;
+  onPointerOut(e: AtlasEvent<PointerEvent>): void;
 
   // Drag events
-  onDragStart(e: DragEvent & { atlas: { x: number; y: number } }): void;
-  onDragEnd(e: DragEvent & { atlas: { x: number; y: number } }): void;
-  onDragEnter(e: DragEvent & { atlas: { x: number; y: number } }): void;
-  onDragExit(e: DragEvent & { atlas: { x: number; y: number } }): void;
-  onDrag(e: DragEvent & { atlas: { x: number; y: number } }): void;
-  onDragOver(e: DragEvent & { atlas: { x: number; y: number } }): void;
+  onDragStart(e: AtlasEvent<DragEvent>): void;
+  onDragEnd(e: AtlasEvent<DragEvent>): void;
+  onDragEnter(e: AtlasEvent<DragEvent>): void;
+  onDragExit(e: AtlasEvent<DragEvent>): void;
+  onDrag(e: AtlasEvent<DragEvent>): void;
+  onDragOver(e: AtlasEvent<DragEvent>): void;
 
   // UI Events
-  onScroll(e: UIEvent & { atlas: { x: number; y: number } }): void;
+  onScroll(e: AtlasEvent<UIEvent>): void;
 
   // Wheel Events
-  onWheel(e: WheelEvent & { atlas: { x: number; y: number } }): void;
+  onWheel(e: AtlasEvent<WheelEvent>): void;
 
   // Other
-  onClick(e: MouseEvent & { atlas: { x: number; y: number } }): void;
+  onClick(e: AtlasEvent<MouseEvent>): void;
 };
 
 export type EventMap = {
@@ -354,7 +353,7 @@ export function propagateEvent(
   eventName: string,
   e: any,
   filteredObjects: PaintableObject[][],
-  { bubbles = false, cancelable = false }: { bubbles?: boolean; cancelable?: boolean } = {}
+  { bubbles = true, cancelable = true }: { bubbles?: boolean; cancelable?: boolean } = {}
 ) {
   e.atlasTarget = object;
 
@@ -365,7 +364,14 @@ export function propagateEvent(
   // Set up a stop propagation
   let stopped = false;
   e.stopPropagation = () => {
-    stopped = true;
+    if (bubbles) {
+      stopped = true;
+    }
+  };
+  e.preventDefault = () => {
+    if (cancelable) {
+      e.cancelled = true;
+    }
   };
 
   const woLen = filteredObjects.length;

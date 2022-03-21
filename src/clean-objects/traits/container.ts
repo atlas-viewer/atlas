@@ -5,7 +5,7 @@ export function append(object: GenericObject<ContainerDefinition>, toAppend: Gen
   if (object.node.type !== 'container') {
     throw new Error('Can only insert into container');
   }
-  if (object.node.parent && !object.node.zone) {
+  if (toAppend.node.parent && !object.node.zone) {
     throw new Error('Can only insert into one container');
   }
 

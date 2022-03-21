@@ -1,6 +1,6 @@
 import { applyGenericObjectProps, genericObjectDefaults } from '../../clean-objects/traits/generic-object';
-import { append, remove, insertBefore } from '../../clean-objects/traits/container';
-import { DnaFactory } from '@atlas-viewer/dna';
+import { append, remove, insertBefore, hideInstance } from '../../clean-objects/traits/container';
+import { DnaFactory, dnaLength } from '@atlas-viewer/dna';
 
 describe.only('Container', function () {
   test('adding single item to container', () => {
@@ -156,19 +156,60 @@ describe.only('Container', function () {
     append(object, child1);
 
     expect(object.node.list).toHaveLength(1);
-    expect(object.node.list[0]!.id).toEqual('child-1');
+    expect(object.node.list[0]?.id).toEqual('child-1');
     expect(object.node.order).toEqual([0]);
     expect(object.node.listPoints[0]).toEqual(1);
 
     remove(object, { id: 'child-1' } as any);
 
-    expect(object.node.list[0]!).toEqual(null);
+    expect(object.node.list[0]).toEqual(null);
     expect(object.node.order).toEqual([]);
     expect(object.node.listPoints[0]).toEqual(0);
 
     expect(() => {
       remove(object, { id: 'child-NOT_EXIST' } as any);
     }).not.toThrow();
+  });
+
+  test('append lots of items', () => {
+    const object = genericObjectDefaults('container');
+
+    for (let x = 0; x < 10; x++) {
+      for (let y = 0; y < 10; y++) {
+        const child = genericObjectDefaults('node');
+
+        applyGenericObjectProps(child, {
+          target: { x: x * 50, y: y * 50, width: 50, height: 50 },
+        });
+
+        append(object, child);
+      }
+    }
+
+    expect(object.node.list).toHaveLength(100);
+    expect(dnaLength(object.node.listPoints)).toEqual(128);
+  });
+
+  test('hide instance', () => {
+    const container = genericObjectDefaults('container');
+    const node = genericObjectDefaults('node');
+
+    hideInstance(container);
+    expect(container.node.hidden).toEqual(true);
+
+    hideInstance(node);
+    expect(node.node.hidden).toEqual(true);
+  });
+
+  test('Can only put into one parent', () => {
+    const object1 = genericObjectDefaults('container');
+    const object2 = genericObjectDefaults('container');
+    const child = genericObjectDefaults('node');
+
+    append(object1, child);
+    expect(() => {
+      append(object2, child);
+    }).toThrow('Can only insert into one container');
   });
 
   test('non-container', () => {
