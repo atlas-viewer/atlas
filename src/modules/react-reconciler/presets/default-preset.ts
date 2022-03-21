@@ -33,6 +33,7 @@ export function defaultPreset({
   canvasBox = true,
   navigatorElement,
   background,
+  runtimeOptions,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -63,7 +64,13 @@ export function defaultPreset({
     navigatorElement ? new DebugRenderer(navigatorElement) : undefined,
   ]);
 
-  const runtime = new Runtime(renderer, new World(1024, 1024), viewport, controller ? [controller] : []);
+  const runtime = new Runtime(
+    renderer,
+    new World(1024, 1024),
+    viewport,
+    controller ? [controller] : [],
+    runtimeOptions
+  );
 
   const em = new BrowserEventManager(canvasElement, runtime);
 

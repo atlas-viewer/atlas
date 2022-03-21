@@ -1,5 +1,5 @@
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
-import { Runtime } from '../../../renderer/runtime';
+import { Runtime, RuntimeOptions } from '../../../renderer/runtime';
 import { Renderer } from '../../../renderer/renderer';
 import { RuntimeController, Viewer } from '../../../types';
 
@@ -25,6 +25,7 @@ export type Preset = {
 export type PresetArgs = {
   viewport: Viewer;
   forceRefresh: () => void;
+  runtimeOptions?: RuntimeOptions;
   containerElement?: HTMLDivElement;
   canvasElement?: HTMLCanvasElement;
   overlayElement?: HTMLDivElement;

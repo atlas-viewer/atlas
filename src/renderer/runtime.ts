@@ -27,7 +27,7 @@ type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
 
 export type ViewerMode = 'static' | 'explore' | 'sketch';
 
-type RuntimeOptions = {
+export type RuntimeOptions = {
   visibilityRatio: number;
   maxOverZoom: number;
   maxUnderZoom: number;
@@ -129,7 +129,7 @@ export class Runtime {
     this.options = {
       maxOverZoom: 1,
       maxUnderZoom: 1,
-      visibilityRatio: 1,
+      visibilityRatio: 1.5,
       ...(options || {}),
     };
     this.target = DnaFactory.projection(target);

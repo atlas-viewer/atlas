@@ -70,9 +70,8 @@ export class CanvasRenderer implements Renderer {
   frameIsRendering = false;
 
   firstMeaningfulPaint = false;
-  parallelTasks = 16; // @todo configuration.
-  frameTasks = 5;
-  isGPUBusy = false;
+  parallelTasks = 8; // @todo configuration.
+  frameTasks = 3;
   loadingQueueOrdered = true;
   loadingQueue: Array<{
     id: string;
@@ -147,7 +146,6 @@ export class CanvasRenderer implements Renderer {
 
   doOffscreenWork() {
     this.frameTasks = 0;
-    this.isGPUBusy = false;
     // This is our worker. It is called every 1ms (roughly) and will usually be
     // an async task that can run without blocking the frame. Because of
     // there is a configuration for parallel task count.
@@ -164,12 +162,11 @@ export class CanvasRenderer implements Renderer {
   }
 
   _worker = () => {
-    // First we check if there is work to do.
     if (
+      // First we check if there is work to do.
       this.loadingQueue.length &&
-      // this.tasksRunning < this.parallelTasks &&
-      // this.frameTasks < this.parallelTasks &&
-      !this.isGPUBusy
+      this.tasksRunning < this.parallelTasks &&
+      this.frameTasks < this.parallelTasks
     ) {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
@@ -472,7 +469,6 @@ export class CanvasRenderer implements Renderer {
                     canvas.width = points[3] - points[1];
                     canvas.height = points[4] - points[2];
                     ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
-                    this.isGPUBusy = !this.firstMeaningfulPaint && true;
                     innerResolve();
                   });
                 },
