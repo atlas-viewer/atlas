@@ -59,6 +59,7 @@ export type ContainerDefinition<Contains extends GenericObject = GenericObject> 
   cropped: boolean;
   crop: Strand;
   ordered: boolean;
+  composite: boolean;
   order: number[];
   parent?: ContainerDefinition;
 };
@@ -135,6 +136,7 @@ export function genericObjectDefaults(type: 'container' | 'node', id?: string): 
             ordered: false,
             lazy: false,
             hidden: false,
+            composite: false,
             zone: false,
           }
         : {

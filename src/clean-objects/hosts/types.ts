@@ -1,4 +1,4 @@
-export type HostCompositeStorage<T> = Record<number, Record<number, T>>;
+import { GridStorage } from '../helpers/grid-storage';
 
 export interface HasElement<T> {
   type: string;
@@ -10,9 +10,9 @@ export interface HasElement<T> {
 
 export interface HasElementMap<T> {
   type: string;
-  elements: HostCompositeStorage<T>;
+  elements: GridStorage<T>;
   columns: number;
-  loadingMap: HostCompositeStorage<boolean>;
-  abortMap: HostCompositeStorage<AbortController>;
-  errorMap: HostCompositeStorage<Error>;
+  loadingMap: GridStorage<boolean>;
+  abortMap: GridStorage<AbortController>;
+  errorMap: GridStorage<Error>;
 }

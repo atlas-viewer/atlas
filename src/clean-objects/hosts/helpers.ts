@@ -1,4 +1,5 @@
 import { HasElement, HasElementMap } from './types';
+import { createEmptyStorage, setStorageFromIndex } from '../helpers/grid-storage';
 
 // Hosts
 //
@@ -30,11 +31,11 @@ export function emptyHostElement(type: string): HasElement<any> {
 export function emptyHostElementMap(type: string, columns = 0): HasElementMap<any> {
   return {
     type,
-    elements: {},
+    elements: createEmptyStorage(),
     columns,
-    loadingMap: {},
-    abortMap: {},
-    errorMap: {},
+    loadingMap: createEmptyStorage(),
+    abortMap: createEmptyStorage(),
+    errorMap: createEmptyStorage(),
   };
 }
 
@@ -102,59 +103,59 @@ export function createCompositeLoader<T>(
     const column = index - row * columns;
     const abortController = abortable ? new AbortController() : undefined;
     if (abortController) {
-      setStorageFromIndex(host, index, abortController, 'abortMap');
+      setStorageFromIndex(host.abortMap, host.columns, index, abortController);
     }
-    setStorageFromIndex(host, index, true, 'loadingMap');
+    setStorageFromIndex(host.loadingMap, host.columns, index, true);
     try {
       const element = await loader({ index, column, row }, abortController?.signal);
-      setStorageFromIndex(host, index, false, 'loadingMap');
+      setStorageFromIndex(host.loadingMap, host.columns, index, false);
       // Allows the image or data to be GCd hopefully!
       if (!abortController || !abortController.signal.aborted) {
-        setStorageFromIndex(host, index, element, 'elements');
+        setStorageFromIndex(host.elements, host.columns, index, element);
       }
-      setStorageFromIndex(host, index, undefined, 'abortMap');
+      setStorageFromIndex(host.abortMap, host.columns, index, undefined);
     } catch (e) {
-      setStorageFromIndex(host, index, false, 'loadingMap');
-      setStorageFromIndex(host, index, undefined, 'abortMap');
-      setStorageFromIndex(host, index, e, 'errorMap');
+      setStorageFromIndex(host.loadingMap, host.columns, index, false);
+      setStorageFromIndex(host.abortMap, host.columns, index, undefined);
+      setStorageFromIndex(host.errorMap, host.columns, index, e);
     }
   };
 }
 
-export function setStorageFromIndex<T, Value = T>(
-  host: HasElementMap<T>,
-  index: number,
-  value: Value | undefined,
-  key: 'elements' | 'loadingMap' | 'abortMap' | 'errorMap' = 'elements'
-) {
-  const storage = host[key];
-  const columns = host.columns;
-  const column = Math.floor(index / columns);
-  const row = index - column * columns;
-
-  if (!storage[row]) {
-    storage[row] = {};
-  }
-
-  if (typeof value === 'undefined') {
-    delete storage[row][column];
-  } else {
-    storage[row][column] = value as any;
-  }
-}
-
-export function getStorageFromIndex<T, Value = T>(
-  host: HasElementMap<Value>,
-  index: number,
-  key: 'elements' | 'loadingMap' | 'abortMap' | 'errorMap' = 'elements'
-): T | undefined {
-  const storage = host[key];
-  const columns = host.columns;
-  const column = Math.floor(index / columns);
-  const row = index - column * columns;
-
-  if (storage[row]) {
-    return storage[row][column] as any;
-  }
-  return undefined;
-}
+// export function setStorageFromIndex<T, Value = T>(
+//   host: HasElementMap<T>,
+//   index: number,
+//   value: Value | undefined,
+//   key: 'elements' | 'loadingMap' | 'abortMap' | 'errorMap' = 'elements'
+// ) {
+//   const storage = host[key];
+//   const columns = host.columns;
+//   const column = Math.floor(index / columns);
+//   const row = index - column * columns;
+//
+//   if (!storage[row]) {
+//     storage[row] = {};
+//   }
+//
+//   if (typeof value === 'undefined') {
+//     delete storage[row][column];
+//   } else {
+//     storage[row][column] = value as any;
+//   }
+// }
+//
+// export function getStorageFromIndex<T, Value = T>(
+//   host: HasElementMap<Value>,
+//   index: number,
+//   key: 'elements' | 'loadingMap' | 'abortMap' | 'errorMap' = 'elements'
+// ): T | undefined {
+//   const storage = host[key];
+//   const columns = host.columns;
+//   const column = Math.floor(index / columns);
+//   const row = index - column * columns;
+//
+//   if (storage[row]) {
+//     return storage[row][column] as any;
+//   }
+//   return undefined;
+// }

@@ -49,37 +49,114 @@
 // - Possibly first-in first-out recycling
 
 import { GenericObject } from './generic-object';
+import { createEmptyStorage, GridStorage } from '../helpers/grid-storage';
+import { dna, dnaLength } from '@atlas-viewer/dna';
+
+type GenerateTileUrl = (dims: { x: number; y: number }) => string;
 
 interface HasSparseGrid {
-  sparseGrid: null | {
+  sparseGrid: {
     width: number;
     height: number;
     columns: number;
     rows: number;
     tile: { width: number; height: number };
-    generateTileUrl: () => string;
+    generateTileUrl: GenerateTileUrl;
+    state: {
+      totalLoaded: number;
+      loadedMap: GridStorage<boolean>;
+    };
   };
 }
 
-function sparseGridDefaults(): HasSparseGrid {
+export function sparseGridDefaults(grid: HasSparseGrid['sparseGrid']): HasSparseGrid {
   return {
-    sparseGrid: null,
+    sparseGrid: grid,
   };
 }
 
-function findSparseGridGaps(
+export function createInitialGrid(
+  tile: { width: number; height?: number },
+  dimensions: { width: number; height: number },
+  generateTileUrl: GenerateTileUrl
+): HasSparseGrid['sparseGrid'] {
+  const _tile = {
+    width: tile.width,
+    height: tile.height || tile.width,
+  };
+
+  const columns = Math.ceil(dimensions.width / _tile.width);
+  const rows = Math.ceil(dimensions.height / _tile.height);
+
+  return {
+    tile: _tile,
+    width: dimensions.width,
+    height: dimensions.height,
+    rows,
+    generateTileUrl,
+    columns,
+    state: {
+      totalLoaded: 0,
+      loadedMap: createEmptyStorage(),
+    },
+  };
+}
+
+export function generateSparseGrid(
   object: HasSparseGrid & GenericObject,
   viewport: { x: number; y: number; width: number; height: number }
-): Array<{ x: number; y: number; width: number; height: number }> {
-  return [];
-}
-
-function generateSparseGrid(
-  object: HasSparseGrid & GenericObject,
-  tile: { width: number; height: number },
-  dimensions: { width: number; height: number }
 ) {
-  //
+  if (!object.sparseGrid) {
+    throw new Error('Does not contain sparse grid');
+  }
+  const tiles: Array<{ r: number; c: number }> = [];
+
+  const columnStart = Math.floor(viewport.x / object.sparseGrid.tile.width);
+  const rowStart = Math.floor(viewport.y / object.sparseGrid.tile.height);
+  const columnEnd = Math.ceil((viewport.x + viewport.width) / object.sparseGrid.tile.width);
+  const rowEnd = Math.ceil((viewport.y + viewport.height) / object.sparseGrid.tile.height);
+  const state = object.sparseGrid.state;
+
+  for (let c = columnStart; c < columnEnd; c++) {
+    for (let r = rowStart; r < rowEnd; r++) {
+      if (state.loadedMap[r] && state.loadedMap[r][c]) {
+        continue;
+      }
+      // Generate new tile.
+      tiles.push({ r, c });
+    }
+  }
+
+  // @todo Check length of points.
+  if (dnaLength(object.points) <= state.totalLoaded + tiles.length) {
+    // resize, more than doubles each time
+    const points = object.points;
+    const newPoints = dna(tiles.length * 5 + object.points.length * 2);
+    newPoints.set(points, 0);
+    object.points = newPoints;
+  }
+
+  let cursor = state.totalLoaded;
+  for (let i = 0; i < tiles.length; i++) {
+    const tile = tiles[i];
+    const x = tile.c * object.sparseGrid.tile.width;
+    const y = tile.r * object.sparseGrid.tile.height;
+    state.loadedMap[tile.r] = state.loadedMap[tile.r] || {};
+    state.loadedMap[tile.r][tile.c] = true;
+
+    object.points[cursor * 5] = 0;
+    object.points[cursor * 5 + 1] = x;
+    object.points[cursor * 5 + 2] = y;
+    object.points[cursor * 5 + 3] = x + object.sparseGrid.tile.width;
+    object.points[cursor * 5 + 4] = y + object.sparseGrid.tile.height;
+    cursor += 1;
+  }
+
+  state.totalLoaded += tiles.length;
+
+  return {
+    loaded: tiles.length,
+  };
 }
 
 function defragmentSparseGrid(object: HasSparseGrid & GenericObject) {

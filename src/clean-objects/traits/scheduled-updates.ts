@@ -9,7 +9,9 @@ export interface ScheduledUpdatesObject {
 }
 
 export function hasScheduledUpdates(t: unknown): t is ScheduledUpdatesObject {
-  return t && (t as any).scheduledUpdates && (t as any).scheduledUpdates.list;
+  return (
+    t && (t as any).scheduledUpdates && (t as any).scheduledUpdates.list && (t as any).scheduledUpdates.list.length
+  );
 }
 
 export function getScheduledUpdates(

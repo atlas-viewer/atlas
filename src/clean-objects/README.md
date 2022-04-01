@@ -38,3 +38,11 @@ transforming props to internal state on the object, diffing and notifying if the
 - **Revision**
 - **Scheduled updates**
   - getScheduledUpdates()
+
+## Runtime simplification
+
+- Setting home position
+- Starting / stopping controllers
+- Passing position to controller *controller could get runtime*
+- Trigger resize
+- 

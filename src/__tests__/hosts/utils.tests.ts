@@ -3,8 +3,8 @@ import {
   createLoader,
   emptyHostElement,
   emptyHostElementMap,
-  getStorageFromIndex,
 } from '../../clean-objects/hosts/helpers';
+import { getStorageFromIndex } from '../../clean-objects/helpers/grid-storage';
 
 function deferred() {
   let resolve!: (t?: any) => any;
@@ -278,7 +278,7 @@ describe('Host utilities', function () {
       '1': { '0': { index: 1, row: 0, column: 1 } },
     });
 
-    const controller1 = getStorageFromIndex<AbortController>(host, 0, 'abortMap');
+    const controller1 = getStorageFromIndex(host.abortMap, host.columns, 0);
 
     expect(controller1).toBeDefined();
 
@@ -286,7 +286,7 @@ describe('Host utilities', function () {
 
     resolve1({ index: 0, row: 0, column: 0 });
 
-    expect(getStorageFromIndex<AbortController>(host, 0, 'loadingMap')).toEqual(true);
+    expect(getStorageFromIndex(host.loadingMap, host.columns, 0)).toEqual(true);
 
     await promise1;
 
@@ -294,8 +294,8 @@ describe('Host utilities', function () {
       '1': { '0': { index: 1, row: 0, column: 1 } },
     });
 
-    expect(getStorageFromIndex<AbortController>(host, 0, 'loadingMap')).toEqual(false);
-    expect(getStorageFromIndex<AbortController>(host, 1, 'loadingMap')).toEqual(false);
+    expect(getStorageFromIndex(host.loadingMap, host.columns, 0)).toEqual(false);
+    expect(getStorageFromIndex(host.loadingMap, host.columns, 1)).toEqual(false);
   });
 
   test('Composite loader - error', async () => {
@@ -319,14 +319,14 @@ describe('Host utilities', function () {
       '1': { '0': { index: 1, row: 0, column: 1 } },
     });
 
-    expect(getStorageFromIndex<AbortController>(host, 0, 'errorMap')).toEqual(new Error('This is an error'));
-    expect(getStorageFromIndex<AbortController>(host, 1, 'errorMap')).toEqual(undefined);
+    expect(getStorageFromIndex(host.errorMap, host.columns, 0)).toEqual(new Error('This is an error'));
+    expect(getStorageFromIndex(host.errorMap, host.columns, 1)).toEqual(undefined);
 
     expect(host.elements).toEqual({
       '1': { '0': { index: 1, row: 0, column: 1 } },
     });
 
-    expect(getStorageFromIndex<AbortController>(host, 0, 'loadingMap')).toEqual(false);
-    expect(getStorageFromIndex<AbortController>(host, 1, 'loadingMap')).toEqual(false);
+    expect(getStorageFromIndex(host.loadingMap, host.columns, 0)).toEqual(false);
+    expect(getStorageFromIndex(host.loadingMap, host.columns, 1)).toEqual(false);
   });
 });
