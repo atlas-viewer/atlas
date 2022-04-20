@@ -113,7 +113,7 @@ export const EnsureWorldItemCountMatches = () => {
         {boxes.map((box) => {
           return (
             <world-object width={500} height={500}>
-              <box target={box} backgroundColor={'rgba(255, 255, 0, .3)'} />
+              <box target={box} style={{ background: 'rgba(255, 255, 0, .3)' }} />
             </world-object>
           );
         })}

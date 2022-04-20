@@ -123,6 +123,9 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     if (index === -1) {
       return;
     }
+    if (this.layers.indexOf(item) !== -1) {
+      return;
+    }
 
     const beforeLayers = this.layers.slice(0, index - 1);
     const afterLayers = this.layers.slice(index);
@@ -181,7 +184,12 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   addLayers(paintables: Paintable[]) {
+    const paintablesToAdd = [];
     for (const paintable of paintables) {
+      if (this.layers.indexOf(paintable) !== -1) {
+        continue;
+      }
+      paintablesToAdd.push(paintable);
       // Check for crop.
       if (
         paintable.points.length === 5 &&
@@ -205,7 +213,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       }
     }
 
-    this.layers = this.layers.concat(paintables);
+    this.layers = this.layers.concat(paintablesToAdd);
 
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }

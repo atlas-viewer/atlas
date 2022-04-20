@@ -21,6 +21,7 @@ export * from './modules/webgl-renderer/webgl-renderer';
 export * from './utility/easing-functions';
 export * from './utility/merge-styles';
 
+/*! Atlas version process.env.VERSION */
 if (process.env.NODE_ENV !== 'production') {
   console.log('Atlas', process.env.VERSION);
 }
