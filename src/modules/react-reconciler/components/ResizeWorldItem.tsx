@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { useResizeWorldItem } from '../hooks/use-resize-world-item';
 import { HTMLPortal } from './HTMLPortal';
 
@@ -7,6 +7,7 @@ export const ResizeWorldItem: React.FC<
     handleSize?: number;
     resizable?: boolean;
     onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
+    children?: ReactNode;
   }
 > = ({ handleSize = 9, resizable, onSave, children, ...props }) => {
   const { portalRef, mode, mouseEvent, isEditing } = useResizeWorldItem(

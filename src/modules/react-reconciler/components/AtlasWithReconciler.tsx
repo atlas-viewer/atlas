@@ -1,4 +1,4 @@
-import React, { MutableRefObject, useCallback, useEffect, useLayoutEffect } from 'react';
+import React, { MutableRefObject, ReactNode, useCallback, useEffect, useLayoutEffect } from 'react';
 import { ReactAtlas } from '../reconciler';
 import { ModeContext } from '../hooks/use-mode';
 import { AtlasContext, BoundsContext } from './AtlasContext';
@@ -12,6 +12,7 @@ type AtlasWithReconcilerProps = {
   mode?: ViewerMode;
   bounds: RectReadOnly;
   preset: Preset | null;
+  children?: ReactNode;
 };
 
 export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.memo(

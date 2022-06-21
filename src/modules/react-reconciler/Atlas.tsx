@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Runtime, ViewerMode } from '../../renderer/runtime';
 import { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
@@ -28,6 +28,8 @@ export type AtlasProps = {
   className?: string;
   background?: string;
   enableNavigator?: boolean;
+  htmlChildren?: ReactNode;
+  children: ReactNode;
 };
 
 export const Atlas: React.FC<
@@ -36,6 +38,7 @@ export const Atlas: React.FC<
     height: number;
   }
 > = ({
+  htmlChildren,
   renderPreset: _renderPreset,
   onCreated,
   mode: _mode = 'explore',
@@ -409,6 +412,7 @@ export const Atlas: React.FC<
         .atlas-navigator-canvas { width: 100%; }
       `}</style>
       )}
+      {htmlChildren}
     </Container>
   );
 };

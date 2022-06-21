@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { GetTile } from '../../iiif/shared';
 
 export const TileSet: React.FC<{
@@ -7,6 +7,7 @@ export const TileSet: React.FC<{
   y: number;
   width: number;
   height: number;
+  children?: ReactNode;
 }> = (props) => {
   const scale = props.width / props.tiles.width;
   const tiles = props.tiles.imageService.tiles || [];

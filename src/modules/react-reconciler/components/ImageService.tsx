@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { GetTile } from '../../iiif/shared';
 import { TileSet } from './TileSet';
 import { getTileFromImageService } from '../../iiif/get-tiles';
 
-export const ImageService: React.FC<{ id: string; width: number; height: number; x?: number; y?: number }> = (
-  props
-) => {
+export const ImageService: React.FC<{
+  id: string;
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+  children?: ReactNode;
+}> = (props) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
 
   useEffect(() => {

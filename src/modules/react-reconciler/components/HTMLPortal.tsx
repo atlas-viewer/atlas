@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { ReactNode, useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
 import { render } from 'react-dom';
 import { useFrame } from '../hooks/use-frame';
@@ -6,6 +6,7 @@ import { useRuntime } from '../hooks/use-runtime';
 
 export const HTMLPortal: React.FC<
   {
+    children?: ReactNode;
     backgroundColor?: string;
     interactive?: boolean;
     relative?: boolean;
@@ -18,6 +19,7 @@ export const HTMLPortal: React.FC<
     interactive?: boolean;
     relative?: boolean;
     target?: { x: number; y: number; width: number; height: number };
+    style?: any;
   }
 >(({ children, ...props }, fwdRef) => {
   const ref = useRef<HTMLDivElement>();

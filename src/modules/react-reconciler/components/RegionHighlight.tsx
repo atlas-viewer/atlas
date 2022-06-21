@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { ReactNode, useCallback } from 'react';
 import { useMode } from '../hooks/use-mode';
 import { ResizeWorldItem } from './ResizeWorldItem';
 import { BoxStyle } from '../../../objects/box';
@@ -19,6 +19,7 @@ export const RegionHighlight: React.FC<{
   onClick: (annotation: RegionHighlightType) => void;
   interactive?: boolean;
   style?: BoxStyle;
+  children?: ReactNode;
 }> = ({ interactive, region, onClick, onSave, isEditing, style = { backgroundColor: 'rgba(0,0,0,.5)' } }) => {
   const mode = useMode();
 

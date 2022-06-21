@@ -50,6 +50,7 @@ export const AtlasAuto: React.FC<
           }
       `}</style>
       )}
+      {props.htmlChildren}
     </Container>
   );
 };

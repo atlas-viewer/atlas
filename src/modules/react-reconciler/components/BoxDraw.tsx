@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { useAfterFrame } from '../hooks/use-after-frame';
 import { useFrame } from '../hooks/use-frame';
 import { useCanvas } from '../hooks/use-canvas';
@@ -7,6 +7,7 @@ import { useMode } from '../hooks/use-mode';
 import { useCanvasPosition } from '../hooks/use-canvas-position';
 
 export const DrawBox: React.FC<{
+  children?: ReactNode;
   onCreate: (bounds: { x: number; y: number; width: number; height: number }) => void;
 }> = ({ onCreate }) => {
   const mousePosition = useRef({ x: 0, y: 0 });
