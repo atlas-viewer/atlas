@@ -77,15 +77,17 @@ export function getObjectsAt(
 
 export type Paint = [PaintableObject, Strand, Strand | undefined];
 
+export type PointOptions = {
+  loadLazy?: boolean;
+  zone?: PaintableObject<ContainerDefinition<PaintableObject>>;
+  aggregate?: Strand;
+};
+
 export function getAllPointsAt(
   object: PaintableObject<any>,
   target: Strand,
   scaleFactor: number,
-  options: {
-    loadLazy?: boolean;
-    zone?: PaintableObject<ContainerDefinition<PaintableObject>>;
-    aggregate?: Strand;
-  } = {}
+  options: PointOptions = {}
 ): Paint[] {
   const { loadLazy, aggregate, zone } = options;
 

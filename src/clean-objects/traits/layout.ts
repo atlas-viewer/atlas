@@ -1,5 +1,5 @@
 // Layout subscribers.
-import { getTopParent } from './generic-object';
+import { GenericObject, getTopParent } from './generic-object';
 
 export interface Layout {
   layout: {
@@ -106,7 +106,7 @@ export function triggerLayout(object: unknown, event: AllLayoutEvents) {
   }
 }
 
-export function flushLayoutSubscriptions(input: Layout) {
+export function flushLayoutSubscriptions(input: GenericObject) {
   const object = getTopParent(input as any);
   if (!hasLayouts(object)) {
     return;

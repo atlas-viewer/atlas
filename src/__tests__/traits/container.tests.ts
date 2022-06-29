@@ -1,6 +1,12 @@
-import { applyGenericObjectProps, genericObjectDefaults } from '../../clean-objects/traits/generic-object';
+import {
+  applyGenericObjectProps,
+  constrainBounds,
+  genericObjectDefaults,
+  getBounds,
+  homePosition,
+} from '../../clean-objects/traits/generic-object';
 import { append, remove, insertBefore, hideInstance } from '../../clean-objects/traits/container';
-import { DnaFactory, dnaLength } from '@atlas-viewer/dna';
+import { dna, DnaFactory, dnaLength } from '@atlas-viewer/dna';
 
 describe.only('Container', function () {
   test('adding single item to container', () => {
@@ -221,5 +227,104 @@ describe.only('Container', function () {
     expect(() => insertBefore(object as any, child1, child1)).toThrowErrorMatchingInlineSnapshot(
       `"Can only insert into container"`
     );
+  });
+
+  describe('getBounds', () => {
+    test('single box', () => {
+      const object = genericObjectDefaults('node');
+
+      applyGenericObjectProps(object, {
+        target: { x: 0, y: 0, width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      });
+
+      const bounds = getBounds(object, DnaFactory.singleBox(200, 100, 0, 0));
+
+      //  |----- 200 -----|
+      //
+      //  |- 100 -|
+      //  ^_____ maxX    (0)
+      //
+      //          |- 100 -|
+      //  ^_____ minX (-100)
+
+      expect(bounds).toEqual({
+        // X: (-100 – 0)
+        maxX: 0,
+        minX: -100,
+
+        // Y: 0
+        maxY: 0,
+        minY: 0,
+      });
+    });
+  });
+
+  describe('constrainBounds', () => {
+    test('constrain simple', () => {
+      const object = genericObjectDefaults('node');
+
+      applyGenericObjectProps(object, {
+        target: { x: 0, y: 0, width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      });
+
+      const [isConstrained1] = constrainBounds(object, DnaFactory.singleBox(200, 100, 0, 0));
+      const [isConstrained2] = constrainBounds(object, DnaFactory.singleBox(200, 100, -100, 0));
+      const [isConstrained3, constrain3] = constrainBounds(object, DnaFactory.singleBox(200, 100, -101, 0));
+      const [isConstrained4, constrain4] = constrainBounds(object, DnaFactory.singleBox(200, 100, -200, 0));
+      const [isConstrained5, constrain5] = constrainBounds(object, DnaFactory.singleBox(200, 100, 0, -1));
+      const [isConstrained6, constrain6] = constrainBounds(object, DnaFactory.singleBox(200, 100, 0, 1));
+      const [isConstrained7, constrain7] = constrainBounds(object, DnaFactory.singleBox(200, 100, 10, 0));
+
+      expect(isConstrained1).toEqual(false);
+      expect(isConstrained2).toEqual(false);
+      expect(isConstrained3).toEqual(true);
+      expect(isConstrained4).toEqual(true);
+      expect(isConstrained5).toEqual(true);
+      expect(isConstrained6).toEqual(true);
+      expect(isConstrained7).toEqual(true);
+
+      // Constrained to the left
+      expect(constrain3).toEqual(DnaFactory.singleBox(200, 100, -100, 0));
+      expect(constrain4).toEqual(DnaFactory.singleBox(200, 100, -100, 0));
+
+      // Constrained up/down
+      expect(constrain5).toEqual(DnaFactory.singleBox(200, 100, 0, 0));
+      expect(constrain6).toEqual(DnaFactory.singleBox(200, 100, 0, 0));
+
+      // Constrained to the right
+      expect(constrain7).toEqual(DnaFactory.singleBox(200, 100, 0, 0));
+    });
+  });
+
+  describe('homePosition', () => {
+    test('horizontal case', () => {
+      const object = genericObjectDefaults('node');
+
+      applyGenericObjectProps(object, {
+        target: { x: 0, y: 0, width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      });
+      // 100x100
+      // Viewport: 200x100@-50,0
+      // Home position: 0, -50, 0, 150, 100
+
+      const home = homePosition(object, 2);
+
+      expect(home).toEqual(DnaFactory.singleBox(200, 100, -50, 0));
+    });
+    test.skip('vertical case', () => {
+      const object = genericObjectDefaults('node');
+
+      applyGenericObjectProps(object, {
+        target: { x: 0, y: 0, width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      });
+
+      const home = homePosition(object, 0.5);
+      const expected = DnaFactory.singleBox(100, 200, 0, -50);
+      expect(home).toEqual(expected);
+    });
   });
 });

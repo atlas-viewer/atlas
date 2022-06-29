@@ -3,7 +3,7 @@ import { distance } from '../../utils';
 import { BaseObject } from '../../objects/base-object';
 import { supportedEventMap } from '../../events';
 
-type BrowserEventManagerOptions = {
+export type BrowserEventManagerOptions = {
   /** Default 50ms **/
   simulationRate: number;
 };

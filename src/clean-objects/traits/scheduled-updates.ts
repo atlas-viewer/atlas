@@ -1,6 +1,6 @@
 import { hidePointsOutsideRegion, Strand } from '@atlas-viewer/dna';
 import { BaseObject } from '../base.object';
-import { objectForEach } from './generic-object';
+import { GenericObject, objectForEach } from "./generic-object";
 
 export interface ScheduledUpdatesObject {
   scheduledUpdates: {
@@ -15,7 +15,7 @@ export function hasScheduledUpdates(t: unknown): t is ScheduledUpdatesObject {
 }
 
 export function getScheduledUpdates(
-  object: BaseObject,
+  object: GenericObject,
   target: Strand,
   scaleFactor: number
 ): Array<() => void | Promise<void>> {
