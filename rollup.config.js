@@ -34,6 +34,7 @@ export default [
         browser: true,
       }), // so Rollup can find `ms`
       replace({
+        preventAssignment: true,
         'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
         'process.env.VERSION': JSON.stringify(pkg.version),
       }),
@@ -62,6 +63,7 @@ export default [
         browser: true,
       }), // so Rollup can find `ms`
       replace({
+        preventAssignment: true,
         'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
         'process.env.VERSION': JSON.stringify(pkg.version),
       }),
@@ -88,6 +90,7 @@ export default [
     plugins: [
       typescript({ target: isProduction ? 'es5' : 'es2020' }),
       replace({
+        preventAssignment: true,
         'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
         'process.env.VERSION': JSON.stringify(pkg.version),
       }),

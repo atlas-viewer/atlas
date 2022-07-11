@@ -75,7 +75,7 @@ export const SelectionDemo = () => {
     {
       id: 'annotation-3',
       height: 100,
-      width: 100,
+      width: 220,
       x: 900,
       y: 900,
     },
@@ -145,10 +145,12 @@ export const SelectionDemo = () => {
               <world onClick={onDeselect}>
                 <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} />
                 {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
-                {annotations.map((annotation) => (
+                {annotations.map((annotation, k) => (
                   <RegionHighlight
                     key={annotation.id}
                     region={annotation}
+                    disableCardinalControls={k === 1}
+                    maintainAspectRatio={k === 2}
                     isEditing={selectedAnnotation === annotation.id}
                     onSave={onUpdateAnnotation}
                     onClick={(anno) => {
@@ -199,7 +201,7 @@ export const mobileSize = () => {
       <div className="my-atlas" style={{ height: '100vh', width: '100%', background: 'red' }}>
         <AtlasAuto renderPreset={['default-preset', { canvasBox: true }]} height={'100vh'}>
           <world>
-            <ImageService key="wunder" {...staticTiles[1]} />
+            <ImageService key="wunder" {...staticTiles[0]} />
           </world>
         </AtlasAuto>
       </div>
