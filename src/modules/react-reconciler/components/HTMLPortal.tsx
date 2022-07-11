@@ -1,6 +1,5 @@
-import React, { ReactNode, useLayoutEffect, useRef } from 'react';
+import React, { version, ReactNode, useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
-import { createRoot, Root } from 'react-dom/client';
 import { useFrame } from '../hooks/use-frame';
 import { useRuntime } from '../hooks/use-runtime';
 
@@ -15,7 +14,6 @@ export const HTMLPortal: React.FC<
 > = React.forwardRef<
   Box,
   {
-    children?: ReactNode;
     backgroundColor?: string;
     interactive?: boolean;
     relative?: boolean;
@@ -27,7 +25,7 @@ export const HTMLPortal: React.FC<
   const runtime = useRuntime();
   const lastScale = useRef(0);
   const boxRef = useRef<Box>();
-  const root = useRef<Root>();
+  const root = useRef<any>();
 
   useFrame(() => {
     if (props.relative) {
@@ -54,27 +52,39 @@ export const HTMLPortal: React.FC<
         fwdRef.current = box;
       }
     }
-
-    function render() {
+    async function renderReactDom() {
       if (box && box.__host) {
-        if (!root.current) {
-          root.current = createRoot(box.__host.element);
-        }
-
-        if (props.relative) {
-          root.current.render(<div ref={ref as any}>{children}</div>);
+        const toRender = props.relative ? <div ref={ref as any}>{children}</div> : (children as any);
+        if (version.startsWith('18.')) {
+          // @ts-ignore
+          const { createRoot } = await import('react-dom/client');
+          if (!root.current) {
+            root.current = createRoot(box.__host.element);
+          }
+          root.current.render(toRender);
         } else {
-          root.current.render(children as any);
+          const { render } = await import('react-dom');
+          render(toRender, box.__host.element);
         }
       }
     }
 
     if (box && box.__host) {
-      render();
+      renderReactDom();
     } else if (box) {
-      box.__onCreate = render;
+      box.__onCreate = renderReactDom;
     }
   }, [fwdRef, children, boxRef, props.relative]);
+
+  useLayoutEffect(() => {
+    return () => {
+      if (root.current) {
+        setTimeout(() => {
+          root.current.unmount();
+        }, 0);
+      }
+    };
+  }, []);
 
   return <box html {...props} ref={boxRef} />;
 });
