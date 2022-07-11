@@ -1,4 +1,4 @@
-import React, { ReactNode, useMemo } from 'react';
+import React, { CSSProperties, ReactNode, useMemo } from 'react';
 import { useResizeWorldItem } from '../hooks/use-resize-world-item';
 import { HTMLPortal } from './HTMLPortal';
 
@@ -9,13 +9,22 @@ export const ResizeWorldItem: React.FC<
     onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
     children?: ReactNode;
     maintainAspectRatio?: boolean;
+    disableCardinalControls?: boolean;
   }
-> = ({ handleSize = 9, resizable, onSave, children, maintainAspectRatio, ...props }) => {
+> = ({
+  handleSize: _handleSize,
+  resizable,
+  onSave,
+  children,
+  maintainAspectRatio,
+  disableCardinalControls,
+  ...props
+}) => {
+  const handleSize = typeof _handleSize === 'undefined' ? (maintainAspectRatio ? 10 : 8) : _handleSize;
   const { portalRef, mode, mouseEvent, isEditing } = useResizeWorldItem(
     { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height, maintainAspectRatio },
     onSave
   );
-
   const translate = useMemo(() => mouseEvent('translate'), [mouseEvent]);
   const east = useMemo(() => mouseEvent('east'), [mouseEvent]);
   const west = useMemo(() => mouseEvent('west'), [mouseEvent]);
@@ -25,6 +34,16 @@ export const ResizeWorldItem: React.FC<
   const southWest = useMemo(() => mouseEvent('south-west'), [mouseEvent]);
   const northEast = useMemo(() => mouseEvent('north-east'), [mouseEvent]);
   const northWest = useMemo(() => mouseEvent('north-west'), [mouseEvent]);
+
+  const baseStyle: CSSProperties = {
+    zIndex: 999,
+    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.2)',
+    border: '1px solid rgba(155,155,155,.7)',
+    borderRadius: maintainAspectRatio || disableCardinalControls ? '50%' : 2,
+    position: 'absolute',
+    background: '#fff',
+    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
+  };
 
   return (
     <>
@@ -47,105 +66,91 @@ export const ResizeWorldItem: React.FC<
                     display: 'block',
                     width: '100%',
                     height: '100%',
-                    border: '1px dashed #999',
+                    border: '1px solid rgba(155,155,155, .7)',
                     boxSizing: 'border-box',
                     pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
                   }}
                 />
 
-                <div
-                  title="east"
-                  onTouchStart={east}
-                  onMouseDown={east}
-                  style={{
-                    cursor: 'e-resize',
-                    position: 'absolute',
-                    background: '#fff',
-                    height: handleSize * 2,
-                    width: handleSize,
-                    right: 0,
-                    top: '50%',
-                    transform: `translate(${handleSize / 2}px, -${handleSize}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
-                  }}
-                />
+                {!maintainAspectRatio ? (
+                  <>
+                    <div
+                      title="east"
+                      onTouchStart={east}
+                      onMouseDown={east}
+                      style={{
+                        ...baseStyle,
+                        cursor: 'e-resize',
+                        height: handleSize * 2,
+                        width: handleSize,
+                        right: 0,
+                        top: '50%',
+                        opacity: disableCardinalControls ? 0 : 1,
+                        transform: `translate(${handleSize / 2}px, -${handleSize}px)`,
+                      }}
+                    />
+                    <div
+                      title="west"
+                      onMouseDown={west}
+                      style={{
+                        ...baseStyle,
+                        cursor: 'w-resize',
+                        position: 'absolute',
+                        height: handleSize * 2,
+                        width: handleSize,
+                        left: 0,
+                        top: '50%',
+                        opacity: disableCardinalControls ? 0 : 1,
+                        transform: `translate(-${handleSize / 2}px, -${handleSize}px)`,
+                      }}
+                    />
 
-                <div
-                  title="west"
-                  onMouseDown={west}
-                  style={{
-                    cursor: 'w-resize',
-                    position: 'absolute',
-                    background: '#fff',
-                    height: handleSize * 2,
-                    width: handleSize,
-                    left: 0,
-                    top: '50%',
-                    transform: `translate(-${handleSize / 2}px, -${handleSize}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
-                  }}
-                />
+                    <div
+                      title="north"
+                      onMouseDown={north}
+                      style={{
+                        ...baseStyle,
+                        cursor: 'n-resize',
+                        position: 'absolute',
+                        height: handleSize,
+                        width: handleSize * 2,
+                        left: '50%',
+                        top: 0,
+                        opacity: disableCardinalControls ? 0 : 1,
+                        transform: `translate(-${handleSize}px, -${handleSize / 2}px)`,
+                      }}
+                    />
 
-                <div
-                  title="north"
-                  onMouseDown={north}
-                  style={{
-                    cursor: 'n-resize',
-                    position: 'absolute',
-                    background: '#fff',
-                    height: handleSize,
-                    width: handleSize * 2,
-                    left: '50%',
-                    top: 0,
-                    transform: `translate(-${handleSize}px, -${handleSize / 2}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid rgba(0,0,0,.5)',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
-                  }}
-                />
-
-                <div
-                  title="south"
-                  onMouseDown={south}
-                  style={{
-                    cursor: 's-resize',
-                    position: 'absolute',
-                    background: '#fff',
-                    height: handleSize,
-                    width: handleSize * 2,
-                    left: '50%',
-                    bottom: 0,
-                    transform: `translate(-${handleSize}px, ${handleSize / 2}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
-                  }}
-                />
+                    <div
+                      title="south"
+                      onMouseDown={south}
+                      style={{
+                        ...baseStyle,
+                        cursor: 's-resize',
+                        position: 'absolute',
+                        height: handleSize,
+                        width: handleSize * 2,
+                        left: '50%',
+                        bottom: 0,
+                        opacity: disableCardinalControls ? 0 : 1,
+                        transform: `translate(-${handleSize}px, ${handleSize / 2}px)`,
+                      }}
+                    />
+                  </>
+                ) : null}
 
                 <div
                   title="north-east"
                   onMouseDown={northEast}
                   style={{
+                    ...baseStyle,
                     cursor: 'ne-resize',
                     position: 'absolute',
-                    background: '#fff',
                     height: handleSize,
                     width: handleSize,
                     right: 0,
                     top: 0,
                     transform: `translate(${handleSize / 2}px, -${handleSize / 2}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
                   }}
                 />
 
@@ -153,18 +158,14 @@ export const ResizeWorldItem: React.FC<
                   title="south-east"
                   onMouseDown={southEast}
                   style={{
+                    ...baseStyle,
                     cursor: 'se-resize',
                     position: 'absolute',
-                    background: '#fff',
                     height: handleSize,
                     width: handleSize,
                     bottom: 0,
                     right: 0,
                     transform: `translate(${handleSize / 2}px, ${handleSize / 2}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
                   }}
                 />
 
@@ -172,18 +173,14 @@ export const ResizeWorldItem: React.FC<
                   title="south-west"
                   onMouseDown={southWest}
                   style={{
+                    ...baseStyle,
                     cursor: 'sw-resize',
                     position: 'absolute',
-                    background: '#fff',
                     height: handleSize,
                     width: handleSize,
                     bottom: 0,
                     left: 0,
                     transform: `translate(-${handleSize / 2}px, ${handleSize / 2}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
                   }}
                 />
 
@@ -191,18 +188,14 @@ export const ResizeWorldItem: React.FC<
                   title="north-west"
                   onMouseDown={northWest}
                   style={{
+                    ...baseStyle,
                     cursor: 'nw-resize',
                     position: 'absolute',
-                    background: '#fff',
                     height: handleSize,
                     width: handleSize,
                     top: 0,
                     left: 0,
                     transform: `translate(-${handleSize / 2}px, -${handleSize / 2}px)`,
-                    zIndex: 999,
-                    boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.5)',
-                    border: '1px solid #999',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
                   }}
                 />
               </>

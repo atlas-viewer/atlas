@@ -18,13 +18,22 @@ export const RegionHighlight: React.FC<{
   onSave: (annotation: RegionHighlightType) => void;
   onClick: (annotation: RegionHighlightType) => void;
   interactive?: boolean;
+  maintainAspectRatio?: boolean;
+  disableCardinalControls?: boolean;
   style?: BoxStyle;
   children?: ReactNode;
-}> = ({ interactive, region, onClick, onSave, isEditing, style = { backgroundColor: 'rgba(0,0,0,.5)' } }) => {
-  const mode = useMode();
-
+}> = ({
+  interactive,
+  region,
+  onClick,
+  onSave,
+  maintainAspectRatio,
+  disableCardinalControls,
+  isEditing,
+  style = { backgroundColor: 'rgba(0,0,0,.5)' },
+}) => {
   const saveCallback = useCallback(
-    (bounds) => {
+    (bounds: any) => {
       onSave({ id: region.id, x: region.x, y: region.y, height: region.height, width: region.width, ...bounds });
     },
     [onSave, region.id, region.x, region.y, region.height, region.width]
@@ -38,6 +47,8 @@ export const RegionHighlight: React.FC<{
       height={region.height}
       resizable={isEditing}
       onSave={saveCallback}
+      maintainAspectRatio={maintainAspectRatio}
+      disableCardinalControls={disableCardinalControls}
     >
       <box
         interactive={interactive}
