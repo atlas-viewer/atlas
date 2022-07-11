@@ -1,5 +1,5 @@
 import Reconciler from 'react-reconciler';
-import { unstable_now as now } from 'scheduler';
+import { now } from './utility/now';
 import { Runtime } from '../../renderer/runtime';
 import { SingleImage } from '../../spacial-content/single-image';
 import { World } from '../../world';
@@ -288,7 +288,18 @@ export const ReactAtlas = {
     if (root) {
       reconciler.updateContainer(whatToRender, root, null, () => undefined);
     } else {
-      const newRoot = reconciler.createContainer(runtime, 0, false, null);
+      const newRoot = reconciler.createContainer(
+        runtime,
+        0,
+        null,
+        false,
+        null,
+        '',
+        () => {
+          // on recoverable error.
+        },
+        null
+      );
       reconciler.updateContainer(whatToRender, newRoot, null, null);
       roots.set(runtime, newRoot);
     }

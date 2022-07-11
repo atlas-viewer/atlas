@@ -1,8 +1,7 @@
 import { Strand } from '@atlas-viewer/dna';
-import Stats from 'stats.js';
 import { Paint } from '../../world-objects';
 import { PositionPair } from '../../types';
-import { distance } from '@popmotion/popcorn';
+import { distance } from '../../utils';
 import { Text } from '../../objects/text';
 import { SingleImage } from '../../spacial-content/single-image';
 import { SpacialContent } from '../../spacial-content/spacial-content';
@@ -68,7 +67,7 @@ export class CanvasRenderer implements Renderer {
    * Can be used to avoid or stop work when frame is or isn't rendering outside of the main loop.
    */
   frameIsRendering = false;
-
+  pendingDrawCall = false;
   firstMeaningfulPaint = false;
   parallelTasks = 8; // @todo configuration.
   frameTasks = 3;
@@ -77,6 +76,7 @@ export class CanvasRenderer implements Renderer {
     id: string;
     scale: number;
     distance: number;
+    shifted?: boolean;
     task: () => Promise<any>;
   }> = [];
   currentTask: Promise<any> = Promise.resolve();
@@ -88,6 +88,7 @@ export class CanvasRenderer implements Renderer {
   previousVisible: Array<SpacialContent> = [];
   rendererPosition: DOMRect;
   dpi: number;
+  drawCalls: Array<() => void> = [];
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
@@ -102,12 +103,16 @@ export class CanvasRenderer implements Renderer {
     this.canvas.style.transition = 'opacity .3s';
     this.dpi = options?.dpi || 1;
 
-    if (this.options.debug) {
-      this.stats = new Stats();
-      this.stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-      if (document && document.body) {
-        document.body.appendChild(this.stats.dom);
-      }
+    if (process.env.NODE_ENV !== 'production' && this.options.debug) {
+      import('stats.js')
+        .then((s) => new s.default())
+        .then((stats) => {
+          this.stats = stats;
+          this.stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+          if (document && document.body) {
+            document.body.appendChild(this.stats.dom);
+          }
+        });
     }
   }
 
@@ -136,6 +141,11 @@ export class CanvasRenderer implements Renderer {
     }
     // Set them.
     this.previousVisible = this.visible;
+    this.pendingDrawCall = !!this.drawCalls.length;
+    if (this.pendingDrawCall) {
+      const nextCall = this.drawCalls.pop();
+      if (nextCall) nextCall();
+    }
     // Some off-screen work might need done, like loading new images in.
     this.doOffscreenWork();
     // Stats
@@ -170,7 +180,14 @@ export class CanvasRenderer implements Renderer {
     ) {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
+
       if (next) {
+        const outOfBounds = !next.shifted && Math.abs(1 - next.scale / (1 / this.lastKnownScale)) >= 1;
+        if (outOfBounds && !next.shifted) {
+          next.shifted = true;
+          this.loadingQueue.unshift(next);
+          return;
+        }
         // We will increment the task count
         this.tasksRunning++;
         this.frameTasks++;
@@ -468,8 +485,10 @@ export class CanvasRenderer implements Renderer {
                     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
                     canvas.width = points[3] - points[1];
                     canvas.height = points[4] - points[2];
-                    ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
-                    innerResolve();
+                    this.drawCalls.push(() => {
+                      ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
+                      innerResolve();
+                    });
                   });
                 },
               });
@@ -539,6 +558,8 @@ export class CanvasRenderer implements Renderer {
 
   pendingUpdate(): boolean {
     const ready =
+      !this.pendingDrawCall &&
+      this.drawCalls.length === 0 &&
       this.imagesPending === 0 &&
       this.loadingQueue.length === 0 &&
       this.tasksRunning === 0; /*&& this.visible.length > 0*/

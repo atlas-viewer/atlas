@@ -1,6 +1,6 @@
 import React, { ReactNode, useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
-import { render } from 'react-dom';
+import { createRoot, Root } from 'react-dom/client';
 import { useFrame } from '../hooks/use-frame';
 import { useRuntime } from '../hooks/use-runtime';
 
@@ -15,6 +15,7 @@ export const HTMLPortal: React.FC<
 > = React.forwardRef<
   Box,
   {
+    children?: ReactNode;
     backgroundColor?: string;
     interactive?: boolean;
     relative?: boolean;
@@ -26,6 +27,7 @@ export const HTMLPortal: React.FC<
   const runtime = useRuntime();
   const lastScale = useRef(0);
   const boxRef = useRef<Box>();
+  const root = useRef<Root>();
 
   useFrame(() => {
     if (props.relative) {
@@ -52,20 +54,25 @@ export const HTMLPortal: React.FC<
         fwdRef.current = box;
       }
     }
-    if (box && box.__host) {
-      if (props.relative) {
-        render(<div ref={ref as any}>{children}</div>, box.__host.element);
-      } else {
-        render(children as any, box.__host.element);
-      }
-    } else if (box) {
-      box.__onCreate = () => {
-        if (props.relative) {
-          render(<div ref={ref as any}>{children}</div>, box.__host.element);
-        } else {
-          render(children as any, box.__host.element);
+
+    function render() {
+      if (box && box.__host) {
+        if (!root.current) {
+          root.current = createRoot(box.__host.element);
         }
-      };
+
+        if (props.relative) {
+          root.current.render(<div ref={ref as any}>{children}</div>);
+        } else {
+          root.current.render(children as any);
+        }
+      }
+    }
+
+    if (box && box.__host) {
+      render();
+    } else if (box) {
+      box.__onCreate = render;
     }
   }, [fwdRef, children, boxRef, props.relative]);
 

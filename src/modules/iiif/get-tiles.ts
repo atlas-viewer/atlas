@@ -1,16 +1,12 @@
-import {
-  AnnotationNormalized,
-  AnnotationPageNormalized,
-  CanvasNormalized,
-  ImageService,
-  ManifestNormalized,
-} from '@hyperion-framework/types';
-import { Vault, getThumbnail } from '@hyperion-framework/vault';
+import { CanvasNormalized, ImageService, ManifestNormalized } from '@iiif/presentation-3';
+import { createThumbnailHelper } from '@iiif/vault-helpers';
+import { globalVault } from '@iiif/vault';
 import { getId, GetTile } from './shared';
 import { ImageServiceLoader } from '@atlas-viewer/iiif-image-api';
 
-const vault = new Vault();
+const vault = globalVault();
 const loader = new ImageServiceLoader();
+const helper = createThumbnailHelper(vault, { imageServiceLoader: loader });
 
 export async function getTileFromImageService(infoJsonId: string, width: number, height: number): Promise<GetTile> {
   const imageService = await loader.loadService({
@@ -32,13 +28,13 @@ export async function getTileFromCanvas(canvas: CanvasNormalized, thumbnailSize 
   const tiles = [];
 
   for (const page of canvas.items) {
-    for (const anno of vault.fromRef<AnnotationPageNormalized>(page).items) {
-      const annotation = vault.fromRef<any>(vault.fromRef<AnnotationNormalized>(anno).body[0]);
+    for (const anno of vault.get(page).items) {
+      const annotation = vault.get(vault.get(anno).body[0]);
       const serviceSnippet = annotation.service[0];
 
       const tile = await getTileFromImageService(serviceSnippet.id, canvas.width, canvas.height);
 
-      const { best: thumbnail } = (await (getThumbnail as any)(
+      const { best: thumbnail } = (await (helper.getBestThumbnailAtSize as any)(
         vault,
         loader as any,
         canvas,
@@ -63,7 +59,7 @@ export async function getTileFromCanvas(canvas: CanvasNormalized, thumbnailSize 
 export async function getTilesFromManifest(manifest: ManifestNormalized) {
   const tiles: any[] = [];
   for (const canvasRef of manifest.items) {
-    const canvas = vault.fromRef<CanvasNormalized>(canvasRef);
+    const canvas = vault.get(canvasRef);
     tiles.push(...(await getTileFromCanvas(canvas)));
   }
   return tiles;

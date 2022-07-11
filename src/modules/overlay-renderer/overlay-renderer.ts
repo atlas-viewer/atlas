@@ -64,7 +64,6 @@ export class OverlayRenderer implements Renderer {
     this.classes = {
       hostClassName: this.stylesheet.addStylesheet(`
         position: absolute;
-        overflow: hidden;
         transform-origin: 0px 0px;
       `),
       interactive: this.stylesheet.addStylesheet(`pointer-events: all`),

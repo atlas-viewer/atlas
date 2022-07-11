@@ -3,7 +3,6 @@ import { flushLayoutSubscriptions } from '../traits/layout';
 import { getAllPointsAt, PaintableObject, PointOptions } from '../traits/paintable';
 import { getScheduledUpdates } from '../traits/scheduled-updates';
 import { Projection } from '../../types';
-import { number } from 'style-value-types';
 
 interface RenderState {
   target: Strand;

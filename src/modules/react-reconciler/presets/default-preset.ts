@@ -17,6 +17,7 @@ export type DefaultPresetOptions = {
   unstable_webglRenderer?: boolean;
   interactive?: boolean;
   dpi?: number;
+  debug?: boolean;
   canvasBox?: boolean;
   background?: string;
 };
@@ -30,6 +31,7 @@ export function defaultPreset({
   controllerConfig,
   unstable_webglRenderer,
   dpi,
+  debug,
   canvasBox = true,
   navigatorElement,
   background,
@@ -53,7 +55,7 @@ export function defaultPreset({
   const renderer = new CompositeRenderer([
     unstable_webglRenderer
       ? new WebGLRenderer(canvasElement, { dpi })
-      : new CanvasRenderer(canvasElement, { dpi, debug: false, box: canvasBox, background }),
+      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, background }),
     overlayElement
       ? new OverlayRenderer(overlayElement, {
           box: unstable_webglRenderer || !canvasBox,

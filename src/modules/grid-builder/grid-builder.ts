@@ -1,4 +1,4 @@
-import { ViewingDirection } from '@hyperion-framework/types';
+import { ViewingDirection } from '@iiif/presentation-3';
 import { AbstractObject } from '../../world-objects/abstract-object';
 import { World } from '../../world';
 import { WorldObject } from '../../world-objects/world-object';

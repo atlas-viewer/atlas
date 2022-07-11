@@ -1,11 +1,10 @@
 import { DnaFactory, hidePointsOutsideRegion, mutate, scale, transform, Strand } from '@atlas-viewer/dna';
 import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
-import { Memoize } from 'typescript-memoize';
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from './spacial-content';
 import { stripInfoJson } from '../utils';
-import { ImageService } from '@hyperion-framework/types';
+import { ImageService } from '@iiif/presentation-3';
 
 export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
@@ -105,7 +104,6 @@ export class TiledImage extends BaseObject implements SpacialContent {
     return tiledImage;
   }
 
-  @Memoize()
   getImageUrl(index: number): string {
     // Replace this with image service wrapper that recalculates its toString()
     // when SETTING new variables, so that this becomes just a return.

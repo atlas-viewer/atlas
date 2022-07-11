@@ -1,4 +1,4 @@
-import { ImageService } from '@hyperion-framework/types';
+import { ImageService } from '@iiif/presentation-3';
 
 export type GetTile = {
   id: string;

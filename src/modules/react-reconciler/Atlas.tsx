@@ -13,6 +13,7 @@ import { useClassname } from './hooks/use-classname';
 import { Container } from './components/Container';
 
 export type AtlasProps = {
+  debug?: boolean;
   mode?: ViewerMode;
   onCreated?: (ctx: Preset) => void | Promise<void>;
   resetWorldOnChange?: boolean;
@@ -57,6 +58,7 @@ export const Atlas: React.FC<
   containerProps = {},
   homePosition,
   background: _background,
+  debug,
   ...restProps
 }) => {
   const [background, setBackground] = useState(_background);
@@ -68,16 +70,16 @@ export const Atlas: React.FC<
 
   const renderPreset = useMemo<PresetNames | Presets>(() => {
     if (typeof _renderPreset === 'string') {
-      return _renderPreset;
+      _renderPreset = [_renderPreset, {}] as Presets;
     }
-    if (background) {
+    if (background || debug) {
       if (_renderPreset) {
-        return [_renderPreset[0], { background, ...(_renderPreset[1] || {}) }];
+        return [_renderPreset[0], { debug, background, ...(_renderPreset[1] || {}) }];
       }
-      return ['default-preset', { background }];
+      return ['default-preset', { background, debug }];
     }
     return _renderPreset || 'default-preset';
-  }, [_renderPreset, background]);
+  }, [_renderPreset, background, debug]);
 
   // This is an HTML element that sits above the Canvas element that is passed to the controller.
   // Additional non-canvas drawn elements can be placed here and positioned. CSS is applied to this
