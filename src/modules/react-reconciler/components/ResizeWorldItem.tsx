@@ -8,10 +8,11 @@ export const ResizeWorldItem: React.FC<
     resizable?: boolean;
     onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
     children?: ReactNode;
+    maintainAspectRatio?: boolean;
   }
-> = ({ handleSize = 9, resizable, onSave, children, ...props }) => {
+> = ({ handleSize = 9, resizable, onSave, children, maintainAspectRatio, ...props }) => {
   const { portalRef, mode, mouseEvent, isEditing } = useResizeWorldItem(
-    { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height },
+    { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height, maintainAspectRatio },
     onSave
   );
 

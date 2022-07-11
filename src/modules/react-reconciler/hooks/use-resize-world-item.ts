@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from '../../../objects/box';
 import { useMode } from './use-mode';
 import { useWorldEvent } from './use-world-event';
@@ -7,7 +7,7 @@ import { useFrame } from './use-frame';
 import { useCanvasPosition } from './use-canvas-position';
 
 export const useResizeWorldItem = (
-  props: { x: number; y: number; width: number; height: number },
+  props: { x: number; y: number; width: number; height: number; maintainAspectRatio?: boolean; aspectRatio?: number },
   onSave: (item: { x: number; y: number; width: number; height: number }) => void
 ) => {
   const mode = useMode();
@@ -28,6 +28,15 @@ export const useResizeWorldItem = (
       resizeMode.current = direction;
     }
   };
+
+  const aspectRatio = useMemo(() => {
+    // Calculate aspect ratio.
+  }, [])
+
+  const constrainToAspectRatio = useCallback(() => {
+    // 1. Set initial aspect ratio.
+    // 2.
+  }, []);
 
   useFrame(() => {
     if (mouseStart && runtime) {
@@ -101,12 +110,18 @@ export const useResizeWorldItem = (
   useEffect(() => {
     windowPointerUp.current = () => {
       if (isEditing) {
-        onSave({
+        const realSize = {
           x: (props.x || 0) + cardinalDeltas.current.west,
           y: (props.y || 0) + cardinalDeltas.current.north,
           width: props.width + cardinalDeltas.current.east - cardinalDeltas.current.west,
           height: props.height + cardinalDeltas.current.south - cardinalDeltas.current.north,
-        });
+        };
+        if (props.maintainAspectRatio) {
+          // @todo apply aspect ratio here.
+          onSave(realSize);
+        } else {
+          onSave(realSize);
+        }
 
         resizeMode.current = undefined;
         mouseStart.current = undefined;
