@@ -21,17 +21,17 @@ describe('new render', function () {
     // - Create render
 
     const hooks = {
-      useFrame: jest.fn(),
-      isReady: jest.fn().mockReturnValue(true),
-      requestAnimationFrame: jest.fn().mockReturnValue(0),
-      afterFrame: jest.fn(),
-      useAfterPaint: jest.fn(),
-      useBeforeFrame: jest.fn(),
-      useOnReady: jest.fn(),
-      usePaint: jest.fn(),
-      usePendingUpdate: jest.fn().mockReturnValue(false),
-      usePrepareLayer: jest.fn().mockReturnValue(true),
-      useTransition: jest.fn(),
+      useFrame: vitest.fn(),
+      isReady: vitest.fn().mockReturnValue(true),
+      requestAnimationFrame: vitest.fn().mockReturnValue(0),
+      afterFrame: vitest.fn(),
+      useAfterPaint: vitest.fn(),
+      useBeforeFrame: vitest.fn(),
+      useOnReady: vitest.fn(),
+      usePaint: vitest.fn(),
+      usePendingUpdate: vitest.fn().mockReturnValue(false),
+      usePrepareLayer: vitest.fn().mockReturnValue(true),
+      useTransition: vitest.fn(),
     };
 
     render(16, state, hooks);
@@ -80,17 +80,17 @@ describe('new render', function () {
     const state = getDefaultRenderState(object, { x: 0, y: 0, width: 100, height: 100 });
 
     const hooks = {
-      useFrame: jest.fn(),
-      isReady: jest.fn().mockReturnValue(true),
-      requestAnimationFrame: jest.fn().mockReturnValue(0),
-      afterFrame: jest.fn(),
-      useAfterPaint: jest.fn(),
-      useBeforeFrame: jest.fn(),
-      useOnReady: jest.fn(),
-      usePaint: jest.fn(),
-      usePendingUpdate: jest.fn().mockReturnValue(false),
-      usePrepareLayer: jest.fn().mockReturnValue(true),
-      useTransition: jest.fn(),
+      useFrame: vitest.fn(),
+      isReady: vitest.fn().mockReturnValue(true),
+      requestAnimationFrame: vitest.fn().mockReturnValue(0),
+      afterFrame: vitest.fn(),
+      useAfterPaint: vitest.fn(),
+      useBeforeFrame: vitest.fn(),
+      useOnReady: vitest.fn(),
+      usePaint: vitest.fn(),
+      usePendingUpdate: vitest.fn().mockReturnValue(false),
+      usePrepareLayer: vitest.fn().mockReturnValue(true),
+      useTransition: vitest.fn(),
     };
 
     render(16, state, hooks);

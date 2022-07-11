@@ -15,7 +15,7 @@ describe('Has styles', function () {
     });
 
     expect(object.style.rules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 1,
       }
     `);
@@ -33,12 +33,12 @@ describe('Has styles', function () {
     });
 
     expect(object.style.rules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 1,
       }
     `);
     expect(object.style.hoverRules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 0.5,
       }
     `);
@@ -60,12 +60,12 @@ describe('Has styles', function () {
     });
 
     expect(object.style.rules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 1,
       }
     `);
     expect(object.style.activeRules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 0.5,
       }
     `);
@@ -90,17 +90,17 @@ describe('Has styles', function () {
     });
 
     expect(object.style.rules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 1,
       }
     `);
     expect(object.style.activeRules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 0.5,
       }
     `);
     expect(object.style.hoverRules).toMatchInlineSnapshot(`
-      Object {
+      {
         "opacity": 0.25,
       }
     `);

@@ -49,7 +49,7 @@ describe('evented trait', function () {
   test('dispatchEvent', () => {
     const exampleEvented = eventsDefaults();
 
-    const clickCb = jest.fn();
+    const clickCb = vitest.fn();
     addEventListener(exampleEvented, 'click', clickCb);
 
     expect(dispatchEvent(exampleEvented, 'click', {}, false)).toEqual(true);
@@ -59,9 +59,9 @@ describe('evented trait', function () {
   test('dispatchEvent (capture=true)', () => {
     const exampleEvented = eventsDefaults();
 
-    const captureCb = jest.fn();
+    const captureCb = vitest.fn();
     addEventListener(exampleEvented, 'click', captureCb, { capture: true });
-    const clickCb = jest.fn();
+    const clickCb = vitest.fn();
     addEventListener(exampleEvented, 'click', clickCb, { capture: false });
 
     expect(dispatchEvent(exampleEvented, 'click', {}, true)).toEqual(true);
@@ -72,12 +72,12 @@ describe('evented trait', function () {
   test('dispatchEvent with errors', () => {
     const exampleEvented = eventsDefaults();
 
-    const before = jest.fn();
+    const before = vitest.fn();
     const error = () => {
       throw new Error();
     };
-    const after = jest.fn();
-    console.error = jest.fn();
+    const after = vitest.fn();
+    console.error = vitest.fn();
 
     addEventListener(exampleEvented, 'click', before);
     addEventListener(exampleEvented, 'click', error);
@@ -93,8 +93,8 @@ describe('evented trait', function () {
   test('applying props', () => {
     const exampleEvents = eventsDefaults();
 
-    const wheel = jest.fn();
-    const first = jest.fn();
+    const wheel = vitest.fn();
+    const first = vitest.fn();
 
     applyEventProps(exampleEvents, {
       onClick: first,
@@ -104,7 +104,7 @@ describe('evented trait', function () {
     expect(exampleEvents.events.handlers.onClick).toHaveLength(1);
     expect(exampleEvents.events.handlers.onWheel).toHaveLength(1);
 
-    const second = jest.fn();
+    const second = vitest.fn();
     applyEventProps(exampleEvents, {
       onClick: second,
     });
@@ -128,7 +128,7 @@ describe('evented trait', function () {
     applyGenericObjectProps(object, { target });
     applyGenericObjectProps(container, { target });
 
-    const onClick = jest.fn();
+    const onClick = vitest.fn();
 
     applyEventProps(object, {
       onClick,
@@ -154,7 +154,7 @@ describe('evented trait', function () {
     applyGenericObjectProps(object, { target });
     applyGenericObjectProps(container, { target });
 
-    const onClick = jest.fn();
+    const onClick = vitest.fn();
 
     applyEventProps(object, {
       onClick,
@@ -180,7 +180,7 @@ describe('evented trait', function () {
     applyGenericObjectProps(object, { target });
     applyGenericObjectProps(container, { target });
 
-    const onClick = jest.fn();
+    const onClick = vitest.fn();
 
     applyEventProps(object, {
       onClick,
@@ -206,7 +206,7 @@ describe('evented trait', function () {
     applyGenericObjectProps(object, { target });
     applyGenericObjectProps(container, { target });
 
-    const onClick = jest.fn();
+    const onClick = vitest.fn();
 
     applyEventProps(object, {
       onClick,
@@ -233,7 +233,7 @@ describe('evented trait', function () {
     applyGenericObjectProps(object, { target });
     applyGenericObjectProps(container, { target });
 
-    const onClick = jest.fn();
+    const onClick = vitest.fn();
 
     applyEventProps(object, {
       onClick,
@@ -259,7 +259,7 @@ describe('evented trait', function () {
     applyGenericObjectProps(object, { target });
     applyGenericObjectProps(container, { target });
 
-    const onClick = jest.fn();
+    const onClick = vitest.fn();
 
     applyEventProps(object, {
       onClick: (e) => {
@@ -357,9 +357,9 @@ describe('evented trait', function () {
     applyGenericObjectProps(object2, { target: { x: 100, y: 0, width: 100, height: 100 } });
     applyGenericObjectProps(object3, { target: { x: 200, y: 0, width: 100, height: 100 } });
 
-    const onTouchStart1 = jest.fn();
-    const onTouchStart2 = jest.fn();
-    const onTouchStart3 = jest.fn();
+    const onTouchStart1 = vitest.fn();
+    const onTouchStart2 = vitest.fn();
+    const onTouchStart3 = vitest.fn();
 
     applyEventProps(object1, { onTouchStart: onTouchStart1 });
     applyEventProps(object2, { onTouchStart: onTouchStart2 });

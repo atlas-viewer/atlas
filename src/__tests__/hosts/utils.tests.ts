@@ -154,50 +154,50 @@ describe('Host utilities', function () {
     ]);
 
     expect(host.elements).toMatchInlineSnapshot(`
-      Object {
-        "0": Object {
-          "0": Object {
+      {
+        "0": {
+          "0": {
             "column": 0,
             "index": 0,
             "row": 0,
           },
-          "1": Object {
+          "1": {
             "column": 0,
             "index": 4,
             "row": 1,
           },
         },
-        "1": Object {
-          "0": Object {
+        "1": {
+          "0": {
             "column": 1,
             "index": 1,
             "row": 0,
           },
-          "1": Object {
+          "1": {
             "column": 1,
             "index": 5,
             "row": 1,
           },
         },
-        "2": Object {
-          "0": Object {
+        "2": {
+          "0": {
             "column": 2,
             "index": 2,
             "row": 0,
           },
-          "1": Object {
+          "1": {
             "column": 2,
             "index": 6,
             "row": 1,
           },
         },
-        "3": Object {
-          "0": Object {
+        "3": {
+          "0": {
             "column": 3,
             "index": 3,
             "row": 0,
           },
-          "1": Object {
+          "1": {
             "column": 3,
             "index": 7,
             "row": 1,

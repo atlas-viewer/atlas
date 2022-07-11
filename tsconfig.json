@@ -33,7 +33,10 @@
     "pretty": false,
     "removeComments": true,
     "sourceMap": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": [
+      "vitest/globals"
+    ]
   },
   "include": [
     "./src/**/*",
