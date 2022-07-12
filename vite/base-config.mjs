@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 
-export const defaultExternal = ['crypto', 'react', 'react-dom', 'react-dom/client', 'react-reconciler', 'scheduler'];
+export const defaultExternal = ['crypto', 'react', 'react-dom', 'react/jsx-runtime', 'react-dom/client', 'react-reconciler', 'scheduler'];
 
 /**
  * @param options {{ external: string[]; entry: string; name: string; globalName: string; outDir?: string; react?: boolean; globals: Record<string, string> }}
