@@ -1,23 +1,37 @@
 {
   "name": "@atlas-viewer/atlas",
   "version": "2.0.0-alpha.14",
-  "main": "dist/index.js",
-  "module": "dist/index.es.js",
+  "main": "dist/bundle/cjs/index.js",
+  "module": "dist/bundle/esm/index.mjs",
   "web": "dist/index.umd.js",
-  "typings": "dist/types/index.d.ts",
+  "types": "dist/types/index.d.ts",
   "author": "Stephen Fraser <stephen.fraser@digirati.com>",
   "license": "MIT",
   "files": [
     "dist",
     "lib"
   ],
+  "exports": {
+    ".": {
+      "require": "./dist/bundle/cjs/index.js",
+      "import": "./dist/bundle/esm/index.mjs",
+      "default": "./dist/bundle/cjs/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "dist/types/index.d.ts"
+      ]
+    }
+  },
   "scripts": {
-    "build": "NODE_ENV=production vite build && tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
+    "build": "NODE_ENV=production node vite/build.mjs && tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
     "start": "vite",
     "test": "vitest",
     "storybook": "start-storybook -p 6007",
     "build-types": "tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
-    "prepublishOnly": "NODE_ENV=production vite build && tsc -p ./tsconfig.dist.json --emitDeclarationOnly && cp ./experimental/web-components.js ./dist/web-components.js"
+    "prepublishOnly": "NODE_ENV=production node vite/build.mjs && tsc -p ./tsconfig.dist.json --emitDeclarationOnly && cp ./experimental/web-components.js ./dist/web-components.js"
   },
   "resolutions": {
     "@atlas-viewer/iiif-image-api": "^2.0.5"
@@ -27,8 +41,7 @@
     "@atlas-viewer/iiif-image-api": "^2.0.5",
     "@iiif/presentation-3": ">=1",
     "@iiif/vault": "^0.9.18",
-    "@iiif/vault-helpers": "^0.9.6",
-    "@storybook/builder-webpack5": "^6.5.9",
+    "@iiif/vault-helpers": "^0.9.7",
     "nanoid": "^3.1.9",
     "normalize-wheel": "^1.0.1",
     "react-reconciler": "^0.26.2",
@@ -44,6 +57,7 @@
     "@storybook/addon-actions": "^6.5.9",
     "@storybook/addon-essentials": "^6.5.9",
     "@storybook/addon-links": "^6.5.9",
+    "@storybook/builder-webpack5": "^6.5.9",
     "@storybook/core": "^6.5.9",
     "@storybook/manager-webpack5": "^6.5.9",
     "@storybook/react": "^6.5.9",
@@ -63,7 +77,13 @@
     "happy-dom": "^6.0.3",
     "prettier": "^2.4.1",
     "react": ">=17.0",
+    "react-18": "npm:react@18",
+    "react-17": "npm:react@17",
+    "react-16": "npm:react@16",
     "react-dom": ">=17.0",
+    "react-dom-18": "npm:react-dom@18",
+    "react-dom-17": "npm:react-dom@17",
+    "react-dom-16": "npm:react-dom@16",
     "react-is": "^16.13.1",
     "stats.js": "^0.17.0",
     "ts-loader": "^9.3.1",

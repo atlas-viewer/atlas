@@ -126,7 +126,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     mutate(this.points, op);
   }
 
-  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> | null {
-    return null;
+  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> {
+    return [];
   }
 }

@@ -41,8 +41,8 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     return [];
   }
 
-  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> | null {
-    return null;
+  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
+    return [];
   }
 
   protected constructor() {

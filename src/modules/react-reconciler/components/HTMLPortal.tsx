@@ -1,7 +1,8 @@
-import React, { version, ReactNode, useLayoutEffect, useRef } from 'react';
+import React, { ReactNode, useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
 import { useFrame } from '../hooks/use-frame';
 import { useRuntime } from '../hooks/use-runtime';
+import { renderReactDom } from '../utility/react-dom';
 
 export const HTMLPortal: React.FC<
   {
@@ -52,27 +53,18 @@ export const HTMLPortal: React.FC<
         fwdRef.current = box;
       }
     }
-    async function renderReactDom() {
+    async function renderHost() {
       if (box && box.__host) {
         const toRender = props.relative ? <div ref={ref as any}>{children}</div> : (children as any);
-        if (version.startsWith('18.')) {
-          // @ts-ignore
-          const { createRoot } = await import('react-dom/client');
-          if (!root.current) {
-            root.current = createRoot(box.__host.element);
-          }
-          root.current.render(toRender);
-        } else {
-          const { render } = await import('react-dom');
-          render(toRender, box.__host.element);
-        }
+
+        await renderReactDom(box.__host.element, toRender, root);
       }
     }
 
     if (box && box.__host) {
-      renderReactDom();
+      renderHost();
     } else if (box) {
-      box.__onCreate = renderReactDom;
+      box.__onCreate = renderHost;
     }
   }, [fwdRef, children, boxRef, props.relative]);
 

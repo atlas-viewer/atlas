@@ -180,6 +180,7 @@ const reconciler = Reconciler<
   unknown, // TimeoutHandle,
   unknown // NoTimeout
 >({
+  unstable_now: now,
   now,
   createInstance,
   removeChild,

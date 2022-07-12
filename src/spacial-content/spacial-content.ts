@@ -17,7 +17,7 @@ export interface SpacialContent {
   crop?: Strand;
   style?: { opacity: number };
 
-  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> | null;
+  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>>;
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[];
   transform(op: Strand): void;
   loadFullResource?(): Promise<void>;

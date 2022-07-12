@@ -191,17 +191,17 @@ export class CompositeResource
 
   fallback = [this.loadFullResource];
 
-  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> | null {
+  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> {
     if (this._scheduleSortByScales) {
       return [this._sortByScales] as any[];
     }
     if (this.isFullyLoaded) {
-      return null;
+      return [];
     }
     if (scaleFactor > 1 / this.maxScaleFactor) {
       return this.fallback;
     }
-    return null;
+    return [];
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {
