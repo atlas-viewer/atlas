@@ -8,7 +8,7 @@ import {
 import { append, remove, insertBefore, hideInstance } from '../../clean-objects/traits/container';
 import { dna, DnaFactory, dnaLength } from '@atlas-viewer/dna';
 
-describe.only('Container', function () {
+describe('Container', function () {
   test('adding single item to container', () => {
     const object = genericObjectDefaults('container');
     applyGenericObjectProps(object, {

@@ -60,7 +60,7 @@ export class CompositeResource
       renderLayers: 2,
       minSize: 256,
       maxImageSize: 1024,
-      quality: 1,
+      quality: 1.1,
       ...(data.renderOptions || {}),
     };
 

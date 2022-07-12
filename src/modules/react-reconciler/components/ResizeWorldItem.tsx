@@ -35,6 +35,7 @@ export const ResizeWorldItem: React.FC<
   const northEast = useMemo(() => mouseEvent('north-east'), [mouseEvent]);
   const northWest = useMemo(() => mouseEvent('north-west'), [mouseEvent]);
 
+  const inSketchMode = mode === 'sketch';
   const baseStyle: CSSProperties = {
     zIndex: 999,
     boxShadow: '0px 2px 3px 0 rgba(0,0,0,0.2)',
@@ -42,7 +43,7 @@ export const ResizeWorldItem: React.FC<
     borderRadius: maintainAspectRatio || disableCardinalControls ? '50%' : 2,
     position: 'absolute',
     background: '#fff',
-    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
+    pointerEvents: isEditing ? 'none' : inSketchMode ? 'initial' : 'none',
   };
 
   return (
@@ -50,14 +51,14 @@ export const ResizeWorldItem: React.FC<
       <world-object {...props}>
         {children}
 
-        {mode === 'sketch' && resizable ? (
+        {inSketchMode && resizable ? (
           <HTMLPortal
             ref={portalRef}
             target={{ x: 0, y: 0, height: props.height, width: props.width }}
-            relative
+            relative={false}
             interactive={false}
           >
-            {mode === 'sketch' && resizable ? (
+            {inSketchMode && resizable ? (
               <>
                 <div
                   onMouseDown={translate}
@@ -68,7 +69,7 @@ export const ResizeWorldItem: React.FC<
                     height: '100%',
                     border: '1px solid rgba(155,155,155, .7)',
                     boxSizing: 'border-box',
-                    pointerEvents: isEditing ? 'none' : mode === 'sketch' ? 'initial' : 'none',
+                    pointerEvents: isEditing ? 'none' : inSketchMode ? 'initial' : 'none',
                   }}
                 />
 

@@ -1,5 +1,4 @@
 import React, { ReactNode, useCallback } from 'react';
-import { useMode } from '../hooks/use-mode';
 import { ResizeWorldItem } from './ResizeWorldItem';
 import { BoxStyle } from '../../../objects/box';
 

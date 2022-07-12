@@ -12,7 +12,7 @@ export default defineConfig({
       fileName: (format) => `index.${format}.js`,
     },
     rollupOptions: {
-      external: ['crypto', 'react', 'react-dom', 'react-reconciler', 'scheduler'],
+      external: ['crypto', 'react', 'react-dom', 'react-dom/client', 'react-reconciler', 'scheduler'],
       output: {
         globals: {
           crypto: 'crypto',

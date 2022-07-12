@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '../../../objects/box';
 import { useMode } from './use-mode';
 import { useWorldEvent } from './use-world-event';
@@ -139,29 +139,6 @@ export const useResizeWorldItem = (
         }
       }
 
-      // Fixing flips.
-
-      // console.log({
-      //   w: props.width,
-      //   h: props.height,
-      //   del: { ...cardinalDeltas.current },
-      // });
-
-      // if (keys.current.alt) {
-      //   if (resizeMode.current === 'east') {
-      //     cardinalDeltas.current.west = -cardinalDeltas.current.east;
-      //   }
-      //   if (resizeMode.current === 'west') {
-      //     cardinalDeltas.current.east = -cardinalDeltas.current.west;
-      //   }
-      //   if (resizeMode.current === 'north') {
-      //     cardinalDeltas.current.south = -cardinalDeltas.current.north;
-      //   }
-      //   if (resizeMode.current === 'south') {
-      //     cardinalDeltas.current.north = -cardinalDeltas.current.south;
-      //   }
-      // }
-
       if (props.maintainAspectRatio || shift) {
         constrainToAspectRatio(cardinalDeltas.current);
       }
@@ -238,29 +215,6 @@ export const useResizeWorldItem = (
       window.removeEventListener('touchend', cb);
     };
   }, []);
-
-  // useEffect(() => {
-  //   const cb = () => {
-  //     onSave({
-  //       x: (props.x || 0) + cardinalDeltas.current.west,
-  //       y: (props.y || 0) + cardinalDeltas.current.north,
-  //       width: props.width + cardinalDeltas.current.east - cardinalDeltas.current.west,
-  //       height: props.height + cardinalDeltas.current.south - cardinalDeltas.current.north,
-  //     });
-  //
-  //     resizeMode.current = undefined;
-  //     mouseStart.current = undefined;
-  //     cardinalDeltas.current.east = 0;
-  //     cardinalDeltas.current.west = 0;
-  //     cardinalDeltas.current.north = 0;
-  //     cardinalDeltas.current.south = 0;
-  //     setIsEditing(false);
-  //   };
-  //   window.addEventListener('pointerup', cb);
-  //   return () => {
-  //     window.removeEventListener('pointerup', cb);
-  //   };
-  // }, [onSave, props.height, props.width, props.x, props.y]);
 
   return {
     portalRef,

@@ -133,7 +133,7 @@ export class CanvasRenderer implements Renderer {
     // After we've rendered, we'll set the pending and loading to correct values.
     this.imagesPending = this.imagesPending - this.imagesLoaded;
     this.imagesLoaded = 0;
-    if (!this.loadingQueueOrdered && this.loadingQueue.length > this.parallelTasks) {
+    if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
         return a.scale - b.scale || b.distance - a.distance;
       });
@@ -143,7 +143,7 @@ export class CanvasRenderer implements Renderer {
     this.previousVisible = this.visible;
     this.pendingDrawCall = !!this.drawCalls.length;
     if (this.pendingDrawCall) {
-      const nextCall = this.drawCalls.pop();
+      const nextCall = this.drawCalls.shift();
       if (nextCall) nextCall();
     }
     // Some off-screen work might need done, like loading new images in.
