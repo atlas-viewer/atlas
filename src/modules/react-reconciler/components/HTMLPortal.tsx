@@ -80,3 +80,5 @@ export const HTMLPortal: React.FC<
 
   return <box html {...props} ref={boxRef} />;
 });
+
+HTMLPortal.displayName = 'HTMLPortal';

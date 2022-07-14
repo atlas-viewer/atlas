@@ -18,7 +18,7 @@
   console.log('React version', version);
 
   function Component() {
-    return h(AtlasAuto, {},
+    return h(AtlasAuto, {unstable_webglRenderer: true},
       h('world', {},
         h('world-object', { width: 742, height: 1024 },
           h('world-image', {

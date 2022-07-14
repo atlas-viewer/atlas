@@ -2,16 +2,16 @@ import React, { CSSProperties, ReactNode, useMemo } from 'react';
 import { useResizeWorldItem } from '../hooks/use-resize-world-item';
 import { HTMLPortal } from './HTMLPortal';
 
-export const ResizeWorldItem: React.FC<
-  JSX.IntrinsicElements['worldObject'] & {
-    handleSize?: number;
-    resizable?: boolean;
-    onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
-    children?: ReactNode;
-    maintainAspectRatio?: boolean;
-    disableCardinalControls?: boolean;
-  }
-> = ({
+type ResizeWorldItemProps = JSX.IntrinsicElements['worldObject'] & {
+  handleSize?: number;
+  resizable?: boolean;
+  onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
+  children?: ReactNode;
+  maintainAspectRatio?: boolean;
+  disableCardinalControls?: boolean;
+};
+
+export function ResizeWorldItem({
   handleSize: _handleSize,
   resizable,
   onSave,
@@ -19,7 +19,7 @@ export const ResizeWorldItem: React.FC<
   maintainAspectRatio,
   disableCardinalControls,
   ...props
-}) => {
+}: ResizeWorldItemProps) {
   const handleSize = typeof _handleSize === 'undefined' ? (maintainAspectRatio ? 10 : 8) : _handleSize;
   const { portalRef, mode, mouseEvent, isEditing } = useResizeWorldItem(
     { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height, maintainAspectRatio },
@@ -206,4 +206,4 @@ export const ResizeWorldItem: React.FC<
       </world-object>
     </>
   );
-};
+}

@@ -10,7 +10,7 @@ type RegionHighlightType = {
   height: number;
 };
 
-export const RegionHighlight: React.FC<{
+export type RegionHighlightProps = {
   id?: string;
   region: RegionHighlightType;
   isEditing: boolean;
@@ -21,7 +21,9 @@ export const RegionHighlight: React.FC<{
   disableCardinalControls?: boolean;
   style?: BoxStyle;
   children?: ReactNode;
-}> = ({
+};
+
+export function RegionHighlight({
   interactive,
   region,
   onClick,
@@ -30,7 +32,7 @@ export const RegionHighlight: React.FC<{
   disableCardinalControls,
   isEditing,
   style = { backgroundColor: 'rgba(0,0,0,.5)' },
-}) => {
+}: RegionHighlightProps) {
   const saveCallback = useCallback(
     (bounds: any) => {
       onSave({ id: region.id, x: region.x, y: region.y, height: region.height, width: region.width, ...bounds });
@@ -61,4 +63,4 @@ export const RegionHighlight: React.FC<{
       />
     </ResizeWorldItem>
   );
-};
+}
