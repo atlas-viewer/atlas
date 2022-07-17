@@ -1,4 +1,4 @@
-import Reconciler from 'react-reconciler';
+import Reconciler, { OpaqueHandle } from 'react-reconciler';
 import { now } from './utility/now';
 import { Runtime } from '../../renderer/runtime';
 import { SingleImage } from '../../spacial-content/single-image';
@@ -12,6 +12,7 @@ import { Text } from '../../objects/text';
 import { Box } from '../../objects/box';
 import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { version } from 'react';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
@@ -207,9 +208,16 @@ const reconciler = Reconciler<
     activateEvents(runtime.world, newProps);
     return newProps;
   },
-  commitUpdate(instance: any, updatePayload: any, type: any, oldProps: any, newProps: any, finishedWork: any) {
+  commitUpdate(
+    instance: any,
+    updatePayload: any,
+    type: any,
+    prevProps: any,
+    nextProps: any,
+    internalHandle: OpaqueHandle
+  ) {
     if (instance.applyProps && updatePayload) {
-      applyProps(instance, oldProps, updatePayload);
+      applyProps(instance, prevProps, updatePayload);
     }
   },
 
@@ -266,11 +274,8 @@ const reconciler = Reconciler<
 
 reconciler.injectIntoDevTools({
   bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
-  version: '17.0.2',
+  version: version,
   rendererPackageName: '@atlas-viewer/atlas',
-  findFiberByHostInstance: (instance) => {
-    return null;
-  },
 });
 
 export function unmountComponentAtNode(runtime: any, callback?: (runtime: any) => void) {

@@ -10,3 +10,4 @@ storybook-static
 coverage
 pkg-tests/ts/yarn.lock
 pkg-tests/ts/node_modules
+.vitest-result.json

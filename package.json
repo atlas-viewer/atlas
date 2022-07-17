@@ -29,6 +29,7 @@
     "build": "NODE_ENV=production node vite/build.mjs && tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
     "start": "vite",
     "test": "vitest",
+    "idea-test": "vitest --watch --reporter=dot --reporter=json --outputFile=.vitest-result.json",
     "storybook": "start-storybook -p 6007",
     "build-types": "tsc -p ./tsconfig.dist.json --emitDeclarationOnly",
     "prepublishOnly": "NODE_ENV=production node vite/build.mjs && tsc -p ./tsconfig.dist.json --emitDeclarationOnly && cp ./experimental/web-components.js ./dist/web-components.js"
