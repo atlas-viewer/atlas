@@ -7,9 +7,9 @@ import {
   propagateEvent,
   propagatePointerEvent,
   propagateTouchEvent,
-} from '../../clean-objects/traits/evented';
-import { applyGenericObjectProps, genericObjectDefaults } from '../../clean-objects/traits/generic-object';
-import { append } from '../../clean-objects/traits/container';
+} from '../../../clean-objects/traits/evented';
+import { applyGenericObjectProps, genericObjectDefaults } from '../../../clean-objects/traits/generic-object';
+import { append } from '../../../clean-objects/traits/container';
 
 describe('evented trait', function () {
   test('addEventListener', () => {

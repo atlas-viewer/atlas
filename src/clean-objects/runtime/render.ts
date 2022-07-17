@@ -3,13 +3,13 @@ import { flushLayoutSubscriptions } from '../traits/layout';
 import { getAllPointsAt, PaintableObject, PointOptions } from '../traits/paintable';
 import { getScheduledUpdates } from '../traits/scheduled-updates';
 import { Projection } from '../../types';
+import { Fiber } from 'react-reconciler';
 
-interface RenderState {
+export interface RenderState {
   target: Strand;
   lastTarget: Strand;
   object: PaintableObject;
   lastTime: number;
-  stopId: number | null;
   pendingUpdate: boolean;
   firstRender: boolean;
   scaleFactor: number;
@@ -17,21 +17,30 @@ interface RenderState {
   ready: boolean;
 }
 
-interface RenderConfig {
+export interface RenderRoot {
+  fiber: Fiber;
+  state: RenderState;
+  hooks: RenderHooks;
+  config: RenderConfig;
+}
+
+export interface RenderConfig {
   fpsLimit: number;
   pointOptions: PointOptions;
 }
 
-interface RenderHooks {
-  requestAnimationFrame: (cb: (time: number) => void) => number;
-  isReady: (delta: number, state: RenderState) => boolean;
-  useOnReady: (delta: number, state: RenderState) => void;
+export interface RuntimeHooks {
   useFrame: (delta: number, state: RenderState) => void;
   useBeforeFrame: (delta: number, state: RenderState) => void;
-  useTransition: (delta: number, state: RenderState) => void;
-  usePendingUpdate: (delta: number, state: RenderState) => boolean;
   useAfterPaint: (delta: number, state: RenderState) => void;
   afterFrame: (delta: number, state: RenderState) => void;
+}
+
+export interface RenderHooks extends RuntimeHooks {
+  isReady: (delta: number, state: RenderState) => boolean;
+  useOnReady: (delta: number, state: RenderState) => void;
+  useTransition: (delta: number, state: RenderState) => void;
+  usePendingUpdate: (delta: number, state: RenderState) => boolean;
   usePrepareLayer: (delta: number, state: RenderState, layer: PaintableObject) => boolean;
   usePaint: (
     object: PaintableObject,
@@ -56,7 +65,6 @@ export function getDefaultRenderState(object: PaintableObject, viewport: Project
     lastTime: 0,
     ready: false,
     pendingUpdate: false,
-    stopId: null,
     transformBuffer: dna(9),
   };
 }
@@ -65,15 +73,12 @@ export function render(t: number, state: RenderState, hooks: RenderHooks, config
   const delta = t - state.lastTime;
 
   if (config.fpsLimit && delta < 1000 / config.fpsLimit) {
-    state.stopId = hooks.requestAnimationFrame((t) => render(t, state, hooks, config));
     return;
   }
 
   state.lastTime = t;
   // First flush
   flushLayoutSubscriptions(state.object);
-  // Set up our loop.
-  state.stopId = hooks.requestAnimationFrame((t) => render(t, state, hooks, config));
 
   // Called every frame.
   hooks.useFrame(delta, state);
@@ -186,4 +191,6 @@ export function render(t: number, state: RenderState, hooks: RenderHooks, config
       }
     }
   }
+
+  return state.pendingUpdate;
 }

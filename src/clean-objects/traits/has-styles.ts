@@ -118,6 +118,25 @@ export function stylesDidUpdate(a: _BoxStyle | null, b: _BoxStyle | null) {
   return false;
 }
 
+interface StyleUpdates {
+  propUpdates?: Array<[string, any]>;
+  parsed?: HasStyles['style']['parsed'];
+  styleRules?: HasStyles['style']['rules'];
+  hoverRules?: HasStyles['style']['hoverRules'];
+  activeRules?: HasStyles['style']['activeRules'];
+}
+
+export function prepareHasStylesUpdate(
+  object: HasStyles & Evented & Revision,
+  props: HasStylesProps
+): StyleUpdates | null {
+  return null;
+}
+
+export function commitHasStylesUpdate(object: HasStyles & Evented & Revision, changes: any[]) {
+  //
+}
+
 export function applyHasStylesProps(object: HasStyles & Evented & Revision, props: HasStylesProps): boolean {
   let didUpdate = false;
   let addHoverEvents = false;

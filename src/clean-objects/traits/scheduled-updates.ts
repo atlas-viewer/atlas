@@ -1,6 +1,6 @@
 import { hidePointsOutsideRegion, Strand } from '@atlas-viewer/dna';
 import { BaseObject } from '../base.object';
-import { GenericObject, objectForEach } from "./generic-object";
+import { GenericObject, objectForEach } from './generic-object';
 
 export interface ScheduledUpdatesObject {
   scheduledUpdates: {

@@ -3,15 +3,15 @@ import {
   GenericObject,
   genericObjectDefaults,
   NodeDefinition,
-} from '../../clean-objects/traits/generic-object';
+} from '../../../clean-objects/traits/generic-object';
 import {
   addLayoutSubscription,
   flushLayoutSubscriptions,
   Layout,
   layoutDefaults,
   triggerLayout,
-} from '../../clean-objects/traits/layout';
-import { append } from '../../clean-objects/traits/container';
+} from '../../../clean-objects/traits/layout';
+import { append } from '../../../clean-objects/traits/container';
 
 describe('Layout trait', function () {
   let tree: {

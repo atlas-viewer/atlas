@@ -1,11 +1,11 @@
 import {
   applyGenericObjectProps,
-  constrainBounds,
+  constrainObjectBounds,
   genericObjectDefaults,
   getBounds,
   homePosition,
-} from '../../clean-objects/traits/generic-object';
-import { append, remove, insertBefore, hideInstance } from '../../clean-objects/traits/container';
+} from '../../../clean-objects/traits/generic-object';
+import { append, remove, insertBefore, hideInstance } from '../../../clean-objects/traits/container';
 import { dna, DnaFactory, dnaLength } from '@atlas-viewer/dna';
 
 describe('Container', function () {
@@ -29,18 +29,12 @@ describe('Container', function () {
 
   test('adding 2 items to container', () => {
     const object = genericObjectDefaults('container');
-    applyGenericObjectProps(object, {
-      target: { x: 0, y: 0, width: 100, height: 100 },
-    });
+    applyGenericObjectProps(object, { x: 0, y: 0, width: 100, height: 100 });
 
     const child1 = genericObjectDefaults('node');
-    applyGenericObjectProps(child1, {
-      target: { x: 0, y: 0, width: 50, height: 50 },
-    });
+    applyGenericObjectProps(child1, { x: 0, y: 0, width: 50, height: 50 });
     const child2 = genericObjectDefaults('node');
-    applyGenericObjectProps(child2, {
-      target: { x: 50, y: 0, width: 50, height: 50 },
-    });
+    applyGenericObjectProps(child2, { x: 50, y: 0, width: 50, height: 50 });
 
     append(object, child1);
     append(object, child2);
@@ -53,18 +47,12 @@ describe('Container', function () {
 
   test('adding 2 items, removing one to container', () => {
     const object = genericObjectDefaults('container');
-    applyGenericObjectProps(object, {
-      target: { x: 0, y: 0, width: 100, height: 100 },
-    });
+    applyGenericObjectProps(object, { x: 0, y: 0, width: 100, height: 100 });
 
     const child1 = genericObjectDefaults('node');
-    applyGenericObjectProps(child1, {
-      target: { x: 0, y: 0, width: 50, height: 50 },
-    });
+    applyGenericObjectProps(child1, { x: 0, y: 0, width: 50, height: 50 });
     const child2 = genericObjectDefaults('node');
-    applyGenericObjectProps(child2, {
-      target: { x: 50, y: 0, width: 50, height: 50 },
-    });
+    applyGenericObjectProps(child2, { x: 50, y: 0, width: 50, height: 50 });
 
     append(object, child1);
     append(object, child2);
@@ -269,13 +257,13 @@ describe('Container', function () {
         display: { width: 100, height: 100 },
       });
 
-      const [isConstrained1] = constrainBounds(object, DnaFactory.singleBox(200, 100, 0, 0));
-      const [isConstrained2] = constrainBounds(object, DnaFactory.singleBox(200, 100, -100, 0));
-      const [isConstrained3, constrain3] = constrainBounds(object, DnaFactory.singleBox(200, 100, -101, 0));
-      const [isConstrained4, constrain4] = constrainBounds(object, DnaFactory.singleBox(200, 100, -200, 0));
-      const [isConstrained5, constrain5] = constrainBounds(object, DnaFactory.singleBox(200, 100, 0, -1));
-      const [isConstrained6, constrain6] = constrainBounds(object, DnaFactory.singleBox(200, 100, 0, 1));
-      const [isConstrained7, constrain7] = constrainBounds(object, DnaFactory.singleBox(200, 100, 10, 0));
+      const [isConstrained1] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, 0, 0));
+      const [isConstrained2] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, -100, 0));
+      const [isConstrained3, constrain3] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, -101, 0));
+      const [isConstrained4, constrain4] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, -200, 0));
+      const [isConstrained5, constrain5] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, 0, -1));
+      const [isConstrained6, constrain6] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, 0, 1));
+      const [isConstrained7, constrain7] = constrainObjectBounds(object, DnaFactory.singleBox(200, 100, 10, 0));
 
       expect(isConstrained1).toEqual(false);
       expect(isConstrained2).toEqual(false);

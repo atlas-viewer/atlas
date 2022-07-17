@@ -1,8 +1,8 @@
-import { getAllPointsAt, getObjectsAt, isPaintable } from '../../clean-objects/traits/paintable';
-import { applyGenericObjectProps, genericObjectDefaults } from '../../clean-objects/traits/generic-object';
+import { getAllPointsAt, getObjectsAt, isPaintable } from '../../../clean-objects/traits/paintable';
+import { applyGenericObjectProps, genericObjectDefaults } from '../../../clean-objects/traits/generic-object';
 import { DnaFactory } from '@atlas-viewer/dna';
-import { eventsDefaults } from '../../clean-objects/traits/evented';
-import { append, insertBefore } from '../../clean-objects/traits/container';
+import { eventsDefaults } from '../../../clean-objects/traits/evented';
+import { append, insertBefore } from '../../../clean-objects/traits/container';
 
 describe('Paintable', function () {
   describe('getObjectsAt', () => {

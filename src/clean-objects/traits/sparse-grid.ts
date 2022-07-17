@@ -51,6 +51,7 @@
 import { GenericObject } from './generic-object';
 import { createEmptyStorage, GridStorage } from '../helpers/grid-storage';
 import { dna, dnaLength } from '@atlas-viewer/dna';
+import { Projection } from '../../types';
 
 type GenerateTileUrl = (dims: { x: number; y: number }) => string;
 
@@ -66,7 +67,42 @@ interface HasSparseGrid {
       totalLoaded: number;
       loadedMap: GridStorage<boolean>;
     };
+    props?: {
+      preGenerateArea?: Projection | Array<Projection>;
+    };
   };
+}
+
+interface SparseGridProps {
+  grid?: {
+    generateTileUrl?: GenerateTileUrl;
+    preGenerateArea?: Projection | Array<Projection>;
+  };
+}
+
+export function applySparseGridProps(grid: HasSparseGrid & GenericObject, props: SparseGridProps) {
+  let didChange = false;
+  if (props.grid) {
+    if (props.grid.generateTileUrl && props.grid.generateTileUrl !== grid.sparseGrid.generateTileUrl) {
+      grid.sparseGrid.generateTileUrl = props.grid.generateTileUrl;
+      didChange = true;
+    }
+
+    if (
+      props.grid.preGenerateArea &&
+      (!grid.sparseGrid.props || grid.sparseGrid.props.preGenerateArea !== props.grid.preGenerateArea)
+    ) {
+      didChange = true;
+      const areas = Array.isArray(props.grid.preGenerateArea)
+        ? props.grid.preGenerateArea
+        : [props.grid.preGenerateArea];
+      for (const box of areas) {
+        generateSparseGrid(grid, box);
+      }
+    }
+  }
+
+  return didChange;
 }
 
 export function sparseGridDefaults(grid: HasSparseGrid['sparseGrid']): HasSparseGrid {

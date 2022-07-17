@@ -1,4 +1,8 @@
-import { applyGenericObjectProps, genericObjectDefaults, isGeneric } from '../../clean-objects/traits/generic-object';
+import {
+  applyGenericObjectProps,
+  genericObjectDefaults,
+  isGeneric,
+} from '../../../clean-objects/traits/generic-object';
 import { DnaFactory } from '@atlas-viewer/dna';
 
 describe('generic objects', function () {

@@ -69,6 +69,9 @@ export function insertBefore(object: GenericObject<ContainerDefinition>, item: G
 export function hideInstance(object: GenericObject) {
   object.node.hidden = true;
 }
+export function unhideInstance(object: GenericObject) {
+  object.node.hidden = false;
+}
 
 export function remove(object: GenericObject<ContainerDefinition>, item: GenericObject) {
   if (object.node.type !== 'container') {

@@ -1,6 +1,6 @@
-import { createInitialGrid, generateSparseGrid, sparseGridDefaults } from '../../clean-objects/traits/sparse-grid';
-import { applyGenericObjectProps, genericObjectDefaults } from '../../clean-objects/traits/generic-object';
-import { lat2tile, lon2tile } from '../../clean-objects/helpers/maps';
+import { createInitialGrid, generateSparseGrid, sparseGridDefaults } from '../../../clean-objects/traits/sparse-grid';
+import { applyGenericObjectProps, genericObjectDefaults } from '../../../clean-objects/traits/generic-object';
+import { lat2tile, lon2tile } from '../../../clean-objects/helpers/maps';
 
 describe('Sparse grid', function () {
   test('generate simple grid, first tile', () => {

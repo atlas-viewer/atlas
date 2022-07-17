@@ -1,6 +1,6 @@
-import { hasStylesDefaults, applyHasStylesProps, hasStyles } from '../../clean-objects/traits/has-styles';
-import { eventsDefaults, dispatchEvent } from '../../clean-objects/traits/evented';
-import { hasRevision, revisionDefaults } from '../../clean-objects/traits/revision';
+import { hasStylesDefaults, applyHasStylesProps, hasStyles } from '../../../clean-objects/traits/has-styles';
+import { eventsDefaults, dispatchEvent } from '../../../clean-objects/traits/evented';
+import { hasRevision, revisionDefaults } from '../../../clean-objects/traits/revision';
 
 describe('Has styles', function () {
   const createDefaults = () => ({ ...hasStylesDefaults(), ...eventsDefaults(), ...revisionDefaults() });

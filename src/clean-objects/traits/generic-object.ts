@@ -2,6 +2,9 @@ import { DisplayData } from '../../types';
 import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
 import { nanoid } from 'nanoid';
 import { PaintableObject } from './paintable';
+import { constrainBounds } from '../helpers/constrain-bounds';
+import { applyObjectTransition, isTransitionable, TransitionableObject } from './transitional-object';
+import { notifyNewTransition } from './transitional-container';
 
 export interface GenericObject<
   Node extends NodeDefinition | ContainerDefinition<any> = NodeDefinition | ContainerDefinition<any>
@@ -15,6 +18,11 @@ export interface GenericObject<
    * A unique type per interface.
    */
   readonly type: string;
+
+  /**
+   * A unique type per interface.
+   */
+  readonly tagName: string;
 
   /**
    * What is the display size of this object.
@@ -47,7 +55,7 @@ export type NodeDefinition = {
   cropped: boolean;
   crop: Strand;
   hidden: boolean;
-  parent?: ContainerDefinition;
+  parent?: ContainerDefinition & GenericObject;
 };
 
 export type ContainerDefinition<Contains extends GenericObject = GenericObject> = {
@@ -62,11 +70,20 @@ export type ContainerDefinition<Contains extends GenericObject = GenericObject> 
   ordered: boolean;
   composite: boolean;
   order: number[];
-  parent?: ContainerDefinition;
+  parent?: ContainerDefinition & GenericObject;
 };
 
 export interface GenericObjectProps {
   id?: string;
+
+  /**
+   * Alias of target. Target will override these.
+   */
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+
   /**
    * This will be parsed into `display`
    */
@@ -100,18 +117,24 @@ export function isGeneric(t: unknown): t is GenericObject {
   return !!(t && (t as any).id);
 }
 
-export function genericObjectDefaults(type: 'node', id?: string): GenericObject<NodeDefinition>;
-export function genericObjectDefaults(type: 'container', id?: string): GenericObject<ContainerDefinition>;
+export function genericObjectDefaults(type: 'node', tagName?: string, id?: string): GenericObject<NodeDefinition>;
+export function genericObjectDefaults(
+  type: 'container',
+  tagName?: string,
+  id?: string
+): GenericObject<ContainerDefinition>;
 export function genericObjectDefaults(
   type: 'container' | 'node',
+  tagName?: string,
   id?: string
 ): GenericObject<NodeDefinition | ContainerDefinition>;
-export function genericObjectDefaults(type: 'container' | 'node', id?: string): GenericObject {
+export function genericObjectDefaults(type: 'container' | 'node', tagName?: string, id?: string): GenericObject {
   const points = dna(5);
   points.set([1], 0);
   return {
     id: id || nanoid(9),
     type: '',
+    tagName: tagName || 'unknown',
     display: {
       width: 0,
       height: 0,
@@ -149,8 +172,21 @@ export function genericObjectDefaults(type: 'container' | 'node', id?: string): 
   };
 }
 
-export function applyGenericObjectProps(toObject: GenericObject, props: GenericObjectProps) {
+export function applyGenericObjectProps(
+  toObject: GenericObject | (GenericObject & TransitionableObject),
+  props: GenericObjectProps
+) {
+  const isTransitional = isTransitionable(toObject);
   let didUpdate = false;
+  let didTransition = false;
+
+  let target = props.target;
+
+  if (!target) {
+    if (typeof props.width !== 'undefined' && typeof props.height !== 'undefined') {
+      target = { x: props.x, y: props.y, width: props.width, height: props.height };
+    }
+  }
 
   if (props.crop && !toObject.node.cropped) {
     toObject.node.cropped = true;
@@ -169,38 +205,63 @@ export function applyGenericObjectProps(toObject: GenericObject, props: GenericO
     props.crop.width !== toObject.node.crop[3] - toObject.node.crop[1] &&
     props.crop.height !== toObject.node.crop[4] - toObject.node.crop[2]
   ) {
-    toObject.node.crop.set(DnaFactory.projection(props.crop));
+    const cropPoints = DnaFactory.projection(props.crop);
+    if (isTransitional && toObject.transitions.parsed.crop) {
+      // Transition to crop.
+      applyObjectTransition(toObject, 'crop', cropPoints, toObject.transitions.parsed.crop);
+    } else {
+      toObject.node.crop.set(cropPoints);
+    }
   }
 
-  if (props.target) {
-    const width = props.display ? props.display.width : props.target.width;
-    const scale = props.target.width / width;
+  if (target) {
+    const width = props.display ? props.display.width : target.width;
+    const scale = target.width / width;
 
     if (
-      props.target.width !== toObject.display.width ||
-      props.target.height !== toObject.display.height ||
-      props.target.x !== toObject.points[1] ||
-      props.target.y !== toObject.points[2] ||
+      target.width !== toObject.display.width ||
+      target.height !== toObject.display.height ||
+      target.x !== toObject.points[1] ||
+      target.y !== toObject.points[2] ||
       scale !== toObject.display.scale
     ) {
       didUpdate = true;
+      const targetPoints = DnaFactory.singleBox(target.width, target.height, target.x, target.y);
+      if (isTransitional && toObject.transitions.parsed.target) {
+        // Transition to target
+        applyObjectTransition(toObject, 'target', targetPoints, toObject.transitions.parsed.target);
+        didTransition = true;
 
-      toObject.points.set(
-        DnaFactory.singleBox(props.target.width, props.target.height, props.target.x, props.target.y)
-      );
+        if (scale === 1) {
+          const transition = toObject.transitions.parsed.display || toObject.transitions.parsed.target;
+          // Also transition display
+          applyObjectTransition(toObject, 'display', targetPoints, transition);
+          didTransition = true;
+        }
+      } else {
+        toObject.points.set(targetPoints);
+      }
       toObject.display.scale = scale;
-      toObject.display.width = props.target.width / scale;
-      toObject.display.height = props.target.height / scale;
-      toObject.display.points =
+      toObject.display.width = target.width / scale;
+      toObject.display.height = target.height / scale;
+
+      const displayPoints =
         scale !== 1
-          ? DnaFactory.singleBox(
-              props.target.width / scale,
-              props.target.height / scale,
-              props.target.x,
-              props.target.y
-            )
+          ? DnaFactory.singleBox(target.width / scale, target.height / scale, target.x, target.y)
           : toObject.points;
+
+      if (isTransitional && toObject.transitions.parsed.display && scale !== 1) {
+        // Transition display on its own.
+        applyObjectTransition(toObject, 'display', displayPoints, toObject.transitions.parsed.display);
+        didTransition = true;
+      } else {
+        toObject.display.points = displayPoints;
+      }
     }
+  }
+
+  if (didTransition && isTransitional) {
+    notifyNewTransition(toObject);
   }
 
   return didUpdate;
@@ -231,36 +292,10 @@ interface BoundsOptions {
   zone?: PaintableObject<ContainerDefinition<any>>;
 }
 
-export function constrainBounds(object: GenericObject, target: Strand, options: BoundsOptions = {}) {
+export function constrainObjectBounds(object: GenericObject, target: Strand, options: BoundsOptions = {}) {
   const { minX, maxX, minY, maxY } = getBounds(object, target, options);
 
-  let isConstrained = false;
-  const constrained = options.ref ? target : dna(target);
-  const width = target[3] - target[1];
-  const height = target[4] - target[2];
-
-  if (minX > target[1]) {
-    isConstrained = true;
-    constrained[1] = minX;
-    constrained[3] = minX + width;
-  }
-  if (minY > target[2]) {
-    isConstrained = true;
-    constrained[2] = minY;
-    constrained[4] = minY + height;
-  }
-  if (maxX < target[1]) {
-    isConstrained = true;
-    constrained[1] = maxX;
-    constrained[3] = maxX + width;
-  }
-  if (maxY < target[2]) {
-    isConstrained = true;
-    constrained[2] = maxY;
-    constrained[4] = maxY + height;
-  }
-
-  return [isConstrained, constrained] as const;
+  return constrainBounds(dna([0, minX, minY, maxX, maxY]), target, options.ref);
 }
 
 export function getBounds(object: GenericObject, target: Strand, options: BoundsOptions = {}) {
@@ -423,7 +458,7 @@ export function homePosition(
     target[4] = homePosition.y + fullHeight - space;
   }
 
-  constrainBounds(object, target, { ...options, ref: true });
+  constrainObjectBounds(object, target, { ...options, ref: true });
 
   return target;
 }
