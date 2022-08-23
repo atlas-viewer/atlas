@@ -1,7 +1,7 @@
-import React, { EventHandler, MouseEvent, TouchEvent, PointerEvent, DragEvent, UIEvent, WheelEvent } from 'react';
+import React from 'react';
 import { UpdateTextureFunction } from '../../spacial-content/image-texture';
-import { BoxStyle } from "../../objects/box";
-import { EventListenerProps } from "../../clean-objects/traits/evented";
+import { BoxStyle } from '../../objects/box';
+import { EventListenerProps } from '../../clean-objects/traits/evented';
 
 type BaseElement = {
   id?: string;

@@ -224,7 +224,7 @@ const reconciler = Reconciler<
   finalizeInitialChildren(instance: any) {
     // https://github.com/facebook/react/issues/20271
     // Returning true will trigger commitMount
-    return instance.__handlers;
+    return instance?.__handlers;
   },
   getChildHostContext() {
     return emptyObject;
@@ -234,6 +234,9 @@ const reconciler = Reconciler<
   },
   prepareForCommit() {
     return null;
+  },
+  preparePortalMount() {
+    // no-op
   },
   hideInstance(instance: BaseObject) {
     if (instance && instance.points) {
