@@ -3,7 +3,8 @@ import { MutableRefObject, version } from 'react';
 export async function renderReactDom(html: HTMLElement, toRender: any, root: MutableRefObject<any>) {
   if (version.startsWith('18.')) {
     // @ts-ignore
-    const { createRoot } = await import('react-dom/client');
+    const module = await import('react-dom/client');
+    const createRoot = module.default ? module.default.createRoot : module.createRoot;
     if (!root.current) {
       root.current = createRoot(html);
     }
@@ -16,7 +17,8 @@ export async function renderReactDom(html: HTMLElement, toRender: any, root: Mut
       render(toRender, html);
     } else {
       // Probably only bundlers or
-      const { render } = await import('react-dom');
+      const module = await import('react-dom');
+      const render = module.default ? module.default.render : module.render;
       render(toRender, html);
     }
   }
