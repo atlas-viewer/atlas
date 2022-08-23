@@ -135,7 +135,11 @@ export class CanvasRenderer implements Renderer {
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
-        return a.scale - b.scale || b.distance - a.distance;
+        if (a.scale === b.scale) {
+          return b.distance - a.distance;
+        }
+
+        return a.scale < b.scale ? -1 : 1;
       });
       this.loadingQueueOrdered = true;
     }
@@ -182,12 +186,13 @@ export class CanvasRenderer implements Renderer {
       const next = this.loadingQueue.pop();
 
       if (next) {
-        const outOfBounds = !next.shifted && Math.abs(1 - next.scale / (1 / this.lastKnownScale)) >= 1;
-        if (outOfBounds && !next.shifted) {
-          next.shifted = true;
-          this.loadingQueue.unshift(next);
-          return;
-        }
+        // @todo removed for now, while a nice optimisation it was breaking the "renderSmallestFallback"
+        // const outOfBounds = !next.shifted && Math.abs(1 - next.scale / (1 / this.lastKnownScale)) >= 1;
+        // if (outOfBounds && !next.shifted) {
+        //   next.shifted = true;
+        //   this.loadingQueue.unshift(next);
+        //   return;
+        // }
         // We will increment the task count
         this.tasksRunning++;
         this.frameTasks++;
