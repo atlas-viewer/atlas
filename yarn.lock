@@ -1203,12 +1203,26 @@
   resolved "https://registry.yarnpkg.com/@iiif/presentation-2/-/presentation-2-1.0.2.tgz#c712c4a40cc5b7291b8d92646b0ec8b8215b9b3d"
   integrity sha512-EN/p+td5VrHvUsQXV26VkaDFW0HG2GPRaibPlxJRip8au8ABBrOYPIcBH69Hyk3I0UnW3xzK2VsZ9TcuQEn0Mw==
 
+"@iiif/presentation-3-normalized@^0.9.7":
+  version "0.9.7"
+  resolved "https://registry.yarnpkg.com/@iiif/presentation-3-normalized/-/presentation-3-normalized-0.9.7.tgz#19386234e07c91c996d15ac5e1d86d1e1882e128"
+  integrity sha512-Aqk0sYBFIH5W3wmVxW02tnAFbNzUU5oPygGQjvszB3PP2nSkFQ1skVjqJhQPPZTyi/de1qcJUrgSy0vp6s+c5A==
+  dependencies:
+    "@iiif/presentation-3" "^2.0.5"
+
 "@iiif/presentation-3@*", "@iiif/presentation-3@1.*", "@iiif/presentation-3@>=1", "@iiif/presentation-3@^1.0.4":
   version "1.0.6"
   resolved "https://registry.yarnpkg.com/@iiif/presentation-3/-/presentation-3-1.0.6.tgz#bec210e4df2549c363733dc3215b20c4e9160a46"
   integrity sha512-00wzi4ocMe0bvxkYsv+SzWRPeN8ZHN2n86aJ2o2QpZiaVQ2AsewBPCMarGryAZ0x7CQv0yO9HV1xj6jiuhl9dQ==
   dependencies:
     "@types/geojson" "^7946.0.7"
+
+"@iiif/presentation-3@^2.0.5":
+  version "2.0.5"
+  resolved "https://registry.yarnpkg.com/@iiif/presentation-3/-/presentation-3-2.0.5.tgz#04c0c980ba586881984ed9433375d207f9af52ad"
+  integrity sha512-Iy5erfTKs1zOjwq8WiTmOeP5ZmrBFVVzBXMbKIIdv38ci1loeAR9fboncncPW7ZPqXUqeCMkjFGnP/HL22TggA==
+  dependencies:
+    "@types/geojson" "^7946.0.10"
 
 "@iiif/vault-helpers@^0.9.7":
   version "0.9.7"
@@ -2388,6 +2402,11 @@
   integrity sha512-8BSvG1kGm83cyJITQMZSulnl6QV8jqAGreJsc5tPu1Jq0vTSOiY/k24Wx82JRpWwZSqrala6sd5rWi6aNXvqcw==
   dependencies:
     "@types/node" "*"
+
+"@types/geojson@^7946.0.10":
+  version "7946.0.10"
+  resolved "https://registry.yarnpkg.com/@types/geojson/-/geojson-7946.0.10.tgz#6dfbf5ea17142f7f9a043809f1cd4c448cb68249"
+  integrity sha512-Nmh0K3iWQJzniTuPRcJn5hxXkfB1T1pgB89SBig5PlJQU5yocazeu4jATJlaA0GYFKWMqDdvYemoSnF2pXgLVA==
 
 "@types/geojson@^7946.0.7", "@types/geojson@^7946.0.8":
   version "7946.0.8"

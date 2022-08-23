@@ -1,5 +1,4 @@
 import { hidePointsOutsideRegion, Strand } from '@atlas-viewer/dna';
-import { BaseObject } from '../base.object';
 import { GenericObject, objectForEach } from './generic-object';
 
 export interface ScheduledUpdatesObject {
@@ -27,7 +26,7 @@ export function getScheduledUpdates(
   }
 
   if (object.node.type === 'container') {
-    objectForEach<BaseObject>(object, (obj, index) => {
+    objectForEach(object, (obj, index) => {
       if ((filteredPoints[index * 5] !== 0 && obj.node.type === 'container') || hasScheduledUpdates(obj)) {
         updatedList.push(...getScheduledUpdates(obj, target, scaleFactor));
       }

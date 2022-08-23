@@ -66,6 +66,7 @@ export type ContainerDefinition<Contains extends GenericObject = GenericObject> 
   zone: boolean;
   hidden: boolean;
   cropped: boolean;
+  styled: boolean;
   crop: Strand;
   ordered: boolean;
   composite: boolean;
@@ -119,7 +120,7 @@ export function isGeneric(t: unknown): t is GenericObject {
 
 export function genericObjectDefaults(type: 'node', tagName?: string, id?: string): GenericObject<NodeDefinition>;
 export function genericObjectDefaults(
-  type: 'container',
+  type: 'container' | 'styled-container',
   tagName?: string,
   id?: string
 ): GenericObject<ContainerDefinition>;
@@ -128,7 +129,11 @@ export function genericObjectDefaults(
   tagName?: string,
   id?: string
 ): GenericObject<NodeDefinition | ContainerDefinition>;
-export function genericObjectDefaults(type: 'container' | 'node', tagName?: string, id?: string): GenericObject {
+export function genericObjectDefaults(
+  type: 'container' | 'styled-container' | 'node',
+  tagName?: string,
+  id?: string
+): GenericObject {
   const points = dna(5);
   points.set([1], 0);
   return {
@@ -149,7 +154,7 @@ export function genericObjectDefaults(type: 'container' | 'node', tagName?: stri
       invertedTransform: dna(9),
     },
     node:
-      type === 'container'
+      type === 'container' || type === 'styled-container'
         ? {
             type: 'container',
             list: [],
@@ -162,6 +167,7 @@ export function genericObjectDefaults(type: 'container' | 'node', tagName?: stri
             hidden: false,
             composite: false,
             zone: false,
+            styled: type === 'styled-container',
           }
         : {
             type: 'node',

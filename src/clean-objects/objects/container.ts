@@ -7,12 +7,12 @@ import {
 } from '../traits/generic-object';
 import { applyEventProps, Evented, EventListenerProps, eventsDefaults } from '../traits/evented';
 import { Revision, revisionDefaults } from '../traits/revision';
-import { applyHasStylesProps, HasStyles, hasStylesDefaults, HasStylesProps } from '../traits/has-styles';
+import { HasStylesProps } from '../traits/has-styles';
 import { ObjectDefinition } from './_types';
 import { append, insertBefore, remove } from '../traits/container';
 import { doesNotSupport } from '../helpers/invalid-object-functions';
 
-interface ContainerObject extends GenericObject<ContainerDefinition>, Evented, HasStyles, Revision {}
+interface ContainerObject extends GenericObject<ContainerDefinition>, Evented, Revision {}
 
 interface ContainerProps extends GenericObjectProps, EventListenerProps, HasStylesProps {}
 
@@ -23,7 +23,6 @@ export const Container: ObjectDefinition<ContainerObject, ContainerProps> = {
       ...genericObjectDefaults('container', 'container'),
       ...eventsDefaults(),
       ...revisionDefaults(),
-      ...hasStylesDefaults(),
     };
   },
   applyProps(object: ContainerObject, props: ContainerProps) {
@@ -31,7 +30,6 @@ export const Container: ObjectDefinition<ContainerObject, ContainerProps> = {
 
     didUpdate = applyGenericObjectProps(object, props) || didUpdate;
     didUpdate = applyEventProps(object, props) || didUpdate;
-    didUpdate = applyHasStylesProps(object, props) || didUpdate;
 
     return didUpdate;
   },
@@ -39,4 +37,6 @@ export const Container: ObjectDefinition<ContainerObject, ContainerProps> = {
   insertBefore,
   remove,
   prepareUpdate: doesNotSupport.prepareUpdate,
+  mountHost: doesNotSupport.mountHost,
+  createHost: doesNotSupport.createHost,
 };

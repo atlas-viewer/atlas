@@ -33,4 +33,6 @@ export const AnimatedBox: ObjectDefinition<AnimatedBoxObject, AnimatedBoxProps> 
   insertBefore: doesNotSupport.insertBefore,
   remove: doesNotSupport.remove,
   prepareUpdate: doesNotSupport.prepareUpdate,
+  mountHost: doesNotSupport.mountHost,
+  createHost: doesNotSupport.createHost,
 };

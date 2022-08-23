@@ -23,7 +23,7 @@ export interface TransitionableObject {
       display?: ParsedEasing;
       crop?: ParsedEasing;
     };
-    props?: TransitionProps['transition'];
+    props?: any;
   };
 }
 
@@ -168,7 +168,7 @@ function isTransitionString(transition: unknown): transition is LiteralUnion<Tra
   return typeof transition === 'string';
 }
 
-export function applyTransitionalObjectProps(object: TransitionableObject, props: TransitionProps) {
+export function applyTransitionalObjectProps(object: TransitionableObject, props: any) {
   let didUpdate = false;
   // If these are object, they should be memo-ed outside this.
   if (!areInputsEqual(object.transitions.props, props.transition)) {
@@ -200,7 +200,7 @@ export function applyTransitionalObjectProps(object: TransitionableObject, props
               duration: transition.duration || 1000,
               ease:
                 easingName && typeof easingName === 'string'
-                  ? easingFunctions[easingName] || easingFunctions.easeOutExpo
+                  ? (easingFunctions as any)[easingName] || easingFunctions.easeOutExpo
                   : easingFunctions.easeOutExpo,
             };
           }

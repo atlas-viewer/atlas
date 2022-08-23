@@ -46,4 +46,6 @@ export const World: ObjectDefinition<WorldObject, WorldProps> = {
   insertBefore,
   remove,
   prepareUpdate: doesNotSupport.prepareUpdate,
+  mountHost: doesNotSupport.mountHost,
+  createHost: doesNotSupport.createHost,
 };

@@ -7,36 +7,31 @@ import {
 } from '../traits/generic-object';
 import { applyEventProps, Evented, EventListenerProps, eventsDefaults } from '../traits/evented';
 import { Revision, revisionDefaults } from '../traits/revision';
+import { applyHasStylesProps, HasStyles, hasStylesDefaults, HasStylesProps } from '../traits/has-styles';
 import { ObjectDefinition } from './_types';
-import {
-  applyTransitionalContainerProps,
-  TransitionalContainer,
-  transitionalContainerDefaults,
-  TransitionalContainerProps,
-} from '../traits/transitional-container';
 import { append, insertBefore, remove } from '../traits/container';
 import { doesNotSupport } from '../helpers/invalid-object-functions';
 
-interface AnimationGroupObject extends GenericObject<ContainerDefinition>, Evented, Revision, TransitionalContainer {}
+interface StyledContainerObject extends GenericObject<ContainerDefinition>, Evented, HasStyles, Revision {}
 
-interface AnimationGroupProps extends GenericObjectProps, EventListenerProps, TransitionalContainerProps {}
+interface StyledContainerProps extends GenericObjectProps, EventListenerProps, HasStylesProps {}
 
-export const AnimationGroup: ObjectDefinition<AnimationGroupObject, AnimationGroupProps> = {
-  tagName: 'animation-group',
+export const StyledContainer: ObjectDefinition<StyledContainerObject, StyledContainerProps> = {
+  tagName: 'styled-container',
   create() {
     return {
-      ...genericObjectDefaults('container', 'animation-group'),
+      ...genericObjectDefaults('styled-container', 'styled-container'),
       ...eventsDefaults(),
       ...revisionDefaults(),
-      ...transitionalContainerDefaults(),
+      ...hasStylesDefaults(),
     };
   },
-  applyProps(object: AnimationGroupObject, props: AnimationGroupProps) {
+  applyProps(object: StyledContainerObject, props: StyledContainerProps) {
     let didUpdate = false;
 
     didUpdate = applyGenericObjectProps(object, props) || didUpdate;
     didUpdate = applyEventProps(object, props) || didUpdate;
-    didUpdate = applyTransitionalContainerProps(object, props) || didUpdate;
+    didUpdate = applyHasStylesProps(object, props) || didUpdate;
 
     return didUpdate;
   },

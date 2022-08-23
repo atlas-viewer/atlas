@@ -106,9 +106,17 @@ export function getAllPointsAt(
         object.buffers.invertedTransform
       )
     );
-    const agg = aggregate ? compose(aggregate, transformer, object.buffers.aggregateTransform) : transformer;
+    const agg =
+      aggregate && !object.node.styled
+        ? compose(aggregate, transformer, object.buffers.aggregateTransform)
+        : transformer;
     const s = scaleFactor * object.display.scale;
     const arr: Paint[] = [];
+
+    if (object.node.styled) {
+      const optionallyCroppedPoints = object.node.cropped ? object.node.crop : object.points;
+      arr.push([object, optionallyCroppedPoints, aggregate]);
+    }
 
     objectForEach<PaintableObject>(object, (layer) => {
       arr.push(

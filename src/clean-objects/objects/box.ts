@@ -9,6 +9,7 @@ import { Revision, revisionDefaults } from '../traits/revision';
 import { applyHasStylesProps, HasStyles, hasStylesDefaults, HasStylesProps } from '../traits/has-styles';
 import { ObjectDefinition } from './_types';
 import { doesNotSupport } from '../helpers/invalid-object-functions';
+import { hostDefaults } from '../traits/host';
 
 export interface BoxObject extends GenericObject, Evented, HasStyles, Revision {}
 
@@ -22,6 +23,7 @@ export const Box: ObjectDefinition<BoxObject, BoxProps> = {
       ...eventsDefaults(),
       ...revisionDefaults(),
       ...hasStylesDefaults(),
+      ...hostDefaults(),
     };
   },
   applyProps(object, props) {
@@ -37,4 +39,6 @@ export const Box: ObjectDefinition<BoxObject, BoxProps> = {
   insertBefore: doesNotSupport.insertBefore,
   remove: doesNotSupport.remove,
   prepareUpdate: doesNotSupport.prepareUpdate,
+  mountHost: doesNotSupport.mountHost,
+  createHost: doesNotSupport.createHost,
 };

@@ -11,7 +11,7 @@ import { now } from '../../modules/react-reconciler/utility/now';
 
 // This is the list of DOM types available.
 
-const objectTypes = {
+export const objectTypes: any = {
   world: World,
   box: Box,
   container: Container,
@@ -19,10 +19,11 @@ const objectTypes = {
   'animation-group': AnimationGroup,
 };
 
-type Type = keyof typeof objectTypes;
+export type ElementTypes = typeof objectTypes;
+export type ElementTags = keyof ElementTypes;
 
-function getDefinitionByTag(type: string) {
-  return objectTypes[type as Type] as ObjectDefinition<any, any>;
+export function getDefinitionByTag(type: string) {
+  return objectTypes[type as ElementTags] as ObjectDefinition<any, any>;
 }
 
 function noop() {
@@ -30,7 +31,7 @@ function noop() {
 }
 
 export const reconcilerConfig: HostConfig<
-  Type,
+  ElementTags,
   any, // Props,
   GenericObject<ContainerDefinition>, // Container,
   GenericObject, // Instance,
@@ -68,7 +69,13 @@ export const reconcilerConfig: HostConfig<
     // Returning true will trigger commitMount
     return false;
   },
-  prepareUpdate(instance: GenericObject, type: Type, oldProps: any, newProps: any, rootContainer: GenericObject): any {
+  prepareUpdate(
+    instance: GenericObject,
+    type: ElementTags,
+    oldProps: any,
+    newProps: any,
+    rootContainer: GenericObject
+  ): any {
     return getDefinitionByTag(instance.tagName).prepareUpdate(instance, newProps, oldProps, rootContainer);
   },
   shouldSetTextContent() {

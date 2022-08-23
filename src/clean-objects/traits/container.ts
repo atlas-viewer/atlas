@@ -64,6 +64,8 @@ export function insertBefore(object: GenericObject<ContainerDefinition>, item: G
   append(object, item);
   const theIdx = object.node.order.pop() as number;
   object.node.order.splice(beforeIndex, 0, theIdx);
+
+  // Schedule job to defrag?
 }
 
 export function hideInstance(object: GenericObject) {
