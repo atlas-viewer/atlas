@@ -57,8 +57,8 @@ export class CompositeResource
     };
     this.renderOptions = {
       renderSmallestFallback: true,
-      renderLayers: 2,
-      minSize: 256,
+      renderLayers: 3,
+      minSize: 255,
       maxImageSize: 1024,
       quality: 1.1,
       ...(data.renderOptions || {}),
@@ -238,7 +238,6 @@ export class CompositeResource
 
       return toPaint;
     }
-
     return this.images[bestIndex].getAllPointsAt(target, newAggregate, scale);
   }
 }

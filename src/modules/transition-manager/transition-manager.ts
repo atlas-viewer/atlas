@@ -58,7 +58,7 @@ export class TransitionManager {
     if (!this.pendingTransition.done) {
       const transition = this.pendingTransition;
       const td = transition.total_time === 0 ? 0 : (transition.elapsed_time + delta) / transition.total_time;
-      const step = td === 0 ? 0 : transition.timingFunction(td);
+      const step = transition.total_time === 0 ? 1 : td === 0 ? 0 : transition.timingFunction(td);
 
       // Update our target.
       target[1] = transition.from[1] + (transition.to[1] - transition.from[1]) * step;

@@ -8,6 +8,7 @@ export const TileSet: React.FC<{
   width: number;
   height: number;
   children?: ReactNode;
+  onClick?: (e: any) => void;
 }> = (props) => {
   const scale = props.width / props.tiles.width;
   const tiles = props.tiles.imageService.tiles || [];
@@ -28,6 +29,7 @@ export const TileSet: React.FC<{
       width={props.tiles.width}
       x={props.x}
       y={props.y}
+      onClick={props.onClick}
     >
       <composite-image
         key={props.tiles.imageService.id}

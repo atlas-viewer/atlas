@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [
     react({
-      jsxRuntime: 'automatic',
+      jsxRuntime: 'classic',
     }),
   ],
   test: {
@@ -13,6 +13,6 @@ export default defineConfig({
     globals: true,
   },
   server: {
-    port: 3004,
+    port: 3010,
   },
 });

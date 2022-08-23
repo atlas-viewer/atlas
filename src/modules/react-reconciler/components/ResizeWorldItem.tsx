@@ -55,7 +55,7 @@ export function ResizeWorldItem({
           <HTMLPortal
             ref={portalRef}
             target={{ x: 0, y: 0, height: props.height, width: props.width }}
-            relative={false}
+            relative={true}
             interactive={false}
           >
             {inSketchMode && resizable ? (

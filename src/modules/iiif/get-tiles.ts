@@ -1,10 +1,10 @@
+import { ImageService } from '@iiif/presentation-3';
 import {
   AnnotationNormalized,
   AnnotationPageNormalized,
   CanvasNormalized,
-  ImageService,
   ManifestNormalized,
-} from '@iiif/presentation-3';
+} from '@iiif/presentation-3-normalized';
 import { getId, GetTile } from './shared';
 import { getVaultHelper } from './get-vault-helper';
 
