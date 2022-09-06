@@ -19,11 +19,14 @@ export const useResizeWorldItem = (
   const portalRef = useRef<Box | null>(null);
   const mouseStart = useRef<{ x: number; y: number } | undefined>();
   const [isEditing, setIsEditing] = useState(false);
+  const isEditingRef = useRef(false);
+
   const cardinalDeltas = useRef({ north: 0, south: 0, east: 0, west: 0 });
   const keys = useModifierKeys();
 
   const mouseEvent = useCallback(
     (direction: string) => (e: any) => {
+      isEditingRef.current = true;
       setIsEditing(true);
       if (canvasPosition && runtime) {
         const { top, left } = canvasPosition;
@@ -171,7 +174,7 @@ export const useResizeWorldItem = (
 
   useEffect(() => {
     windowPointerUp.current = () => {
-      if (isEditing) {
+      if (isEditingRef.current) {
         const dX1 = cardinalDeltas.current.west;
         const dY1 = cardinalDeltas.current.north;
         const dX2 = props.width + cardinalDeltas.current.east;
@@ -201,10 +204,11 @@ export const useResizeWorldItem = (
         cardinalDeltas.current.west = 0;
         cardinalDeltas.current.north = 0;
         cardinalDeltas.current.south = 0;
+        isEditingRef.current = false;
         setIsEditing(false);
       }
     };
-  }, [isEditing, onSave, props.height, props.width, props.x, props.y]);
+  }, [onSave, props.height, props.width, props.x, props.y]);
 
   useEffect(() => {
     const cb = () => {
