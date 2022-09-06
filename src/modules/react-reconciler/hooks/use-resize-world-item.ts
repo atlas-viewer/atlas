@@ -22,15 +22,18 @@ export const useResizeWorldItem = (
   const cardinalDeltas = useRef({ north: 0, south: 0, east: 0, west: 0 });
   const keys = useModifierKeys();
 
-  const mouseEvent = (direction: string) => (e: any) => {
-    setIsEditing(true);
-    if (canvasPosition && runtime) {
-      const { top, left } = canvasPosition;
-      const current = runtime.viewerToWorld(e.pageX - left, e.pageY - top);
-      mouseStart.current = { x: current.x, y: current.y };
-      resizeMode.current = direction;
-    }
-  };
+  const mouseEvent = useCallback(
+    (direction: string) => (e: any) => {
+      setIsEditing(true);
+      if (canvasPosition && runtime) {
+        const { top, left } = canvasPosition;
+        const current = runtime.viewerToWorld(e.pageX - left, e.pageY - top);
+        mouseStart.current = { x: current.x, y: current.y };
+        resizeMode.current = direction;
+      }
+    },
+    [canvasPosition, runtime]
+  );
 
   const aspectRatio = useMemo(() => {
     // Calculate aspect ratio.
@@ -85,9 +88,10 @@ export const useResizeWorldItem = (
 
   const onPointerMoveCallback = useCallback(
     (e: any) => {
-      const position = e.atlasTouches ? e.atlasTouches[0] : e.atlas ? e.atlas : { x: e.pageX, y: e.pageY };
+      if (!runtime || !canvasPosition || runtime.mode !== 'sketch') return;
 
-      if (!runtime || runtime.mode !== 'sketch') return;
+      const { top, left } = canvasPosition;
+      const position = runtime.viewerToWorld(e.pageX - left, e.pageY - top);
       const box = portalRef.current;
 
       const alt = !props.maintainAspectRatio && keys.current.alt;
@@ -157,11 +161,11 @@ export const useResizeWorldItem = (
         runtime.updateNextFrame();
       }
     },
-    [runtime, props.width, props.height, props.maintainAspectRatio]
+    [runtime, props.width, props.height, props.maintainAspectRatio, canvasPosition]
   );
 
-  useWorldEvent('mousemove', onPointerMoveCallback, [props.width, props.height]);
-  useWorldEvent('pointermove', onPointerMoveCallback, [props.width, props.height]);
+  useWorldEvent('mousemove', onPointerMoveCallback, [props.width, props.height, canvasPosition]);
+  useWorldEvent('pointermove', onPointerMoveCallback, [props.width, props.height, canvasPosition]);
 
   const windowPointerUp = useRef<() => void>();
 

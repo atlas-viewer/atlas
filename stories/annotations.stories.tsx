@@ -111,7 +111,8 @@ export const SelectionDemo = () => {
   };
 
   return (
-    <div>
+    <div style={{ height: '200vh' }}>
+      <div style={{ display: 'block', height: 400 }}></div>
       <div>
         <h3>Viewer</h3>
         <p>isEditing: {isEditing ? 'true' : 'false'}</p>
