@@ -1,7 +1,6 @@
 import React, { CSSProperties, ReactNode, useMemo } from 'react';
 import { useResizeWorldItem } from '../hooks/use-resize-world-item';
 import { HTMLPortal } from './HTMLPortal';
-import { useRuntime } from '../hooks/use-runtime';
 
 type ResizeWorldItemProps = JSX.IntrinsicElements['worldObject'] & {
   handleSize?: number;

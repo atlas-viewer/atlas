@@ -14,6 +14,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
   style: { opacity: number } = { opacity: 1 };
   points: Strand;
   service?: ImageService;
+  format = 'jpg';
 
   constructor(data: {
     url: string;
@@ -23,6 +24,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     tileWidth: number;
     width: number;
     height: number;
+    format?: string;
   }) {
     super();
     this.id = stripInfoJson(data.url);
@@ -34,6 +36,9 @@ export class TiledImage extends BaseObject implements SpacialContent {
       points: data.points,
       scale: data.scaleFactor,
     };
+    if (data.format) {
+      this.format = data.format;
+    }
   }
 
   applyProps(props: any) {
@@ -43,6 +48,11 @@ export class TiledImage extends BaseObject implements SpacialContent {
     if (props.service !== this.service) {
       this.service = props.service;
     }
+    if (props.format) {
+      this.format = props.format;
+    } else {
+      this.format = 'jpg';
+    }
   }
 
   static fromTile(
@@ -50,7 +60,8 @@ export class TiledImage extends BaseObject implements SpacialContent {
     canvas: { width: number; height: number },
     tile: { width: number; height?: number },
     scaleFactor: number,
-    service?: ImageService
+    service?: ImageService,
+    format?: string
   ): TiledImage {
     // Always set a height.
     tile.height = tile.height ? tile.height : tile.width;
@@ -95,6 +106,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
       width: canvas.width,
       height: canvas.height,
       tileWidth: tile.width,
+      format,
     });
 
     tiledImage.applyProps({
@@ -114,7 +126,9 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const y2 = im[4] - im[2];
     const w = Math.ceil(x2 / this.display.scale);
 
-    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.jpg`;
+    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.${
+      this.format || 'jpg'
+    }`;
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {

@@ -14,6 +14,7 @@ import {
 import { Renderer } from './renderer';
 import { Paint } from '../world-objects/paint';
 import { TransitionManager } from '../modules/transition-manager/transition-manager';
+import { nanoid } from 'nanoid';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -34,6 +35,7 @@ export type RuntimeOptions = {
 };
 
 export class Runtime {
+  id = nanoid();
   ready = false;
   // Helper getters.
   get x(): number {

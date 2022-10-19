@@ -8,6 +8,7 @@ import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto'
 import { Runtime } from '../src/renderer/runtime';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 import { Atlas } from '../src';
+import { StrictMode } from 'react';
 
 export default { title: 'Annotations' };
 
@@ -111,82 +112,86 @@ export const SelectionDemo = () => {
   };
 
   return (
-    <div style={{ height: '200vh' }}>
-      <div style={{ display: 'block', height: 400 }}></div>
-      <div>
-        <h3>Viewer</h3>
-        <p>isEditing: {isEditing ? 'true' : 'false'}</p>
-        <button
-          onClick={() => {
-            const idx = (size.idx + 1) % sizes.length;
-            const newSize = sizes[idx];
-            setSize({ width: newSize.width, height: newSize.height, idx });
-          }}
-        >
-          Change size
-        </button>
-        <button onClick={() => setIsWebGL((e) => !e)}>Change renderer (current: {isWebGL ? 'WebGL' : 'canvas'})</button>
-        <button onClick={() => setTileIndex((i) => (i + 1) % staticTiles.length)}>Change image</button>|
-        <button onClick={() => setRenderPreset(['default-preset', { canvasBox: true }])}>Default preset</button>
-        <button onClick={() => setRenderPreset(['static-preset', {}])}>Static preset</button>
-        <div style={{ display: 'flex' }}>
-          <div style={{ flex: '1 1 0px' }}>
-            <AtlasAuto
-              unstable_webglRenderer={isWebGL && tileIndex !== 0}
-              key={isWebGL ? 'webgl' : 'canvas'}
-              onCreated={(rt) => {
-                runtime.current = rt.runtime;
-              }}
-              mode={isEditing ? 'sketch' : 'explore'}
-              renderPreset={renderPreset}
-              width={size.width}
-              height={size.height}
-              enableNavigator
-            >
-              <world onClick={onDeselect}>
-                <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} />
-                {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
-                {annotations.map((annotation, k) => (
-                  <RegionHighlight
-                    key={annotation.id}
-                    region={annotation}
-                    disableCardinalControls={k === 1}
-                    maintainAspectRatio={k === 2}
-                    isEditing={selectedAnnotation === annotation.id}
-                    onSave={onUpdateAnnotation}
-                    onClick={(anno) => {
-                      console.log('click annotation');
-                      setIsEditing(true);
-                      setSelectedAnnotation(anno.id);
-                    }}
-                    style={{
-                      backgroundColor:
-                        selectedAnnotation === annotation.id ? 'rgba(0, 150, 30, 0.6)' : 'rgba(255, 0, 0, .6)',
-                      ':hover': {
+    <>
+      <div style={{ height: '200vh' }}>
+        <div style={{ display: 'block', height: 400 }}></div>
+        <div>
+          <h3>Viewer</h3>
+          <p>isEditing: {isEditing ? 'true' : 'false'}</p>
+          <button
+            onClick={() => {
+              const idx = (size.idx + 1) % sizes.length;
+              const newSize = sizes[idx];
+              setSize({ width: newSize.width, height: newSize.height, idx });
+            }}
+          >
+            Change size
+          </button>
+          <button onClick={() => setIsWebGL((e) => !e)}>
+            Change renderer (current: {isWebGL ? 'WebGL' : 'canvas'})
+          </button>
+          <button onClick={() => setTileIndex((i) => (i + 1) % staticTiles.length)}>Change image</button>|
+          <button onClick={() => setRenderPreset(['default-preset', { canvasBox: true }])}>Default preset</button>
+          <button onClick={() => setRenderPreset(['static-preset', {}])}>Static preset</button>
+          <div style={{ display: 'flex' }}>
+            <div style={{ flex: '1 1 0px' }}>
+              <AtlasAuto
+                unstable_webglRenderer={isWebGL && tileIndex !== 0}
+                key={isWebGL ? 'webgl' : 'canvas'}
+                onCreated={(rt) => {
+                  runtime.current = rt.runtime;
+                }}
+                mode={isEditing ? 'sketch' : 'explore'}
+                renderPreset={renderPreset}
+                width={size.width}
+                height={size.height}
+                enableNavigator
+              >
+                <world onClick={onDeselect}>
+                  <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} />
+                  {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
+                  {annotations.map((annotation, k) => (
+                    <RegionHighlight
+                      key={annotation.id}
+                      region={annotation}
+                      disableCardinalControls={k === 1}
+                      maintainAspectRatio={k === 2}
+                      isEditing={selectedAnnotation === annotation.id}
+                      onSave={onUpdateAnnotation}
+                      onClick={(anno) => {
+                        console.log('click annotation');
+                        setIsEditing(true);
+                        setSelectedAnnotation(anno.id);
+                      }}
+                      style={{
                         backgroundColor:
-                          selectedAnnotation === annotation.id ? 'rgba(0, 150, 30, 0.6)' : 'rgba(20, 50, 200, .7)',
-                      },
-                    }}
-                  />
-                ))}
-              </world>
-            </AtlasAuto>
-          </div>
-          <div style={{ width: 300 }}>
-            <button onClick={goHome}>Go home</button>
-            <button onClick={zoomIn}>Zoom in</button>
-            <button onClick={zoomOut}>Zoom out</button>
-            {annotations.map((annotation) => (
-              <div key={annotation.id}>
-                {annotation.id} <button onClick={() => editAnnotation(annotation.id)}>edit</button>{' '}
-                <button onClick={() => goTo(annotation)}>go to</button>
-              </div>
-            ))}
-            <button onClick={addNewAnnotation}>Add new</button>
+                          selectedAnnotation === annotation.id ? 'rgba(0, 150, 30, 0.6)' : 'rgba(255, 0, 0, .6)',
+                        ':hover': {
+                          backgroundColor:
+                            selectedAnnotation === annotation.id ? 'rgba(0, 150, 30, 0.6)' : 'rgba(20, 50, 200, .7)',
+                        },
+                      }}
+                    />
+                  ))}
+                </world>
+              </AtlasAuto>
+            </div>
+            <div style={{ width: 300 }}>
+              <button onClick={goHome}>Go home</button>
+              <button onClick={zoomIn}>Zoom in</button>
+              <button onClick={zoomOut}>Zoom out</button>
+              {annotations.map((annotation) => (
+                <div key={annotation.id}>
+                  {annotation.id} <button onClick={() => editAnnotation(annotation.id)}>edit</button>{' '}
+                  <button onClick={() => goTo(annotation)}>go to</button>
+                </div>
+              ))}
+              <button onClick={addNewAnnotation}>Add new</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

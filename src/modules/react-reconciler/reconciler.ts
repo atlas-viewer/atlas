@@ -139,7 +139,7 @@ function createInstance(
       break;
     case 'tiledImage':
     case 'tiled-image':
-      instance = TiledImage.fromTile(props.uri, props.display, props.tile, props.scaleFactor);
+      instance = TiledImage.fromTile(props.uri, props.display, props.tile, props.scaleFactor, undefined, props.format);
       break;
     case 'paragraph':
       instance = new Text();
@@ -281,7 +281,7 @@ reconciler.injectIntoDevTools({
   rendererPackageName: '@atlas-viewer/atlas',
 });
 
-export function unmountComponentAtNode(runtime: any, callback?: (runtime: any) => void) {
+export function unmountComponentAtNode(runtime: Runtime, callback?: (runtime: any) => void) {
   const root = roots.get(runtime);
   if (root) {
     reconciler.updateContainer(null, root, null, () => {
