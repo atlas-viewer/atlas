@@ -129,6 +129,9 @@ export class CanvasRenderer implements Renderer {
   }
 
   afterFrame(world: World): void {
+    // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+    // this.ctx.rotate((90 * Math.PI) / 180);
+    // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
     // After we've rendered, we'll set the pending and loading to correct values.
     this.imagesPending = this.imagesPending - this.imagesLoaded;
@@ -260,6 +263,9 @@ export class CanvasRenderer implements Renderer {
     this.ctx.globalAlpha = 1;
     this.ctx.fillStyle = this.options.background || 'rgb(0, 0, 0)';
     this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+    // this.ctx.rotate((-90 * Math.PI) / 180);
+    // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {

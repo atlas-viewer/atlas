@@ -54,9 +54,10 @@ $world.style.height = `320px`;
 $world.style.width = `320px`;
 
 // The goal for this scratch file: render the world once.
+
+// !! Runtime
 const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]));
 const worldTarget = transform(target, translation);
-
 const points = getAllPointsAt(world, worldTarget, 1, { aggregate: translation });
 
 const parentStack = [$world];
@@ -70,6 +71,7 @@ for (let i = 0; i < points.length; i++) {
   const transformation = points[i][2];
 
   if (transformation) {
+    // !! Renderer
     // Creating host.
     const $div = createElement('div');
     $div.style.position = 'absolute';

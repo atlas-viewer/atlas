@@ -9,6 +9,7 @@ import {
 } from '@atlas-viewer/dna';
 import { ContainerDefinition, GenericObject, isGeneric, NodeDefinition, objectForEach } from './generic-object';
 import { Evented, isEvented } from './evented';
+import { pointInPolygon } from '../helpers/point-in-polygon';
 
 export interface PaintableObject<
   Node extends NodeDefinition | ContainerDefinition<PaintableObject> = NodeDefinition | ContainerDefinition<any>
@@ -44,6 +45,12 @@ export function getObjectsAt(
   }
 
   if (object.node.type === 'node') {
+    if (object.geometry && object.geometry.type === 'polygon') {
+      if (!pointInPolygon([target[1], target[2]], object.geometry.points)) {
+        return [];
+      }
+    }
+
     return [object];
   }
 

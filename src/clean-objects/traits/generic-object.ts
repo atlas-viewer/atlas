@@ -5,6 +5,7 @@ import { PaintableObject } from './paintable';
 import { constrainBounds } from '../helpers/constrain-bounds';
 import { applyObjectTransition, isTransitionable, TransitionableObject } from './transitional-object';
 import { notifyNewTransition } from './transitional-container';
+import { HasGeometry } from './geometry';
 
 export interface GenericObject<
   Node extends NodeDefinition | ContainerDefinition<any> = NodeDefinition | ContainerDefinition<any>
@@ -33,6 +34,11 @@ export interface GenericObject<
    * The display points.
    */
   points: Strand;
+
+  /**
+   * Optional geometry
+   */
+  geometry?: HasGeometry['geometry'];
 
   /**
    * Any nodes under this item.
