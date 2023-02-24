@@ -9,6 +9,7 @@ export const ImageService: React.FC<{
   height: number;
   x?: number;
   y?: number;
+  rotation?: number;
   children?: ReactNode;
 }> = (props) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
@@ -21,7 +22,18 @@ export const ImageService: React.FC<{
 
   return (
     <world-object x={props.x || 0} y={props.y || 0} width={props.width} height={props.height}>
-      {tiles ? <TileSet tiles={tiles} x={0} y={0} width={props.width} height={props.height} /> : null}
+      {tiles ? (
+        <TileSet
+          tiles={tiles}
+          x={props.x}
+          y={props.y}
+          width={props.width}
+          height={props.height}
+          rotation={props.rotation}
+        >
+          {props.children}
+        </TileSet>
+      ) : null}
     </world-object>
   );
 };

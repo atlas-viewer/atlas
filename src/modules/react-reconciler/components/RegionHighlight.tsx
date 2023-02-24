@@ -14,6 +14,7 @@ export type RegionHighlightProps = {
   id?: string;
   region: RegionHighlightType;
   isEditing: boolean;
+  rotation?: number;
   onSave: (annotation: RegionHighlightType) => void;
   onClick: (annotation: RegionHighlightType) => void;
   interactive?: boolean;
@@ -31,6 +32,7 @@ export function RegionHighlight({
   maintainAspectRatio,
   disableCardinalControls,
   isEditing,
+  rotation,
   style = { backgroundColor: 'rgba(0,0,0,.5)' },
 }: RegionHighlightProps) {
   const saveCallback = useCallback(
@@ -44,6 +46,7 @@ export function RegionHighlight({
     <ResizeWorldItem
       x={region.x}
       y={region.y}
+      rotation={rotation}
       width={region.width}
       height={region.height}
       resizable={isEditing}

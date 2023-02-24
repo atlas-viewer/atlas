@@ -13,6 +13,15 @@ import {
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from '../spacial-content';
 
+function rotate(cx: number, cy: number, x: number, y: number, angle: number) {
+  const radians = (Math.PI / 180) * angle,
+    cos = Math.cos(radians),
+    sin = Math.sin(radians),
+    nx = cos * (x - cx) + sin * (y - cy) + cx,
+    ny = cos * (y - cy) - sin * (x - cx) + cy;
+  return [nx, ny];
+}
+
 type WorldObjectProps = {
   id: string;
   width: number;
@@ -20,6 +29,7 @@ type WorldObjectProps = {
   scale?: number;
   x?: number;
   y?: number;
+  rotation?: number;
 };
 
 export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
@@ -45,6 +55,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   intersectionBuffer = dna(5);
   aggregateBuffer = dna(9);
   invertedBuffer = dna(9);
+  rotation = 0;
   filteredPointsBuffer: Strand;
   _updatedList: any[] = [];
 
@@ -63,8 +74,8 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       this.id = props.id || '';
       this.scale = 1;
       this.layers = props.layers;
-      this.points = dna([1, x, y, props.width, props.height]);
-      this.worldPoints = dna([1, x, y, props.width, props.height]);
+      this.points = dna([1, x, y, x + props.width, y + props.height]);
+      this.worldPoints = dna([1, x, y, x + props.width, y + props.height]);
       this.filteredPointsBuffer = dna(props.layers.length * 5);
     }
   }
@@ -87,6 +98,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.points[2] = y;
     this.points[3] = x + props.width;
     this.points[4] = y + props.height;
+    this.rotation = props.rotation || 0;
 
     this.worldPoints[3] = this.worldPoints[1] + props.width * s;
     this.worldPoints[4] = this.worldPoints[2] + props.height * s;
@@ -109,6 +121,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     if (item.points[0] === 0) {
       item.points.set(this.points);
     }
+    item.__owner.value = this;
 
     this.addLayers([item]);
   }
@@ -137,6 +150,12 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   getObjectsAt(target: Strand, all?: boolean): Paintable[] {
+    if (this.rotation) {
+      const [x1, y1] = rotate(this.x + this.width / 2, this.y + this.height / 2, target[1], target[2], this.rotation);
+      const [x2, y2] = rotate(this.x + this.width / 2, this.y + this.height / 2, target[3], target[4], this.rotation);
+      target = dna([target[0], x1, y1, x2, y2]);
+    }
+
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
     if (filteredPoints[0] === 0) {
       return [];
@@ -165,8 +184,29 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     return objects;
   }
 
+  applyRotation(target: Strand) {
+    if (this.rotation) {
+      const x = this.points[1] + (this.points[3] - this.points[1]) / 2;
+      const y = this.points[2] + (this.points[4] - this.points[2]) / 2;
+      const [x1, y1] = rotate(x, y, target[1], target[2], this.rotation);
+      const [x2, y2] = rotate(x, y, target[3], target[4], this.rotation);
+
+      const rx1 = Math.min(x1, x2);
+      const rx2 = Math.max(x1, x2);
+      const ry1 = Math.min(y1, y2);
+      const ry2 = Math.max(y1, y2);
+
+      return dna([target[0], rx1, ry1, rx2, ry2]);
+    }
+    return target;
+  }
+
   getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
     const transformer = compose(translate(this.x, this.y), scale(this.scale), this.aggregateBuffer);
+
+    if (this.rotation) {
+      target = this.applyRotation(target);
+    }
 
     const inter = getIntersection(target, this.points, this.intersectionBuffer);
     const len = this.layers.length;

@@ -179,4 +179,6 @@ export class DebugRenderer implements Renderer {
   getRendererScreenPosition() {
     return this.canvas.getBoundingClientRect();
   }
+
+  finishLayer() {}
 }

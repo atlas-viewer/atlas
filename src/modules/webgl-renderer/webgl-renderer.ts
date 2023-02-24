@@ -407,4 +407,6 @@ export class WebGLRenderer implements Renderer {
   getRendererScreenPosition() {
     return this.rendererPosition;
   }
+
+  finishLayer() {}
 }

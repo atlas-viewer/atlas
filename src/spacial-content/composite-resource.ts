@@ -114,6 +114,7 @@ export class CompositeResource
   addImages(images: SpacialContent[]) {
     for (const image of images) {
       image.__parent = this;
+      image.__owner = this.__owner;
     }
     this.allImages.push(...images.filter(Boolean));
     this.sortByScales();

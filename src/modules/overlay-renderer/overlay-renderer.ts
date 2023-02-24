@@ -279,6 +279,8 @@ export class OverlayRenderer implements Renderer {
           element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
           // element.style.transformOrigin = '0px 0px';
         } else {
+          // How to rotate overlays.. but don't do it.
+          // element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(${width/2}px, ${height/2}px) rotate(${paint.__owner.value?.rotation || 0}deg) translate(-${width/2}px, -${height/2}px) scale(${scale})`;
           element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
           // element.style.transformOrigin = '0px 0px';
         }
@@ -316,4 +318,6 @@ export class OverlayRenderer implements Renderer {
   getRendererScreenPosition() {
     return this.rendererPosition;
   }
+
+  finishLayer() {}
 }

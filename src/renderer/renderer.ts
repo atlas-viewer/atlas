@@ -9,7 +9,8 @@ export interface Renderer {
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void;
   afterFrame(world: World, delta: number, target: Strand): void;
   getScale(width: number, height: number, dpi?: boolean): number;
-  prepareLayer(paint: SpacialContent): void;
+  prepareLayer(paint: SpacialContent, point: Strand): void;
+  finishLayer(paint: SpacialContent, point: Strand): void;
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void;
   pendingUpdate(): boolean;
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[];

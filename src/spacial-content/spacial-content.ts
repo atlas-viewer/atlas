@@ -1,5 +1,5 @@
 import { DisplayData } from '../types';
-import { Paint } from '../world-objects';
+import { Paint, WorldObject } from '../world-objects';
 import { Strand } from '@atlas-viewer/dna';
 import { CompositeResource } from './composite-resource';
 import { UpdateTextureFunction } from './image-texture';
@@ -10,6 +10,7 @@ export interface SpacialContent {
   readonly display: DisplayData;
   __id?: string;
   __parent?: CompositeResource;
+  __owner: { value: WorldObject | undefined };
   __host?: any;
   priority?: boolean;
 

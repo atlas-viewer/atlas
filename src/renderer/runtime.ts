@@ -851,14 +851,17 @@ export class Runtime {
       const paint = points[p][0];
       const point = points[p][1];
       const transformation = points[p][2];
-      // Another hook before painting a layer.
-      this.renderer.prepareLayer(paint);
       // This is the position of the points. We apply the transform that came with the points.
       // The points before the transformation are just points relative to their parent (canvas?)
       // When we apply the transform, they become relative to the viewer. Both of these point
       // values are useful, but for rendering, we want the viewer-points.
       // @todo add option in renderer to omit this transform, instead passing it as a param.
       const position = transformation ? transform(point, transformation, this.transformBuffer) : point;
+      // Another hook before painting a layer.
+      this.renderer.prepareLayer(
+        paint,
+        paint.__parent && transformation ? transform(paint.__parent.points, transformation) : position
+      );
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
       // This could be a single point, where len is one.
       const totalTiles = position.length / 5;
@@ -882,6 +885,8 @@ export class Runtime {
         );
         this.hook('useAfterPaint', paint);
       }
+
+      this.renderer.finishLayer(paint, point);
     }
     // A final hook after the entire frame is complete.
     this.renderer.afterFrame(this.world, delta, this.target);

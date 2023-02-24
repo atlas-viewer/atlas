@@ -5,6 +5,7 @@ import { HTMLPortal } from './HTMLPortal';
 type ResizeWorldItemProps = JSX.IntrinsicElements['worldObject'] & {
   handleSize?: number;
   resizable?: boolean;
+  rotation?: number;
   onSave: (pos: Partial<{ x: number; y: number; width: number; height: number }>) => void;
   children?: ReactNode;
   maintainAspectRatio?: boolean;
@@ -67,6 +68,7 @@ export function ResizeWorldItem({
                     display: 'block',
                     width: '100%',
                     height: '100%',
+                    position: 'relative',
                     border: '1px solid rgba(155,155,155, .7)',
                     boxSizing: 'border-box',
                     pointerEvents: isEditing ? 'none' : inSketchMode ? 'initial' : 'none',

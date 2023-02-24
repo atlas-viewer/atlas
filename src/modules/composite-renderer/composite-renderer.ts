@@ -85,9 +85,15 @@ export class CompositeRenderer implements Renderer {
     return false;
   }
 
-  prepareLayer(paint: SpacialContent): void {
+  prepareLayer(paint: SpacialContent, point: Strand): void {
     for (let i = 0; i < this.length; i++) {
-      this.renderers[i].prepareLayer(paint);
+      this.renderers[i].prepareLayer(paint, point);
+    }
+  }
+
+  finishLayer(paint: SpacialContent, point: Strand): void {
+    for (let i = 0; i < this.length; i++) {
+      this.renderers[i].finishLayer(paint, point);
     }
   }
 

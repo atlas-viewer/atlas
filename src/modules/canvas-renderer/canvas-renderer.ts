@@ -1,5 +1,5 @@
 import { Strand } from '@atlas-viewer/dna';
-import { Paint } from '../../world-objects';
+import { Paint, Paintable, WorldObject } from '../../world-objects';
 import { PositionPair } from '../../types';
 import { distance } from '../../utils';
 import { Text } from '../../objects/text';
@@ -9,6 +9,7 @@ import { TiledImage } from '../../spacial-content/tiled-image';
 import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
 import { Box } from '../../objects/box';
+import { h } from '../../clean-objects/runtime/h';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -89,6 +90,7 @@ export class CanvasRenderer implements Renderer {
   rendererPosition: DOMRect;
   dpi: number;
   drawCalls: Array<() => void> = [];
+  lastPaintedObject?: WorldObject;
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
@@ -129,6 +131,9 @@ export class CanvasRenderer implements Renderer {
   }
 
   afterFrame(world: World): void {
+    // this.lastPaintedObject = paint.__owner.value;
+    this.clearTransform();
+    this.lastPaintedObject = undefined;
     // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
@@ -266,6 +271,27 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
+  }
+
+  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number) {
+    const owner = paint.__owner.value;
+    if (owner && owner.rotation) {
+      this.ctx.save();
+      const moveX = x + width / 2;
+      const moveY = y + height / 2;
+
+      this.ctx.translate(moveX, moveY);
+      this.ctx.rotate((owner.rotation * Math.PI) / 180);
+      this.ctx.translate(-moveX, -moveY);
+      this.lastPaintedObject = owner;
+    }
+  }
+  clearTransform() {
+    // Do something with last object.
+    if (this.lastPaintedObject && this.lastPaintedObject.rotation) {
+      this.ctx.restore();
+      this.lastPaintedObject = undefined;
+    }
   }
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
@@ -520,12 +546,22 @@ export class CanvasRenderer implements Renderer {
     // No-op
   }
 
-  prepareLayer(paint: SpacialContent): void {
+  prepareLayer(paint: SpacialContent, points: Strand): void {
+    if (paint.__owner.value) {
+      this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+    }
+
     if (!paint.__host || !paint.__host.canvas) {
       if (paint instanceof SingleImage || paint instanceof TiledImage) {
         // create it if it does not exist.
         this.createImageHost(paint);
       }
+    }
+  }
+
+  finishLayer() {
+    if (this.lastPaintedObject) {
+      this.clearTransform();
     }
   }
 

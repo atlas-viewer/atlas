@@ -7,6 +7,7 @@ export const TileSet: React.FC<{
   y: number;
   width: number;
   height: number;
+  rotation?: number;
   children?: ReactNode;
   onClick?: (e: any) => void;
 }> = (props) => {
@@ -23,6 +24,7 @@ export const TileSet: React.FC<{
 
   return (
     <world-object
+      rotation={props.rotation}
       key={props.tiles.imageService.id}
       scale={scale}
       height={props.tiles.height}
@@ -54,15 +56,17 @@ export const TileSet: React.FC<{
           />
         ))}
         {tiles.map((tile: any) =>
-          (tile.scaleFactors || []).map((size: number) => (
-            <tiled-image
-              key={`${props.tiles.imageService.id}-tile-${size}`}
-              uri={props.tiles.imageService.id}
-              display={{ width: props.tiles.width, height: props.tiles.height }}
-              tile={tile}
-              scaleFactor={size}
-            />
-          ))
+          (tile.scaleFactors || []).map((size: number) => {
+            return (
+              <tiled-image
+                key={`${props.tiles.imageService.id}-tile-${size}`}
+                uri={props.tiles.imageService.id}
+                display={{ width: props.tiles.width, height: props.tiles.height }}
+                tile={tile}
+                scaleFactor={size}
+              />
+            );
+          })
         )}
       </composite-image>
     </world-object>

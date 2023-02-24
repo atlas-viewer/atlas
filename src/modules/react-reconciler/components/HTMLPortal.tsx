@@ -39,6 +39,11 @@ export const HTMLPortal: React.FC<
           relativeBox.style.transform = `scale(${1 / lastScale.current})`;
           relativeBox.style.width = `${lastScale.current * 100}%`;
           relativeBox.style.height = `${lastScale.current * 100}%`;
+          if (ref.current && boxRef.current?.__owner.value?.rotation) {
+            relativeBox.style.transform = `scale(${1 / lastScale.current}) translate(50%, 50%) rotate(${
+              boxRef.current?.__owner.value?.rotation || 0
+            }deg)  translate(-50%, -50%)`;
+          }
         }
       }
     }

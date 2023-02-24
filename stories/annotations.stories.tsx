@@ -84,6 +84,7 @@ export const SelectionDemo = () => {
   const [tileIndex, setTileIndex] = useState(0);
   const [isWebGL, setIsWebGL] = useState(false);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
+  const [rotation, setRotation] = useState(0);
 
   const [renderPreset, setRenderPreset] = useState<any>('default-preset');
 
@@ -133,6 +134,13 @@ export const SelectionDemo = () => {
           <button onClick={() => setTileIndex((i) => (i + 1) % staticTiles.length)}>Change image</button>|
           <button onClick={() => setRenderPreset(['default-preset', { canvasBox: true }])}>Default preset</button>
           <button onClick={() => setRenderPreset(['static-preset', {}])}>Static preset</button>
+          <input
+            type="range"
+            min={0}
+            max={359}
+            value={rotation}
+            onChange={(e) => setRotation(e.target.valueAsNumber)}
+          />
           <div style={{ display: 'flex' }}>
             <div style={{ flex: '1 1 0px' }}>
               <AtlasAuto
@@ -148,11 +156,12 @@ export const SelectionDemo = () => {
                 enableNavigator
               >
                 <world onClick={onDeselect}>
-                  <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} />
+                  <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} rotation={rotation} />
                   {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
                   {annotations.map((annotation, k) => (
                     <RegionHighlight
                       key={annotation.id}
+                      rotation={k === 2 ? 45 : 0}
                       region={annotation}
                       disableCardinalControls={k === 1}
                       maintainAspectRatio={k === 2}

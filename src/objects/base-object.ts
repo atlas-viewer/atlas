@@ -11,6 +11,7 @@ import {
   SupportedEventNames,
   SupportedEvents,
 } from '../events';
+import { WorldObject } from '../world-objects';
 
 export abstract class BaseObject<Props = any, SupportedChildElements = never>
   implements AtlasObjectModel<Props, SupportedChildElements>
@@ -20,6 +21,7 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   __host: any;
   __onCreate?: () => void;
   __parent?: CompositeResource;
+  __owner: { value: WorldObject | undefined } = { value: undefined };
   __state: any = {};
   // Base properties.
   eventHandlers: SupportedEventMap;
