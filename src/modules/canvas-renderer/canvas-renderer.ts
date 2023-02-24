@@ -299,6 +299,19 @@ export class CanvasRenderer implements Renderer {
 
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
+      if (paint.display.rotation) {
+        this.ctx.save();
+        let moveX = x + width / 2;
+        let moveY = y + height / 2;
+        if (paint.crop) {
+          moveX -= paint.crop[index * 5 + 1];
+          moveY -= paint.crop[index * 5 + 2];
+        }
+        this.ctx.translate(moveX, moveY);
+        this.ctx.rotate((paint.display.rotation * Math.PI) / 180);
+        this.ctx.translate(-moveX, -moveY);
+      }
+
       this.visible.push(paint);
       if (typeof paint.style && (paint.style as any).opacity !== 'undefined') {
         if (!paint.style.opacity) {
@@ -332,15 +345,15 @@ export class CanvasRenderer implements Renderer {
         const canvasToPaint = imageBuffer.canvases[index];
         if (canvasToPaint) {
           if (paint.crop) {
-            if (paint.crop[0]) {
+            if (paint.crop[index * 5]) {
               this.ctx.drawImage(
                 canvasToPaint,
-                paint.display.points[index * 5 + 1] - paint.crop[index * 5 + 1],
-                paint.display.points[index * 5 + 2] - paint.crop[index * 5 + 2],
+                paint.display.points[index * 5 + 1] + paint.crop[index * 5 + 1],
+                paint.display.points[index * 5 + 2] + paint.crop[index * 5 + 2],
                 paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1] - 1,
                 paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2] - 1,
-                x,
-                y,
+                x - paint.crop[index * 5 + 1] * this.lastKnownScale * (1 / paint.display.scale),
+                y - paint.crop[index * 5 + 2] * this.lastKnownScale * (1 / paint.display.scale),
                 width + Number.MIN_VALUE,
                 height + Number.MIN_VALUE
               );
@@ -350,8 +363,8 @@ export class CanvasRenderer implements Renderer {
               canvasToPaint,
               0, // paint.display.points[index * 5 + 1],
               0, // paint.display.points[index * 5 + 2],
-              paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1] - 1,
-              paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2] - 1,
+              paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
+              paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
               x,
               y,
               width + Number.MIN_VALUE,
@@ -361,6 +374,10 @@ export class CanvasRenderer implements Renderer {
         }
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
+      }
+
+      if (paint.display.rotation) {
+        this.ctx.restore();
       }
     }
 
@@ -548,7 +565,18 @@ export class CanvasRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent, points: Strand): void {
     if (paint.__owner.value) {
-      this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+      if (paint.crop) {
+        this.applyTransform(
+          paint,
+          points[1] - (paint.crop[1] * this.lastKnownScale) / paint.display.scale,
+          points[2] - (paint.crop[2] * this.lastKnownScale) / paint.display.scale,
+          ((paint.crop[3] - paint.crop[1]) * this.lastKnownScale) / paint.display.scale,
+          ((paint.crop[4] - paint.crop[2]) * this.lastKnownScale) / paint.display.scale
+        );
+        // this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+      } else {
+        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+      }
     }
 
     if (!paint.__host || !paint.__host.canvas) {

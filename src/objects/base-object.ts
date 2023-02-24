@@ -29,7 +29,16 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   layers: SupportedChildElements[] = [];
   time: WorldTime[] = [];
 
-  crop?: Strand;
+  // crop?: Strand;
+  _crop?: Strand;
+
+  get crop(): Strand | undefined {
+    return this._crop;
+  }
+
+  set crop(crop: Strand | undefined) {
+    this._crop = crop;
+  }
 
   // To be set by implementation constructor.
   id: string;

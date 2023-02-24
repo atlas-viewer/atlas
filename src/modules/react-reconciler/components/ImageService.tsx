@@ -11,6 +11,7 @@ export const ImageService: React.FC<{
   y?: number;
   rotation?: number;
   children?: ReactNode;
+  crop?: any;
 }> = (props) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
 
@@ -30,6 +31,7 @@ export const ImageService: React.FC<{
           width={props.width}
           height={props.height}
           rotation={props.rotation}
+          crop={props.crop}
         >
           {props.children}
         </TileSet>

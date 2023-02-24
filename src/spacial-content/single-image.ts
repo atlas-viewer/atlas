@@ -7,8 +7,9 @@ import { Paint } from '../world-objects/paint';
 type SingleImageProps = {
   uri: string;
   id?: string;
-  display?: { width: number; height: number };
+  display?: { width: number; height: number; rotation?: number };
   target: { width: number; height: number; x?: number; y?: number };
+  crop?: { x: number; y: number; width: number; height: number };
   scale?: number;
   priority?: boolean;
   style?: any;
@@ -59,6 +60,7 @@ export class SingleImage extends BaseObject implements SpacialContent {
     scale?: number;
     x?: number;
     y?: number;
+    rotation?: number;
   }) {
     super();
     if (!data) {
@@ -77,6 +79,7 @@ export class SingleImage extends BaseObject implements SpacialContent {
         width: data.width / scale,
         height: data.height / scale,
         points: scale !== 1 ? DnaFactory.singleBox(data.width / scale, data.height / scale) : this.points,
+        rotation: data?.rotation,
       };
     }
   }
@@ -93,9 +96,19 @@ export class SingleImage extends BaseObject implements SpacialContent {
       this.style.opacity = props.style.opacity;
     }
 
+    if (props.crop) {
+      const crop = DnaFactory.singleBox(props.crop.width, props.crop.height, props.crop.x, props.crop.y);
+      if (!this.crop) {
+        this.crop = dna(crop);
+      } else {
+        this.crop.set(crop);
+      }
+    }
+
     this.display.scale = scale;
     this.display.width = props.target.width / scale;
     this.display.height = props.target.height / scale;
+    this.display.rotation = props.display?.rotation;
     this.display.points =
       scale !== 1 ? DnaFactory.singleBox(props.target.width / scale, props.target.height / scale) : this.points;
   }

@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 import { UpdateTextureFunction } from '../src/spacial-content/image-texture';
 // @ts-ignore
 import img from './assets/img.png';
+
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 
 export default { title: 'Atlas demos' };

@@ -151,9 +151,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
 
   getObjectsAt(target: Strand, all?: boolean): Paintable[] {
     if (this.rotation) {
-      const [x1, y1] = rotate(this.x + this.width / 2, this.y + this.height / 2, target[1], target[2], this.rotation);
-      const [x2, y2] = rotate(this.x + this.width / 2, this.y + this.height / 2, target[3], target[4], this.rotation);
-      target = dna([target[0], x1, y1, x2, y2]);
+      target = this.applyRotation(target);
     }
 
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
@@ -243,13 +241,15 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
           paintable.points[4] > this.worldPoints[4] / this.scale)
       ) {
         // @todo support for tiled crops.
-        paintable.crop = dna([
-          1,
-          Math.max(this.worldPoints[1] / this.scale, paintable.points[1]),
-          Math.max(this.worldPoints[2] / this.scale, paintable.points[2]),
-          Math.min(this.worldPoints[3] / this.scale, paintable.points[3]),
-          Math.min(this.worldPoints[4] / this.scale, paintable.points[4]),
-        ]);
+        paintable.crop =
+          paintable.crop ||
+          dna([
+            1,
+            Math.max(this.worldPoints[1] / this.scale, paintable.points[1]),
+            Math.max(this.worldPoints[2] / this.scale, paintable.points[2]),
+            Math.min(this.worldPoints[3] / this.scale, paintable.points[3]),
+            Math.min(this.worldPoints[4] / this.scale, paintable.points[4]),
+          ]);
       }
     }
 

@@ -47,6 +47,7 @@ declare global {
         uri: string;
         target: any;
         display: any;
+        crop: any;
       } & AllEvents;
       texture: BaseElement & {
         getTexture: UpdateTextureFunction;

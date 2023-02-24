@@ -8,6 +8,7 @@ export const TileSet: React.FC<{
   width: number;
   height: number;
   rotation?: number;
+  crop?: any;
   children?: ReactNode;
   onClick?: (e: any) => void;
 }> = (props) => {
@@ -39,7 +40,7 @@ export const TileSet: React.FC<{
         width={props.tiles.width}
         height={props.tiles.height}
       >
-        {props.tiles.thumbnail ? (
+        {false && props.tiles.thumbnail ? (
           <world-image
             priority
             uri={props.tiles.thumbnail.id}
@@ -47,14 +48,15 @@ export const TileSet: React.FC<{
             display={{ width: props.tiles.thumbnail.width, height: props.tiles.thumbnail.height }}
           />
         ) : null}
-        {sizes.map((size, n) => (
-          <world-image
-            key={n}
-            uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
-            target={{ width: props.tiles.width, height: props.tiles.height }}
-            display={{ width: size.width, height: size.height }}
-          />
-        ))}
+        {false &&
+          sizes.map((size, n) => (
+            <world-image
+              key={n}
+              uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
+              target={{ width: props.tiles.width, height: props.tiles.height }}
+              display={{ width: size.width, height: size.height }}
+            />
+          ))}
         {tiles.map((tile: any) =>
           (tile.scaleFactors || []).map((size: number) => {
             return (
@@ -64,6 +66,7 @@ export const TileSet: React.FC<{
                 display={{ width: props.tiles.width, height: props.tiles.height }}
                 tile={tile}
                 scaleFactor={size}
+                crop={props.crop}
               />
             );
           })

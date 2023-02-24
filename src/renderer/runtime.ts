@@ -860,7 +860,7 @@ export class Runtime {
       // Another hook before painting a layer.
       this.renderer.prepareLayer(
         paint,
-        paint.__parent && transformation ? transform(paint.__parent.points, transformation) : position
+        paint.__parent && transformation ? transform(paint.__parent.crop || paint.__parent.points, transformation) : position
       );
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
       // This could be a single point, where len is one.

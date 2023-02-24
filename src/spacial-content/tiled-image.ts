@@ -1,4 +1,13 @@
-import { DnaFactory, hidePointsOutsideRegion, mutate, scale, transform, Strand } from '@atlas-viewer/dna';
+import {
+  DnaFactory,
+  hidePointsOutsideRegion,
+  mutate,
+  scale,
+  transform,
+  Strand,
+  dna,
+  getIntersection,
+} from '@atlas-viewer/dna';
 import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
 import { BaseObject } from '../objects/base-object';
@@ -15,7 +24,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
   points: Strand;
   service?: ImageService;
   format = 'jpg';
-
+  crop2?: Strand;
   constructor(data: {
     url: string;
     scaleFactor: number;
@@ -52,6 +61,36 @@ export class TiledImage extends BaseObject implements SpacialContent {
       this.format = props.format;
     } else {
       this.format = 'jpg';
+    }
+
+    if (props.crop) {
+      const crop = DnaFactory.projection({
+        width: this.display.width * this.display.scale,
+        height: this.display.height * this.display.scale,
+        x: 0,
+        y: 0,
+      });
+
+      // const hidden = dna(this.points.length);
+      // const len = hidden.length / 5;
+      //
+      // for (let i = 0; i < len; i++) {
+      //   hidden[i * 5 + 0] = 1;
+      //   // hidden[i * 5 + 3] = hidden[i * 5 + 3] - hidden[i * 5 + 1];
+      //   // hidden[i * 5 + 4] = hidden[i * 5 + 4] - hidden[i * 5 + 2];
+      //   // hidden[i * 5 + 1] = 0;
+      //   // hidden[i * 5 + 2] = 0;
+      // }
+      //
+      // this.crop = hidden;
+
+      if (!this.crop2) {
+        this.crop2 = crop;
+      } else {
+        this.crop2.set(crop);
+      }
+
+      console.log('crop', crop);
     }
   }
 
@@ -132,6 +171,15 @@ export class TiledImage extends BaseObject implements SpacialContent {
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {
+    if (this.crop2) {
+      const inter = getIntersection(target, this.crop2);
+      if (inter[1] === 0 && inter[2] === 0 && inter[3] === 0 && inter[4] === 0) {
+        return [];
+      }
+      const points = hidePointsOutsideRegion(this.points, inter);
+      return [[this as any, points, aggregate]];
+    }
+
     const points = hidePointsOutsideRegion(this.points, target);
     return [[this as any, points, aggregate]];
   }
