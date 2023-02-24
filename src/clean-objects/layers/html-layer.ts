@@ -1,4 +1,4 @@
-const htmlLayer = (id, element) => {
+const htmlLayer = (id: any, element: any) => {
   // Initialisation of the layer can go here.
 
   return {
@@ -7,11 +7,7 @@ const htmlLayer = (id, element) => {
     pendingUpdate() {},
     paint() {},
     objects: {
-      create(box: any) {
-
-
-
-      },
+      create(box: any) {},
       remove() {},
       update() {},
     },
@@ -20,6 +16,6 @@ const htmlLayer = (id, element) => {
       useAfterPaint: [],
       useBeforeFrame: [],
       useFrame: [],
-    }
+    },
   };
 };

@@ -3,8 +3,8 @@ import { GetTile } from '../../iiif/shared';
 
 export const TileSet: React.FC<{
   tiles: GetTile;
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   width: number;
   height: number;
   rotation?: number;

@@ -60,7 +60,7 @@ export const HTMLPortal: React.FC<
     }
     async function renderHost() {
       if (box && box.__host) {
-        const toRender = props.relative ? <div ref={ref as any}>{children}</div> : (children as any);
+        const toRender = props.relative ? <div ref={ref as any}>{children as any}</div> : (children as any);
 
         await renderReactDom(box.__host.element, toRender, root);
       }

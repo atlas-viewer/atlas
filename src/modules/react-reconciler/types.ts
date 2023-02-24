@@ -36,6 +36,7 @@ declare global {
         width: number;
         x?: number;
         y?: number;
+        rotation?: number;
       } & AllEvents;
       worldImage: BaseElement & {
         uri: string;
