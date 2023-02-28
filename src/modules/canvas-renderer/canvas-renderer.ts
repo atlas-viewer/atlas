@@ -409,8 +409,8 @@ export class CanvasRenderer implements Renderer {
                 //
                 target[0],
                 target[1],
-                target[2],
-                target[3]
+                target[2] + 1,
+                target[3] + 1
               );
             }
           } else {
@@ -533,16 +533,26 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void): void {
+  loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void, retry = false): void {
     if (imageCache[url] && imageCache[url].naturalWidth > 0) {
       callback(imageCache[url]);
       return;
     }
 
     try {
+      let loaded = false;
+
+      if (!retry) {
+        setTimeout(() => {
+          if (!loaded) {
+            this.loadImage(url, callback, err, true);
+          }
+        }, 3000);
+      }
       const image = document.createElement('img');
       image.decoding = 'auto';
       image.onload = function () {
+        loaded = true;
         callback(image);
         imageCache[url] = image;
         image.onload = null;
@@ -551,7 +561,14 @@ export class CanvasRenderer implements Renderer {
         image.crossOrigin = 'anonymous';
       }
       image.src = url;
+      if (image.complete) {
+        image.onload({} as any);
+      }
+      if (image.width === 0) {
+        // no-op, just want to query width. (possibly bug with browsers)
+      }
     } catch (e) {
+      console.log('image error', e);
       err(e);
     }
   }

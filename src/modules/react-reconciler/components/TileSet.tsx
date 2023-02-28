@@ -10,11 +10,13 @@ export const TileSet: React.FC<{
   rotation?: number;
   crop?: any;
   children?: ReactNode;
+  enableThumbnail?: boolean;
   onClick?: (e: any) => void;
 }> = (props) => {
-  const scale = props.width / props.tiles.width;
+  const scale = props.width / (props.crop?.width || props.tiles.width);
   const tiles = props.tiles.imageService.tiles || [];
   const sizes = props.tiles.imageService.sizes || [];
+  const enableThumbnail = props.enableThumbnail;
   const canonicalId = useMemo(() => {
     const id = props.tiles.imageService.id || (props.tiles.imageService['@id'] as string);
     if (id && id.endsWith('/info.json')) {
@@ -41,7 +43,7 @@ export const TileSet: React.FC<{
         height={props.crop?.height || props.tiles.height}
         crop={props.crop}
       >
-        {(false as boolean) && props.tiles.thumbnail ? (
+        {enableThumbnail && props.tiles.thumbnail ? (
           <world-image
             priority
             uri={props.tiles.thumbnail.id}
@@ -50,16 +52,15 @@ export const TileSet: React.FC<{
             crop={props.crop}
           />
         ) : null}
-        {(false as boolean) &&
-          sizes.map((size, n) => (
-            <world-image
-              key={n}
-              uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
-              target={{ width: props.tiles.width, height: props.tiles.height }}
-              display={{ width: size.width, height: size.height }}
-              crop={props.crop}
-            />
-          ))}
+        {sizes.map((size, n) => (
+          <world-image
+            key={n}
+            uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
+            target={{ width: props.tiles.width, height: props.tiles.height }}
+            display={{ width: size.width, height: size.height }}
+            crop={props.crop}
+          />
+        ))}
         {tiles.map((tile: any) =>
           (tile.scaleFactors || []).map((size: number) => {
             return (

@@ -85,7 +85,7 @@ export const CropRotateStaticImageInteractive = () => {
           }}
         >
           <world>
-            <world-object key={scale} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
+            <world-object key={scale.join()} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
               <world-image
                 uri={img}
                 target={{ width: 600, height: 900, x: utx[0], y: 0 }}

@@ -28,8 +28,8 @@ export const ImageService: React.FC<{
           tiles={tiles}
           x={props.x}
           y={props.y}
-          width={props.width}
-          height={props.height}
+          width={props.crop?.width || props.width}
+          height={props.crop?.height || props.height}
           rotation={props.rotation}
           crop={props.crop}
         >
