@@ -13,6 +13,7 @@ import { Box } from '../../objects/box';
 import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import { version } from 'react';
+import { Geometry } from '../../objects/geometry';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
@@ -115,6 +116,9 @@ function createInstance(
       break;
     case 'box':
       instance = new Box();
+      break;
+    case 'shape':
+      instance = new Geometry();
       break;
     case 'worldObject':
     case 'world-object':

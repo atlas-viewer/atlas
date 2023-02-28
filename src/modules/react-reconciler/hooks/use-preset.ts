@@ -49,6 +49,18 @@ export function usePreset(
     return () => {
       if (createdPreset) {
         createdPreset.unmount();
+
+        if (canvasElement) {
+          canvasElement.height = 0;
+          canvasElement.width = 0;
+        }
+        if (overlayElement) {
+          overlayElement.innerHTML = '';
+        }
+        if (navigatorElement) {
+          navigatorElement.height = 0;
+          navigatorElement.width = 0;
+        }
       }
     };
   }, [presetName, presetArgs]);

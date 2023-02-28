@@ -19,6 +19,8 @@ export interface Renderer {
   resize(): void;
   resize(width?: number, height?: number): void;
   triggerResize?: () => void;
+
+  reset(): void;
   getRendererScreenPosition():
     | { x: number; y: number; width: number; height: number; top: number; left: number }
     | undefined;

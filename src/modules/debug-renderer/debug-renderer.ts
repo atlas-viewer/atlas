@@ -81,7 +81,7 @@ export class DebugRenderer implements Renderer {
                     height: (point[i + 4] - point[i + 2]) * ratio,
                   };
 
-                  this.context.drawImage(toPaint, toDraw.x1, toDraw.y1, toDraw.width, toDraw.height);
+                  // this.context.drawImage(toPaint, toDraw.x1, toDraw.y1, toDraw.width, toDraw.height);
                 }
               }
             }
@@ -181,4 +181,5 @@ export class DebugRenderer implements Renderer {
   }
 
   finishLayer() {}
+  reset() {}
 }

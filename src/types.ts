@@ -24,9 +24,8 @@ export interface Scaled {
 }
 export interface Projection extends Position, SpacialSize {}
 export interface Viewer extends Projection, Scaled {}
-export interface DisplayData extends SpacialSize, Scaled {
+export interface DisplayData extends SpacialSize, Position, Scaled {
   points: Strand;
-
   rotation?: number;
 }
 export interface WorldTime {

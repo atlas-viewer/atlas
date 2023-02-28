@@ -10,6 +10,8 @@ import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
 import { Box } from '../../objects/box';
 import { h } from '../../clean-objects/runtime/h';
+import LRUCache from 'lru-cache';
+import { Geometry } from '../../objects/geometry';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -22,12 +24,14 @@ export type CanvasRendererOptions = {
   crossOrigin?: boolean;
   dpi?: number;
   box?: boolean;
+  polygon?: boolean;
   background?: string;
+  lruCache?: boolean;
 };
 
 export type ImageBuffer = {
   canvas: HTMLCanvasElement;
-  canvases: HTMLCanvasElement[];
+  canvases: string[];
   indices: number[];
   loaded: number[];
   fallback?: ImageBuffer;
@@ -71,11 +75,12 @@ export class CanvasRenderer implements Renderer {
   pendingDrawCall = false;
   firstMeaningfulPaint = false;
   parallelTasks = 8; // @todo configuration.
-  frameTasks = 3;
+  frameTasks = 0;
   loadingQueueOrdered = true;
   loadingQueue: Array<{
     id: string;
     scale: number;
+    network?: boolean;
     distance: number;
     shifted?: boolean;
     task: () => Promise<any>;
@@ -91,19 +96,43 @@ export class CanvasRenderer implements Renderer {
   dpi: number;
   drawCalls: Array<() => void> = [];
   lastPaintedObject?: WorldObject;
+  hostCache: LRUCache<string, HTMLCanvasElement>;
+  invalidated: string[] = [];
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
     this.rendererPosition = canvas.getBoundingClientRect();
     // Not working as expected.
     // this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
-    this.ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
+    this.ctx = canvas.getContext('2d', { alpha: true }) as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
     // Testing fade in.
     this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
     this.dpi = options?.dpi || 1;
+
+    this.hostCache = options?.lruCache
+      ? new LRUCache<string, HTMLCanvasElement>({
+          maxSize: 1024 * 512 * 512, // 250MB total.
+          dispose: (value, key, reason) => {
+            this.invalidated.push(key);
+            value.width = 0;
+            value.height = 0;
+          },
+          sizeCalculation: (value, key) => {
+            return value.width * value.height;
+          },
+        })
+      : ({
+          store: {},
+          get(id: string) {
+            return this.store[id];
+          },
+          set(id: string, value: any) {
+            this.store[id] = value;
+          },
+        } as any);
 
     if (process.env.NODE_ENV !== 'production' && this.options.debug) {
       import('stats.js')
@@ -143,8 +172,10 @@ export class CanvasRenderer implements Renderer {
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
-        if (a.scale === b.scale) {
-          return b.distance - a.distance;
+        if (a.network) {
+          if (a.scale === b.scale) {
+            return b.distance - a.distance;
+          }
         }
 
         return a.scale < b.scale ? -1 : 1;
@@ -155,8 +186,10 @@ export class CanvasRenderer implements Renderer {
     this.previousVisible = this.visible;
     this.pendingDrawCall = !!this.drawCalls.length;
     if (this.pendingDrawCall) {
-      const nextCall = this.drawCalls.shift();
-      if (nextCall) nextCall();
+      for (let i = 0; i < this.drawCalls.length; i++) {
+        const nextCall = this.drawCalls.shift();
+        if (nextCall) nextCall();
+      }
     }
     // Some off-screen work might need done, like loading new images in.
     this.doOffscreenWork();
@@ -174,7 +207,7 @@ export class CanvasRenderer implements Renderer {
     if (this.loadingQueue.length) {
       // First call immediately.
       this._worker();
-      if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
+      if (this.loadingQueue.length /*&& this.tasksRunning < this.parallelTasks*/) {
         // Here's our clock for scheduling tasks, every 1ms it will try to call.
         if (!this._scheduled) {
           this._scheduled = setInterval(this._doWork, 0);
@@ -186,9 +219,9 @@ export class CanvasRenderer implements Renderer {
   _worker = () => {
     if (
       // First we check if there is work to do.
-      this.loadingQueue.length &&
+      this.loadingQueue.length /*&&
       this.tasksRunning < this.parallelTasks &&
-      this.frameTasks < this.parallelTasks
+      this.frameTasks < this.parallelTasks*/
     ) {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
@@ -220,7 +253,7 @@ export class CanvasRenderer implements Renderer {
   _scheduled: any = 0;
   _doWork = () => {
     // Here is the shut down, no more work to do.
-    if (this.frameIsRendering || (this.loadingQueue.length === 0 && this.tasksRunning === 0 && this._scheduled)) {
+    if (this.loadingQueue.length === 0 && this.tasksRunning === 0 && this._scheduled) {
       clearInterval(this._scheduled);
       this._scheduled = 0;
     }
@@ -288,8 +321,10 @@ export class CanvasRenderer implements Renderer {
   }
   clearTransform() {
     // Do something with last object.
-    if (this.lastPaintedObject && this.lastPaintedObject.rotation) {
-      this.ctx.restore();
+    if (this.lastPaintedObject) {
+      if (this.lastPaintedObject.rotation) {
+        this.ctx.restore();
+      }
       this.lastPaintedObject = undefined;
     }
   }
@@ -326,7 +361,7 @@ export class CanvasRenderer implements Renderer {
         const canvas = this.getCanvasDims();
 
         // 2) Schedule paint onto local buffer (async, yay!)
-        if (imageBuffer.indices.indexOf(index) === -1) {
+        if (imageBuffer.indices.indexOf(index) === -1 || this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1) {
           // we need to schedule a paint.
           this.schedulePaintToCanvas(
             imageBuffer,
@@ -342,20 +377,40 @@ export class CanvasRenderer implements Renderer {
           return;
         }
 
-        const canvasToPaint = imageBuffer.canvases[index];
+        const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
         if (canvasToPaint) {
-          if (paint.crop) {
+          if (paint.crop && paint.cropData) {
             if (paint.crop[index * 5]) {
+              const source = [
+                paint.crop[index * 5 + 1] / paint.display.scale - paint.display.points[index * 5 + 1],
+                paint.crop[index * 5 + 2] / paint.display.scale - paint.display.points[index * 5 + 2],
+                1 + (paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1]) / paint.display.scale,
+                1 + (paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2]) / paint.display.scale,
+              ];
+
+              source[0] += paint.cropData.x / paint.display.scale;
+              source[1] += paint.cropData.y / paint.display.scale;
+
+              const translationDeltaX = paint.x * this.lastKnownScale;
+              const translationDeltaY = paint.y * this.lastKnownScale;
+
+              const target = [x + translationDeltaX, y + translationDeltaY, width, height];
+
+              // What we need?
+              target[0] += translationDeltaX;
+              target[1] += translationDeltaY;
+
               this.ctx.drawImage(
                 canvasToPaint,
-                paint.display.points[index * 5 + 1] + paint.crop[index * 5 + 1],
-                paint.display.points[index * 5 + 2] + paint.crop[index * 5 + 2],
-                paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1] - 1,
-                paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2] - 1,
-                x - paint.crop[index * 5 + 1] * this.lastKnownScale * (1 / paint.display.scale),
-                y - paint.crop[index * 5 + 2] * this.lastKnownScale * (1 / paint.display.scale),
-                width + Number.MIN_VALUE,
-                height + Number.MIN_VALUE
+                source[0],
+                source[1],
+                source[2],
+                source[3],
+                //
+                target[0],
+                target[1],
+                target[2],
+                target[3]
               );
             }
           } else {
@@ -381,7 +436,9 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
-    if (this.options.box && paint instanceof Box && !paint.props.className && !paint.props.html && !paint.props.href) {
+    const isBox = paint instanceof Box && this.options.box;
+    const isGeometry = paint instanceof Geometry && this.options.polygon;
+    if (isBox || (isGeometry && !paint.props.className && !paint.props.html && !paint.props.href)) {
       if (paint.props.style) {
         const style = Object.assign(
           //
@@ -437,12 +494,24 @@ export class CanvasRenderer implements Renderer {
 
         this.ctx.fillStyle = style.backgroundColor || 'transparent';
         this.ctx.lineWidth = bw;
-        if (bw) {
-          // Border
-          this.ctx.strokeRect(x + bw / 2, y + bw / 2, width + bw, height + bw);
+
+        if (isGeometry) {
+          const points = (paint as any).shape.points || [];
+          const len = points.length;
+          this.ctx.beginPath();
+          for (let i = 0; i < len; i++) {
+            this.ctx.lineTo(x + points[i][0] * this.lastKnownScale, y + points[i][1] * this.lastKnownScale);
+          }
+          if (bw) {
+            this.ctx.stroke();
+          }
+          this.ctx.fill();
+        } else {
+          if (bw) {
+            this.ctx.strokeRect(x + bw / 2, y + bw / 2, width + bw, height + bw);
+          }
+          this.ctx.fillRect(x + bw, y + bw, width, height);
         }
-        // Fill
-        this.ctx.fillRect(x + bw, y + bw, width, height);
 
         if (ow) {
           if (style.outlineColor) {
@@ -494,18 +563,24 @@ export class CanvasRenderer implements Renderer {
     this.imagesPending++;
     // We push the index we want to load onto the image buffer.
     imageBuffer.indices.push(index);
-    // New canvas.
-    imageBuffer.canvases[index] = document.createElement('canvas');
+    // Unique id for paint.
+    const id = `${paint.id}--${paint.display.scale}-${index}`;
+
+    const idx = this.invalidated.indexOf(id);
+    if (idx !== -1) {
+      this.invalidated.splice(idx, 1);
+    }
+
+    imageBuffer.canvases[index] = id;
     // Mark as loading.
     paint.__host.canvas.loading = true;
-    // Unique id for paint.
-    const id = `${paint.id}--${paint.display.scale}`;
     // Set loading queue ordering to false to trigger re-order.
     this.loadingQueueOrdered = false;
     // And we push a "unit of work" to perform between frame renders.
     this.loadingQueue.push({
       id,
       scale: paint.display.scale,
+      network: true,
       distance: priority,
       task: () =>
         // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
@@ -535,10 +610,13 @@ export class CanvasRenderer implements Renderer {
                       imageBuffer.loading = false;
                     }
                     const points = paint.display.points.slice(index * 5, index * 5 + 5);
-                    const canvas = imageBuffer.canvases[index];
+
+                    const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
                     canvas.width = points[3] - points[1];
                     canvas.height = points[4] - points[2];
+                    // document.body.append(canvas);
+                    this.hostCache.set(imageBuffer.canvases[index], canvas);
                     this.drawCalls.push(() => {
                       ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
                       innerResolve();
@@ -551,7 +629,6 @@ export class CanvasRenderer implements Renderer {
             (err) => {
               this.imagesPending--;
               imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
-              console.log('Error loading image', err);
               resolve();
             }
           );
@@ -565,15 +642,16 @@ export class CanvasRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent, points: Strand): void {
     if (paint.__owner.value) {
-      if (paint.crop) {
-        this.applyTransform(
-          paint,
-          points[1] - (paint.crop[1] * this.lastKnownScale) / paint.display.scale,
-          points[2] - (paint.crop[2] * this.lastKnownScale) / paint.display.scale,
-          ((paint.crop[3] - paint.crop[1]) * this.lastKnownScale) / paint.display.scale,
-          ((paint.crop[4] - paint.crop[2]) * this.lastKnownScale) / paint.display.scale
-        );
-        // this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+      if (paint.cropData) {
+        const scale = this.lastKnownScale * (1 / paint.display.scale);
+        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+        // this.applyTransform(
+        //   paint,
+        //   points[1] - paint.cropData.x * scale + paint.points[1] * scale,
+        //   points[2] - paint.cropData.y * scale + paint.points[2] * scale,
+        //   paint.cropData.width * this.lastKnownScale,
+        //   paint.cropData.height * this.lastKnownScale
+        // );
       } else {
         this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
       }
@@ -594,13 +672,13 @@ export class CanvasRenderer implements Renderer {
   }
 
   createImageHost(paint: SingleImage | TiledImage) {
-    const canvas = document.createElement('canvas');
-    canvas.width = paint.display.width;
-    canvas.height = paint.display.height;
-    canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
+    // const canvas = document.createElement('canvas');
+    // canvas.width = paint.display.width;
+    // canvas.height = paint.display.height;
+    // canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
-    paint.__host.canvas = { canvas, canvases: [], indices: [], loaded: [], loading: false };
-    hostCache[paint.id] = paint.__host;
+    paint.__host.canvas = { canvas: undefined, canvases: [], indices: [], loaded: [], loading: false };
+    // hostCache[paint.id] = paint.__host;
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
@@ -656,5 +734,10 @@ export class CanvasRenderer implements Renderer {
 
   getRendererScreenPosition() {
     return this.rendererPosition;
+  }
+
+  reset() {
+    this.loadingQueue = [];
+    this.drawCalls = [];
   }
 }

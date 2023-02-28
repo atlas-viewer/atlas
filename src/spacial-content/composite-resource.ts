@@ -60,7 +60,7 @@ export class CompositeResource
       renderLayers: 3,
       minSize: 255,
       maxImageSize: 1024,
-      quality: 1.1,
+      quality: 1.5,
       ...(data.renderOptions || {}),
     };
 
@@ -215,6 +215,7 @@ export class CompositeResource
       this.images,
       this.renderOptions.quality
     );
+
     const len = this.images.length;
     const newAggregate = aggregate ? compose(aggregate, translate(this.x, this.y)) : translate(this.x, this.y);
 

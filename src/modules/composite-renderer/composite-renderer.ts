@@ -102,4 +102,10 @@ export class CompositeRenderer implements Renderer {
       this.renderers[i].resize(width, height);
     }
   }
+
+  reset() {
+    for (let i = 0; i < this.length; i++) {
+      this.renderers[i].reset();
+    }
+  }
 }

@@ -16,6 +16,7 @@ export interface SpacialContent {
 
   points: Strand;
   crop?: Strand;
+  cropData?: { x: number; y: number; width: number; height: number };
   style?: { opacity: number };
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>>;

@@ -7,6 +7,8 @@ import {
   Strand,
   dna,
   getIntersection,
+  Projection,
+  translate,
 } from '@atlas-viewer/dna';
 import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
@@ -14,6 +16,7 @@ import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from './spacial-content';
 import { stripInfoJson } from '../utils';
 import { ImageService } from '@iiif/presentation-3';
+import { clamp } from 'leva/plugin';
 
 export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
@@ -25,6 +28,9 @@ export class TiledImage extends BaseObject implements SpacialContent {
   service?: ImageService;
   format = 'jpg';
   crop2?: Strand;
+  cropData?: Projection;
+
+  tileUrl: string;
   constructor(data: {
     url: string;
     scaleFactor: number;
@@ -34,12 +40,16 @@ export class TiledImage extends BaseObject implements SpacialContent {
     width: number;
     height: number;
     format?: string;
+    id?: string;
   }) {
     super();
-    this.id = stripInfoJson(data.url);
+    this.tileUrl = stripInfoJson(data.url);
+    this.id = data.id || `${this.tileUrl}--${data.scaleFactor}`;
     this.points = data.displayPoints ? data.displayPoints : transform(data.points, scale(data.scaleFactor));
     this.tileWidth = data.tileWidth;
     this.display = {
+      x: 0,
+      y: 0,
       width: data.width / data.scaleFactor,
       height: data.height / data.scaleFactor,
       points: data.points,
@@ -64,33 +74,40 @@ export class TiledImage extends BaseObject implements SpacialContent {
     }
 
     if (props.crop) {
-      const crop = DnaFactory.projection({
-        width: this.display.width * this.display.scale,
-        height: this.display.height * this.display.scale,
-        x: 0,
-        y: 0,
-      });
+      this.cropData = props.crop;
 
-      // const hidden = dna(this.points.length);
-      // const len = hidden.length / 5;
-      //
-      // for (let i = 0; i < len; i++) {
-      //   hidden[i * 5 + 0] = 1;
-      //   // hidden[i * 5 + 3] = hidden[i * 5 + 3] - hidden[i * 5 + 1];
-      //   // hidden[i * 5 + 4] = hidden[i * 5 + 4] - hidden[i * 5 + 2];
-      //   // hidden[i * 5 + 1] = 0;
-      //   // hidden[i * 5 + 2] = 0;
-      // }
-      //
-      // this.crop = hidden;
+      const crop = dna([...this.points]);
+      const len = crop.length / 5;
 
-      if (!this.crop2) {
-        this.crop2 = crop;
-      } else {
-        this.crop2.set(crop);
+      const minX = props.crop.x || 0;
+      const minY = props.crop.y || 0;
+      const maxX = props.crop.x + props.crop.width;
+      const maxY = props.crop.y + props.crop.height;
+
+      for (let i = 0; i < len; i++) {
+        const index = i * 5;
+        if (
+          /* x1 */ crop[index + 1] < maxX && // x1 left - x2 right
+          /* x2 */ crop[index + 3] > minX && // x2 right - x1 left
+          /* y1 */ crop[index + 2] < maxY && // y1 top - y2 bottom
+          /* y2 */ crop[index + 4] > minY // y2 bottom - y1 top
+        ) {
+          crop[index + 1] = clamp(crop[index + 1], minX, maxX);
+          crop[index + 3] = clamp(crop[index + 3], minX, maxX);
+          crop[index + 2] = clamp(crop[index + 2], minY, maxY);
+          crop[index + 4] = clamp(crop[index + 4], minY, maxY);
+        } else {
+          crop[index] = 0;
+        }
       }
 
-      console.log('crop', crop);
+      mutate(crop, translate(-props.crop.x, -props.crop.y));
+
+      if (!this.crop) {
+        this.crop = crop;
+      } else {
+        this.crop.set(crop);
+      }
     }
   }
 
@@ -165,22 +182,13 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const y2 = im[4] - im[2];
     const w = Math.ceil(x2 / this.display.scale);
 
-    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.${
+    return `${this.tileUrl}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.${
       this.format || 'jpg'
     }`;
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {
-    if (this.crop2) {
-      const inter = getIntersection(target, this.crop2);
-      if (inter[1] === 0 && inter[2] === 0 && inter[3] === 0 && inter[4] === 0) {
-        return [];
-      }
-      const points = hidePointsOutsideRegion(this.points, inter);
-      return [[this as any, points, aggregate]];
-    }
-
-    const points = hidePointsOutsideRegion(this.points, target);
+    const points = hidePointsOutsideRegion(this.crop || this.points, target);
     return [[this as any, points, aggregate]];
   }
 

@@ -409,4 +409,5 @@ export class WebGLRenderer implements Renderer {
   }
 
   finishLayer() {}
+  reset() {}
 }

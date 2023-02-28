@@ -58,6 +58,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   rotation = 0;
   filteredPointsBuffer: Strand;
   _updatedList: any[] = [];
+  geometry?: any;
 
   constructor(props?: AbstractObject, position?: { x: number; y: number }) {
     super();
@@ -184,15 +185,23 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
 
   applyRotation(target: Strand) {
     if (this.rotation) {
+      const a = { x: target[1], y: target[2] };
+      const b = { x: target[1], y: target[4] };
+      const c = { x: target[3], y: target[2] };
+      const d = { x: target[3], y: target[4] };
+
       const x = this.points[1] + (this.points[3] - this.points[1]) / 2;
       const y = this.points[2] + (this.points[4] - this.points[2]) / 2;
-      const [x1, y1] = rotate(x, y, target[1], target[2], this.rotation);
-      const [x2, y2] = rotate(x, y, target[3], target[4], this.rotation);
 
-      const rx1 = Math.min(x1, x2);
-      const rx2 = Math.max(x1, x2);
-      const ry1 = Math.min(y1, y2);
-      const ry2 = Math.max(y1, y2);
+      const [x1, y1] = rotate(x, y, a.x, a.y, this.rotation);
+      const [x2, y2] = rotate(x, y, b.x, b.y, this.rotation);
+      const [x3, y3] = rotate(x, y, c.x, c.y, this.rotation);
+      const [x4, y4] = rotate(x, y, d.x, d.y, this.rotation);
+
+      const rx1 = Math.min(x1, x2, x3, x4);
+      const rx2 = Math.max(x1, x2, x3, x4);
+      const ry1 = Math.min(y1, y2, y3, y4);
+      const ry2 = Math.max(y1, y2, y3, y4);
 
       return dna([target[0], rx1, ry1, rx2, ry2]);
     }

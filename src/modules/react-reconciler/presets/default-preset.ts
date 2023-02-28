@@ -19,6 +19,7 @@ export type DefaultPresetOptions = {
   dpi?: number;
   debug?: boolean;
   canvasBox?: boolean;
+  polygon?: boolean;
   background?: string;
 };
 
@@ -33,6 +34,7 @@ export function defaultPreset({
   dpi,
   debug,
   canvasBox = true,
+  polygon = true,
   navigatorElement,
   background,
   runtimeOptions,
@@ -55,7 +57,7 @@ export function defaultPreset({
   const renderer = new CompositeRenderer([
     unstable_webglRenderer
       ? new WebGLRenderer(canvasElement, { dpi })
-      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, background }),
+      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, background }),
     overlayElement
       ? new OverlayRenderer(overlayElement, {
           box: unstable_webglRenderer || !canvasBox,
@@ -88,6 +90,7 @@ export function defaultPreset({
       unmountComponentAtNode(runtime);
       runtime.stopControllers();
       runtime.stop();
+      runtime.reset();
       if (em) {
         em.stop();
       }

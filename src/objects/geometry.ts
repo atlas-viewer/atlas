@@ -7,7 +7,7 @@ import { nanoid } from 'nanoid';
 const borderRegex = /([0-9]+(px|em)\s+)+(solid)\s+(.*)/g;
 const borderRegexCache: any = {};
 
-export type BoxProps = {
+export type GeometryProps = {
   id: string;
   target: {
     x: number;
@@ -15,6 +15,8 @@ export type BoxProps = {
     width: number;
     height: number;
   };
+
+  points: number[][];
 
   className?: string;
   href?: string;
@@ -25,19 +27,18 @@ export type BoxProps = {
   relativeStyle?: boolean;
   html?: boolean;
   // New style.
-  style?: BoxStyle;
-
+  style?: GeometryStyle;
   // Deprecated
   backgroundColor?: string;
   border?: string;
 };
 
-export type BoxStyle = _BoxStyle & {
-  ':hover'?: _BoxStyle;
-  ':active'?: _BoxStyle;
+export type GeometryStyle = _GeometryStyle & {
+  ':hover'?: _GeometryStyle;
+  ':active'?: _GeometryStyle;
 };
 
-type _BoxStyle = Partial<{
+type _GeometryStyle = Partial<{
   // In order
   backgroundColor: string; // colour or gradient function
   opacity: number;
@@ -62,7 +63,7 @@ type _BoxStyle = Partial<{
   //borderRadius: string; // maybe? Future?
 }>;
 
-const styleProps: Array<keyof BoxStyle> = [
+const styleProps: Array<keyof GeometryStyle> = [
   'backgroundColor',
   'opacity',
   'boxShadow',
@@ -97,7 +98,7 @@ const styleProps: Array<keyof BoxStyle> = [
 //     ['borderStyle', ['setLineDash', 'lineDashOffset']],
 //   ];
 
-export class Box extends BaseObject<BoxProps> implements SpacialContent {
+export class Geometry extends BaseObject<GeometryProps> implements SpacialContent {
   id: string;
   type: 'spacial-content' = 'spacial-content';
   points: Strand;
@@ -131,15 +132,18 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     relativeSize?: boolean;
     relativeStyle?: boolean;
     html?: boolean;
-    style?: BoxStyle;
-    hoverStyles?: BoxStyle;
-    pressStyles?: BoxStyle;
+    style?: GeometryStyle;
+    hoverStyles?: GeometryStyle;
+    pressStyles?: GeometryStyle;
   } = {};
+
+  shape: { type: 'none' } | { type: 'polygon'; points: number[][] };
 
   constructor() {
     super();
     this.id = nanoid(12);
     this.points = dna(5);
+    this.shape = { type: 'none' };
   }
 
   getAllPointsAt(target: Strand, aggregate: Strand): Paint[] {
@@ -168,8 +172,32 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     this.__revision++;
   };
 
-  applyProps(props: Partial<BoxProps> = {}) {
+  applyProps(props: Partial<GeometryProps> = {}) {
     let didUpdate = false;
+
+    if (props.points) {
+      if (this.shape.type !== 'polygon' || this.shape.points.length !== props.points.length) {
+        this.shape = {
+          type: 'polygon',
+          points: props.points,
+        };
+      } else {
+        let newPoints = false;
+        const len = props.points.length;
+        for (let i = 0; i < len; i++) {
+          if (props.points[i][0] !== this.shape.points[i][0] || props.points[i][1] !== this.shape.points[i][1]) {
+            newPoints = true;
+            break;
+          }
+        }
+        if (newPoints) {
+          this.shape = {
+            type: 'polygon',
+            points: props.points,
+          };
+        }
+      }
+    }
 
     if (props.interactive !== this.props.interactive) {
       didUpdate = true;

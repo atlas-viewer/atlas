@@ -2,6 +2,7 @@ import React from 'react';
 import { UpdateTextureFunction } from '../../spacial-content/image-texture';
 import { BoxStyle } from '../../objects/box';
 import { EventListenerProps } from '../../clean-objects/traits/evented';
+import { GeometryProps } from '../../objects/geometry';
 
 type BaseElement = {
   id?: string;
@@ -60,6 +61,7 @@ declare global {
         height: number;
         children?: React.ReactNode;
       };
+      shape: BaseElement & GeometryProps;
       ['composite-image']: BaseElement & {
         id?: string;
         width: number;

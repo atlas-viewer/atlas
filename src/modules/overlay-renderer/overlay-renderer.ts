@@ -320,4 +320,6 @@ export class OverlayRenderer implements Renderer {
   }
 
   finishLayer() {}
+
+  reset() {}
 }

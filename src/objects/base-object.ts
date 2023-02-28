@@ -31,6 +31,7 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
 
   // crop?: Strand;
   _crop?: Strand;
+  cropData?: { x: number; y: number; width: number; height: number };
 
   get crop(): Strand | undefined {
     return this._crop;

@@ -215,4 +215,5 @@ export class StaticRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent): void {}
   finishLayer(paint: SpacialContent): void {}
+  reset() {}
 }

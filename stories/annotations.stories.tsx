@@ -7,14 +7,17 @@ import { useControlledAnnotationList } from '../src/modules/react-reconciler/hoo
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { Runtime } from '../src/renderer/runtime';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
-import { Atlas } from '../src';
-import { StrictMode } from 'react';
 
 export default { title: 'Annotations' };
 
 const staticTiles = [
   {
-    id: 'https://libimages1.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
+    id: 'https://dlcs.io/iiif-img/4/21/quilt/info.json',
+    width: 13038,
+    height: 12916,
+  },
+  {
+    id: 'https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
     width: 5233,
     height: 7200,
   },
@@ -28,11 +31,11 @@ const staticTiles = [
     width: 2677,
     height: 4117,
   },
-  {
-    id: 'https://www.omeka.ugent.be/libraries.lw21/iiif-img/2/236',
-    height: 1843,
-    width: 1666,
-  },
+  // {
+  //   id: 'https://www.omeka.ugent.be/libraries.lw21/iiif-img/2/236',
+  //   height: 1843,
+  //   width: 1666,
+  // },
 ];
 
 const sizes = [
@@ -81,7 +84,7 @@ export const SelectionDemo = () => {
       y: 900,
     },
   ]);
-  const [tileIndex, setTileIndex] = useState(0);
+  const [tileIndex, setTileIndex] = useState(1);
   const [isWebGL, setIsWebGL] = useState(false);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
   const [rotation, setRotation] = useState(0);
@@ -158,6 +161,24 @@ export const SelectionDemo = () => {
                 <world onClick={onDeselect}>
                   <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} rotation={rotation} />
                   {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
+                  <world-object height={516} width={351} x={500} y={1000} rotation={45}>
+                    <shape
+                      id="a-box"
+                      style={{
+                        backgroundColor: 'rgba(255, 0, 0, .6)',
+                        ':hover': {
+                          backgroundColor: 'rgba(20, 50, 200, .7)',
+                        },
+                      }}
+                      target={{ x: 0, y: 0, width: 516, height: 351 }}
+                      points={[
+                        [260, 0],
+                        [516, 351],
+                        [0, 351],
+                        [260, 0],
+                      ]}
+                    />
+                  </world-object>
                   {annotations.map((annotation, k) => (
                     <RegionHighlight
                       key={annotation.id}

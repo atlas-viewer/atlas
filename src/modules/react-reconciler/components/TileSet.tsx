@@ -28,8 +28,8 @@ export const TileSet: React.FC<{
       rotation={props.rotation}
       key={props.tiles.imageService.id}
       scale={scale}
-      height={props.tiles.height}
-      width={props.tiles.width}
+      height={props.crop?.height || props.tiles.height}
+      width={props.crop?.width || props.tiles.width}
       x={props.x}
       y={props.y}
       onClick={props.onClick}
@@ -37,24 +37,27 @@ export const TileSet: React.FC<{
       <composite-image
         key={props.tiles.imageService.id}
         id={props.tiles.imageService.id}
-        width={props.tiles.width}
-        height={props.tiles.height}
+        width={props.crop?.width || props.tiles.width}
+        height={props.crop?.height || props.tiles.height}
+        crop={props.crop}
       >
-        {false && props.tiles.thumbnail ? (
+        {(false as boolean) && props.tiles.thumbnail ? (
           <world-image
             priority
             uri={props.tiles.thumbnail.id}
             target={{ width: props.tiles.width, height: props.tiles.height }}
             display={{ width: props.tiles.thumbnail.width, height: props.tiles.thumbnail.height }}
+            crop={props.crop}
           />
         ) : null}
-        {false &&
+        {(false as boolean) &&
           sizes.map((size, n) => (
             <world-image
               key={n}
               uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
               target={{ width: props.tiles.width, height: props.tiles.height }}
               display={{ width: size.width, height: size.height }}
+              crop={props.crop}
             />
           ))}
         {tiles.map((tile: any) =>

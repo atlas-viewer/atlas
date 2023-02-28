@@ -1,6 +1,6 @@
-import { AtlasAuto, ImageService, Preset, Presets } from '../src/index';
+import { AtlasAuto, ImageService, Preset, Presets, useAfterFrame, useFrame } from '../src/index';
 import * as React from 'react';
-import { ReactNode, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 //@ts-ignore
 import img from './assets/img.png';
 export default { title: 'Rotation' };
@@ -49,18 +49,25 @@ function Slider({ control, label, ...props }: any) {
 const preset = ['default-preset', { canvasBox: true }] as Presets;
 
 export const CropRotateStaticImageInteractive = () => {
-  const rotation = useState(45);
-  const x = useState(200);
+  const rotation = useState(5);
+  const x = useState(120);
+  const tx = useState(123);
+  const utx = useState(0);
   const y = useState(0);
-  const scale = useState(200);
+  const scale = [200];
   const ref = useRef<Preset>();
+  const [rt, setRt] = useState<Preset>();
+  const debug = useRef<HTMLDivElement>(null);
+
+  const scaleFactor = scale[0] / 100;
 
   return (
     <>
       <Slider control={rotation} label="rotation" />
       <Slider control={x} label="x" />
+      <Slider control={tx} label="tx" />
+      <Slider control={utx} label="Unsupported translation" />
       <Slider control={y} label="y" />
-      <Slider control={scale} min={100} step={10} max={400} label="scale (force re-render)" />
       <button
         onClick={() => {
           ref.current?.runtime.world.recalculateWorldSize();
@@ -68,30 +75,29 @@ export const CropRotateStaticImageInteractive = () => {
       >
         render
       </button>
-      <Container style={{ height: 400, width: 600 }}>
+      <div ref={debug}>debug</div>
+      <Container style={{ height: 512, width: 512 }}>
         <AtlasAuto
           renderPreset={preset}
           onCreated={(e) => {
             ref.current = e;
+            setRt(e);
           }}
         >
           <world>
-            <world-object
-              key={scale}
-              height={450}
-              width={600}
-              x={0}
-              y={0}
-              scale={scale[0] / 100}
-              rotation={rotation[0]}
-            >
+            <world-object key={scale} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
               <world-image
                 uri={img}
-                target={{ width: 600, height: 900, x: 0, y: 0 }}
-                display={{ width: 6 * scale[0], height: 9 * scale[0] }}
-                crop={{ x: x[0], y: y[0], width: 600, height: 450 }}
+                target={{ width: 600, height: 900, x: utx[0], y: 0 }}
+                display={{ width: 600, height: 900, x: 0, y: 0 }}
+                crop={{
+                  x: x[0],
+                  y: y[0],
+                  width: 300,
+                  height: 450,
+                }}
               />
-              <box style={{ border: '2px solid red' }} target={{ width: 600 - 4, height: 450 - 4, x: 0, y: 0 }} />
+              <box style={{ border: '2px solid red' }} target={{ width: 300 - 4, height: 450 - 4, x: utx[0], y: 0 }} />
             </world-object>
           </world>
         </AtlasAuto>
@@ -153,24 +159,104 @@ export const CropRotateStaticWorldObject2 = () => (
   </Container>
 );
 
+export const UnsupportedCropRotate = () => (
+  <Container style={{ height: 400, width: 600 }}>
+    <AtlasAuto renderPreset={preset}>
+      <world>
+        <world-object height={300} width={300} x={0} y={0} scale={1} rotation={180}>
+          <world-image
+            uri={img}
+            target={{ width: 600, height: 900, x: 100, y: 0 }}
+            display={{ width: 600, height: 900, rotation: 0 }}
+            crop={{ x: 100, y: 10, width: 300, height: 300 }}
+          />
+          <box style={{ border: '2px solid red' }} target={{ width: 296, height: 296, x: 100, y: 0 }} />
+        </world-object>
+      </world>
+    </AtlasAuto>
+  </Container>
+);
+
 export const CropTiledImage = () => {
+  const rotation = useState(180);
+  const x = useState(256);
+  const tx = useState(0);
+  const y = useState(0);
   return (
-    <Container style={{ height: 400, width: 600 }}>
-      <AtlasAuto renderPreset={preset}>
-        <world>
-          <world-object height={tile.height / 2} width={tile.width / 2} x={0} y={0} scale={1}>
-            <ImageService
-              key="wunder"
-              {...tile}
-              crop={{ x: 0, y: 0, width: tile.width / 2, height: tile.height / 2 }}
-            />
-            <box
-              style={{ border: '20px solid red' }}
-              target={{ width: tile.width / 2 - 40, height: tile.height / 2 - 40, x: 0, y: 0 }}
-            />
-          </world-object>
-        </world>
-      </AtlasAuto>
-    </Container>
+    <div style={{ height: 700 }}>
+      <Slider control={rotation} label="rotation" />
+      <Slider control={x} label="x" max={1000} />
+      <Slider control={tx} label="tx" max={1000} />
+      <Slider control={y} label="y" max={1000} />
+      <Container style={{ height: 400, width: 600 }}>
+        <AtlasAuto renderPreset={preset}>
+          <world>
+            <world-object height={tile.height / 2} width={tile.width / 2 + 300}>
+              <ImageService
+                key="wunder"
+                {...tile}
+                crop={{ x: x[0], y: y[0], width: tile.width / 2, height: tile.height / 2 }}
+                rotation={rotation[0]}
+                x={tx[0]}
+              />
+              <box
+                style={{ border: '2px solid red' }}
+                target={{ width: tile.width / 2 - 4, height: tile.height / 2 - 4, x: 0, y: 0 }}
+              />
+            </world-object>
+          </world>
+        </AtlasAuto>
+      </Container>
+    </div>
+  );
+};
+
+export const CropTiledImagePolygon = () => {
+  const rotation = useState(180);
+  const x = useState(256);
+  const tx = useState(0);
+  const y = useState(0);
+  return (
+    <div style={{ height: 700 }}>
+      <Slider control={rotation} label="rotation" />
+      <Slider control={x} label="x" max={1000} />
+      <Slider control={tx} label="tx" max={1000} />
+      <Slider control={y} label="y" max={1000} />
+      <Container style={{ height: 400, width: 600 }}>
+        <AtlasAuto renderPreset={preset}>
+          <world>
+            <world-object height={tile.height / 2} width={tile.width / 2 + 300}>
+              <ImageService
+                key="wunder"
+                {...tile}
+                crop={{ x: x[0], y: y[0], width: tile.width / 2, height: tile.height / 2 }}
+                rotation={rotation[0]}
+                x={tx[0]}
+              />
+              <box
+                style={{ border: '2px solid red' }}
+                target={{ width: tile.width / 2 - 4, height: tile.height / 2 - 4, x: 0, y: 0 }}
+              />
+              <shape
+                id="a-box"
+                style={{
+                  border: '2px solid blue',
+                  backgroundColor: 'rgba(0, 24, 180, .1)',
+                  ':hover': { backgroundColor: 'red' },
+                }}
+                relativeStyle
+                target={{ x: 100, y: 200, width: 516, height: 351 }}
+                points={[
+                  [260, 0],
+                  [516, 351],
+                  [0, 351],
+                  [260, 0],
+                ]}
+              />
+            </world-object>
+          </world>
+        </AtlasAuto>
+      </Container>
+    </div>
   );
 };
