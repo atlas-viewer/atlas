@@ -8,6 +8,7 @@ import { AnimationGroup } from '../objects/animation-group';
 import { ContainerDefinition, GenericObject } from '../traits/generic-object';
 import { hideInstance, remove, unhideInstance } from '../traits/container';
 import { now } from '../../modules/react-reconciler/utility/now';
+import { StyledContainer } from '../objects/styled-container';
 
 // This is the list of DOM types available.
 
@@ -17,6 +18,7 @@ export const objectTypes: any = {
   container: Container,
   'animated-box': AnimatedBox,
   'animation-group': AnimationGroup,
+  'styled-container': StyledContainer,
 };
 
 export type ElementTypes = typeof objectTypes;

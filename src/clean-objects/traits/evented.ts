@@ -33,7 +33,8 @@ export type SupportedEventNames =
   | 'dragover'
   | 'scroll'
   | 'wheel'
-  | 'click';
+  | 'click'
+  | 'update';
 
 export type SupportedEventFunctionNames =
   | 'onMouseDown'
@@ -63,7 +64,8 @@ export type SupportedEventFunctionNames =
   | 'onDragOver'
   | 'onScroll'
   | 'onWheel'
-  | 'onClick';
+  | 'onClick'
+  | 'onUpdate';
 
 export type SupportedEventTypeMapping = {
   mousedown: 'onMouseDown';
@@ -94,6 +96,7 @@ export type SupportedEventTypeMapping = {
   scroll: 'onScroll';
   wheel: 'onWheel';
   click: 'onClick';
+  update: 'onUpdate';
 };
 
 export type AtlasEvent<BaseEvent extends Event> = BaseEvent & { atlas: { x: number; y: number }; cancelled?: boolean };
@@ -140,6 +143,9 @@ export type SupportedEventFunctions = {
 
   // Other
   onClick(e: AtlasEvent<MouseEvent>): void;
+
+  // Lifecycle events.
+  onUpdate(e: { props: any }): void;
 };
 
 export type EventMap = {
@@ -178,6 +184,8 @@ export const supportedEventAttributes: Array<SupportedEventFunctionNames> = [
   'onScroll',
   'onWheel',
   'onClick',
+  // Lifecycle.
+  'onUpdate',
 ];
 
 export interface Evented {
@@ -224,9 +232,11 @@ export function addEventListener<Name extends SupportedEventNames>(
     throw new Error(`Unknown event ${name}`);
   }
 
-  if (!object.events.handlers[event].find((all) => all.listener === cb)) {
+  if (!(object.events.handlers[event] as any[]).find((all: any) => all.listener === cb)) {
     object.events.handlers[event].push({ listener: cb, options });
   }
+
+  return () => removeEventListener(object, name, cb);
 }
 
 export function removeEventListener<Name extends SupportedEventNames>(
@@ -250,7 +260,7 @@ export function isEvented(t: unknown): t is Evented {
 export function dispatchEvent<Name extends SupportedEventFunctionNames | SupportedEventNames>(
   obj: unknown,
   name: Name,
-  e: any,
+  e?: any,
   toCapture = false
 ) {
   let didFire = false;

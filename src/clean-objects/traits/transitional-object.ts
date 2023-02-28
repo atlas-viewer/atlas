@@ -11,6 +11,7 @@ import { constrainBounds } from '../helpers/constrain-bounds';
 import { GenericObject } from './generic-object';
 import { areInputsEqual } from '../helpers/are-inputs-equal';
 import { notifyNewTransition, TransitionalContainer } from './transitional-container';
+import { dispatchEvent, isEvented } from './evented';
 
 export interface TransitionableObject {
   //
@@ -158,6 +159,10 @@ export function runObjectTransitions(
   complete = runObjectTransition(object, 'target', delta) && complete;
   complete = runObjectTransition(object, 'display', delta) && complete;
   complete = runObjectTransition(object, 'crop', delta) && complete;
+
+  if (isEvented(object)) {
+    dispatchEvent(object, 'onUpdate');
+  }
 
   notifyNewTransition(object, container);
 

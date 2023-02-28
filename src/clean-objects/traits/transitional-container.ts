@@ -6,6 +6,7 @@ import {
   TransitionableObject,
 } from './transitional-object';
 import { GenericObject } from './generic-object';
+import { dispatchEvent, isEvented } from './evented';
 
 export interface TransitionalContainer {
   activeTransitions: {

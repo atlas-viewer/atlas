@@ -54,6 +54,8 @@ export interface GenericObject<
     readonly aggregateTransform: Strand;
     readonly invertedTransform: Strand;
   };
+
+  props: any;
 }
 
 export type NodeDefinition = {
@@ -143,10 +145,13 @@ export function genericObjectDefaults(
   const points = dna(5);
   points.set([1], 0);
   return {
-    id: id || nanoid(9),
+    id: id || tagName + '_' + nanoid(9),
     type: '',
     tagName: tagName || 'unknown',
+    props: {},
     display: {
+      x: 0,
+      y: 0,
       width: 0,
       height: 0,
       points,
@@ -192,13 +197,15 @@ export function applyGenericObjectProps(
   let didUpdate = false;
   let didTransition = false;
 
-  let target = props.target;
+  let target = props.target || toObject.props.target;
 
   if (!target) {
     if (typeof props.width !== 'undefined' && typeof props.height !== 'undefined') {
-      target = { x: props.x, y: props.y, width: props.width, height: props.height };
+      target = { x: props.x || 0, y: props.y || 0, width: props.width, height: props.height };
     }
   }
+
+  toObject.props = props;
 
   if (props.crop && !toObject.node.cropped) {
     toObject.node.cropped = true;
@@ -256,6 +263,8 @@ export function applyGenericObjectProps(
       toObject.display.scale = scale;
       toObject.display.width = target.width / scale;
       toObject.display.height = target.height / scale;
+      toObject.display.x = target.x / scale;
+      toObject.display.y = target.y / scale;
 
       const displayPoints =
         scale !== 1
