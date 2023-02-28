@@ -4,7 +4,7 @@ import {
   genericObjectDefaults,
   GenericObjectProps,
 } from '../traits/generic-object';
-import { applyEventProps, Evented, EventListenerProps, eventsDefaults } from '../traits/evented';
+import { applyEventProps, dispatchEvent, Evented, EventListenerProps, eventsDefaults } from '../traits/evented';
 import { Revision, revisionDefaults } from '../traits/revision';
 import { applyHasStylesProps, HasStyles, hasStylesDefaults, HasStylesProps } from '../traits/has-styles';
 import { ObjectDefinition } from './_types';
@@ -32,6 +32,10 @@ export const Box: ObjectDefinition<BoxObject, BoxProps> = {
     didUpdate = applyGenericObjectProps(object, props) || didUpdate;
     didUpdate = applyEventProps(object, props) || didUpdate;
     didUpdate = applyHasStylesProps(object, props) || didUpdate;
+
+    if (didUpdate) {
+      dispatchEvent(object, 'onUpdate');
+    }
 
     return didUpdate;
   },

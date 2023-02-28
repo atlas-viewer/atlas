@@ -5,7 +5,7 @@ import {
   genericObjectDefaults,
   GenericObjectProps,
 } from '../traits/generic-object';
-import { applyEventProps, Evented, EventListenerProps, eventsDefaults } from '../traits/evented';
+import { applyEventProps, dispatchEvent, Evented, EventListenerProps, eventsDefaults } from '../traits/evented';
 import { Revision, revisionDefaults } from '../traits/revision';
 import { ObjectDefinition } from './_types';
 import { layoutDefaults } from '../traits/layout';
@@ -39,6 +39,10 @@ export const World: ObjectDefinition<WorldObject, WorldProps> = {
     didUpdate = applyGenericObjectProps(object, props) || didUpdate;
     didUpdate = applyEventProps(object, props) || didUpdate;
     didUpdate = applyTransitionalContainerProps(object, props) || didUpdate;
+
+    if (didUpdate) {
+      dispatchEvent(object, 'onUpdate');
+    }
 
     return didUpdate;
   },

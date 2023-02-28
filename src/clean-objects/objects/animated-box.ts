@@ -7,6 +7,7 @@ import {
   transitionalObjectDefaults,
 } from '../traits/transitional-object';
 import { doesNotSupport } from '../helpers/invalid-object-functions';
+import { dispatchEvent } from '../traits/evented';
 
 interface AnimatedBoxObject extends BoxObject, TransitionableObject {}
 
@@ -26,6 +27,10 @@ export const AnimatedBox: ObjectDefinition<AnimatedBoxObject, AnimatedBoxProps> 
 
     didUpdate = Box.applyProps(object, props, state) || didUpdate;
     didUpdate = applyTransitionalObjectProps(object, props) || didUpdate;
+
+    if (didUpdate) {
+      dispatchEvent(object, 'onUpdate');
+    }
 
     return didUpdate;
   },
