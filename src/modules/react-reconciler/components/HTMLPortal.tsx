@@ -20,6 +20,7 @@ export const HTMLPortal: React.FC<
     relative?: boolean;
     target?: { x: number; y: number; width: number; height: number };
     style?: any;
+    children?: any;
   }
 >(({ children, ...props }, fwdRef) => {
   const ref = useRef<HTMLDivElement>();

@@ -50,6 +50,8 @@ export class CompositeResource
       this.isFullyLoaded = true;
     }
     this.display = {
+      x: 0,
+      y: 0,
       points: DnaFactory.singleBox(data.width, data.height),
       height: data.height,
       width: data.width,

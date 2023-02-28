@@ -42,7 +42,13 @@ export function Container(props: { item: GenericObject<ContainerDefinition> }) {
       }}
     >
       {props.item.node.list?.map((listItem) =>
-        listItem ? listItem.node.type === 'container' ? <Container item={listItem} /> : <Item item={listItem} /> : null
+        listItem ? (
+          listItem.node.type === 'container' ? (
+            <Container item={listItem as any} />
+          ) : (
+            <Item item={listItem} />
+          )
+        ) : null
       )}
       <ItemControls item={props.item} />
     </div>

@@ -33,7 +33,7 @@ export class ImageTexture extends BaseObject implements SpacialContent {
     if (!data) {
       this.id = '';
       this.uri = '';
-      this.display = { scale: 1, width: 0, height: 0, points: dna(5) };
+      this.display = { x: 0, y: 0, scale: 1, width: 0, height: 0, points: dna(5) };
       this.points = dna(5);
     } else {
       const scale = data.scale || 1;
@@ -42,6 +42,8 @@ export class ImageTexture extends BaseObject implements SpacialContent {
       this.points = DnaFactory.singleBox(data.width, data.height);
 
       this.display = {
+        x: 0,
+        y: 0,
         scale: scale,
         width: data.width / scale,
         height: data.height / scale,

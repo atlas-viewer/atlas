@@ -30,6 +30,8 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
   pressing?: boolean;
   text = '';
   display = {
+    x: 0,
+    y: 0,
     scale: 1,
     width: 100,
     height: 100,

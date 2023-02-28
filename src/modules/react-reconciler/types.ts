@@ -67,6 +67,7 @@ declare global {
         width: number;
         height: number;
         children?: React.ReactNode;
+        crop?: any;
       } & AllEvents;
       tiledImage: BaseElement & {
         uri: string;
@@ -79,6 +80,7 @@ declare global {
         display: { width: number; height: number };
         tile: { width: number; height?: number };
         scaleFactor: number;
+        crop: any;
       } & AllEvents;
       box: BaseElement & {
         interactive?: boolean;
