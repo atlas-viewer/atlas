@@ -109,11 +109,18 @@ export class SingleImage extends BaseObject implements SpacialContent {
       }
     }
 
-    this.display.scale = scale;
-    this.display.width = props.target.width / scale;
-    this.display.height = props.target.height / scale;
-    this.display.rotation = props.display?.rotation;
-    this.display.points = DnaFactory.singleBox(props.target.width / scale, props.target.height / scale);
+    if (props.display) {
+      this.display.scale = scale;
+      this.display.width = props.display.width;
+      this.display.height = props.display.height;
+      this.display.rotation = props.display.rotation;
+      this.display.points = DnaFactory.singleBox(props.display.width, props.display.height);
+    } else {
+      this.display.scale = scale;
+      this.display.width = props.target.width / scale;
+      this.display.height = props.target.height / scale;
+      this.display.points = DnaFactory.singleBox(props.target.width / scale, props.target.height / scale);
+    }
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {
