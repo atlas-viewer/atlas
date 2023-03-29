@@ -101,8 +101,8 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.points[4] = y + props.height;
     this.rotation = props.rotation || 0;
 
-    this.worldPoints[3] = this.worldPoints[1] + props.width * s;
-    this.worldPoints[4] = this.worldPoints[2] + props.height * s;
+    this.worldPoints[3] = this.worldPoints[1] + props.width;
+    this.worldPoints[4] = this.worldPoints[2] + props.height;
 
     if (props.scale && props.scale !== 1) {
       this.atScale(s);

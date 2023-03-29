@@ -10,6 +10,7 @@ export const ImageService: React.FC<{
   x?: number;
   y?: number;
   rotation?: number;
+  scale?: number;
   children?: ReactNode;
   crop?: any;
 }> = (props) => {
@@ -22,7 +23,7 @@ export const ImageService: React.FC<{
   }, [props.height, props.id, props.width]);
 
   return (
-    <world-object x={props.x || 0} y={props.y || 0} width={props.width} height={props.height}>
+    <world-object x={props.x || 0} y={props.y || 0} width={props.width} height={props.height} scale={props.scale}>
       {tiles ? (
         <TileSet
           tiles={tiles}

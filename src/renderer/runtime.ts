@@ -221,6 +221,10 @@ export class Runtime {
     this.renderer.resize();
   }
 
+  setOptions(options: Partial<RuntimeOptions>) {
+    this.options = { ...this.options, ...options };
+  }
+
   goHome(options: { cover?: boolean; position?: Strand } = {}) {
     if (this.world.width <= 0 || this.world.height <= 0) return;
 
@@ -596,7 +600,7 @@ export class Runtime {
       }
     } else {
       // Zooming in.
-      if (proposedFactor > 1) {
+      if (proposedFactor > maxOverZoom) {
         factor = scaleFactor / maxOverZoom;
       }
     }

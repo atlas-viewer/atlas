@@ -88,6 +88,7 @@ export const SelectionDemo = () => {
   const [isWebGL, setIsWebGL] = useState(false);
   const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
   const [rotation, setRotation] = useState(0);
+  const [scale, setScale] = useState(100);
 
   const [renderPreset, setRenderPreset] = useState<any>('default-preset');
 
@@ -144,6 +145,16 @@ export const SelectionDemo = () => {
             value={rotation}
             onChange={(e) => setRotation(e.target.valueAsNumber)}
           />
+          <input
+            type="range"
+            min={50}
+            max={500}
+            value={scale}
+            onChange={(e) => {
+              // runtime.current?.setOptions({ maxOverZoom: e.target.valueAsNumber / 100 });
+              setScale(e.target.valueAsNumber);
+            }}
+          />
           <div style={{ display: 'flex' }}>
             <div style={{ flex: '1 1 0px' }}>
               <AtlasAuto
@@ -152,6 +163,7 @@ export const SelectionDemo = () => {
                 onCreated={(rt) => {
                   runtime.current = rt.runtime;
                 }}
+                runtimeOptions={{ maxOverZoom: scale / 100 }}
                 mode={isEditing ? 'sketch' : 'explore'}
                 renderPreset={renderPreset}
                 width={size.width}

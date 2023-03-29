@@ -438,7 +438,7 @@ export class CanvasRenderer implements Renderer {
 
     const isBox = paint instanceof Box && this.options.box;
     const isGeometry = paint instanceof Geometry && this.options.polygon;
-    if (isBox || (isGeometry && !paint.props.className && !paint.props.html && !paint.props.href)) {
+    if ((isBox || isGeometry) && !paint.props.className && !paint.props.html && !paint.props.href) {
       if (paint.props.style) {
         const style = Object.assign(
           //

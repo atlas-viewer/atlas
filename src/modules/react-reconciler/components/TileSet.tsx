@@ -11,12 +11,14 @@ export const TileSet: React.FC<{
   crop?: any;
   children?: ReactNode;
   enableThumbnail?: boolean;
+  enableSizes?: boolean;
   onClick?: (e: any) => void;
 }> = (props) => {
   const scale = props.width / (props.crop?.width || props.tiles.width);
   const tiles = props.tiles.imageService.tiles || [];
   const sizes = props.tiles.imageService.sizes || [];
   const enableThumbnail = props.enableThumbnail;
+  const enableSizes = props.enableSizes;
   const canonicalId = useMemo(() => {
     const id = props.tiles.imageService.id || (props.tiles.imageService['@id'] as string);
     if (id && id.endsWith('/info.json')) {
@@ -52,15 +54,16 @@ export const TileSet: React.FC<{
             crop={props.crop}
           />
         ) : null}
-        {sizes.map((size, n) => (
-          <world-image
-            key={n}
-            uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
-            target={{ width: props.tiles.width, height: props.tiles.height }}
-            display={{ width: size.width, height: size.height }}
-            crop={props.crop}
-          />
-        ))}
+        {enableSizes &&
+          sizes.map((size, n) => (
+            <world-image
+              key={n}
+              uri={`${canonicalId}/full/${size.width},${size.height}/0/default.jpg`}
+              target={{ width: props.tiles.width, height: props.tiles.height }}
+              display={{ width: size.width, height: size.height }}
+              crop={props.crop}
+            />
+          ))}
         {tiles.map((tile: any) =>
           (tile.scaleFactors || []).map((size: number) => {
             return (

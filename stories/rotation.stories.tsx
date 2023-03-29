@@ -54,10 +54,11 @@ export const CropRotateStaticImageInteractive = () => {
   const tx = useState(123);
   const utx = useState(0);
   const y = useState(0);
-  const scale = [200];
+  const scale = useState(100);
   const ref = useRef<Preset>();
   const [rt, setRt] = useState<Preset>();
   const debug = useRef<HTMLDivElement>(null);
+  const [key, setKey] = useState(0);
 
   const scaleFactor = scale[0] / 100;
 
@@ -65,11 +66,13 @@ export const CropRotateStaticImageInteractive = () => {
     <>
       <Slider control={rotation} label="rotation" />
       <Slider control={x} label="x" />
+      <Slider control={scale} label="scale" />
       <Slider control={tx} label="tx" />
       <Slider control={utx} label="Unsupported translation" />
       <Slider control={y} label="y" />
       <button
         onClick={() => {
+          setKey((i) => i + 1);
           ref.current?.runtime.world.recalculateWorldSize();
         }}
       >
@@ -85,7 +88,7 @@ export const CropRotateStaticImageInteractive = () => {
           }}
         >
           <world>
-            <world-object key={scale.join()} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
+            <world-object key={key} scale={scaleFactor} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
               <world-image
                 uri={img}
                 target={{ width: 600, height: 900, x: utx[0], y: 0 }}

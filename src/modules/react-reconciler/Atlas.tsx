@@ -1,5 +1,5 @@
 import React, { ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Runtime, ViewerMode } from '../../renderer/runtime';
+import { Runtime, RuntimeOptions, ViewerMode } from '../../renderer/runtime';
 import { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
 import useMeasure from 'react-use-measure';
@@ -31,6 +31,7 @@ export type AtlasProps = {
   enableNavigator?: boolean;
   htmlChildren?: ReactNode;
   children: ReactNode;
+  runtimeOptions?: Partial<RuntimeOptions>;
 };
 
 export const Atlas: React.FC<
@@ -58,6 +59,7 @@ export const Atlas: React.FC<
   containerProps = {},
   homePosition,
   background: _background,
+  runtimeOptions,
   debug,
   ...restProps
 }) => {
@@ -117,6 +119,10 @@ export const Atlas: React.FC<
       preset.em.updateBounds();
     }
   }, [preset, bounds]);
+
+  useEffect(() => {
+    preset?.runtime.setOptions(runtimeOptions || {});
+  }, [runtimeOptions]);
 
   // This changes the mode in the state object when the prop passed in changes. This will
   // be picked up by the renderer on the next method. There is not current way to detect this change.
