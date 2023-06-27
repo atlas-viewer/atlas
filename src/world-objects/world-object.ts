@@ -141,8 +141,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       return;
     }
 
-    const beforeLayers = this.layers.slice(0, index - 1);
+    // const beforeLayers = this.layers.slice(0, index - 1);
+    const beforeLayers = this.layers.slice(0, index);
     const afterLayers = this.layers.slice(index);
+
     this.layers = [...beforeLayers, item, ...afterLayers];
   }
 
