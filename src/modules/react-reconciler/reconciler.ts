@@ -236,7 +236,8 @@ const reconciler = Reconciler<
   getRootHostContext() {
     return emptyObject;
   },
-  prepareForCommit() {
+  prepareForCommit(runtime) {
+    runtime.isCommitting = true;
     return null;
   },
   preparePortalMount() {
@@ -263,6 +264,7 @@ const reconciler = Reconciler<
     );
   },
   resetAfterCommit(runtime) {
+    runtime.isCommitting = false;
     runtime.pendingUpdate = true;
     if (runtime.world) {
       if (runtime.world.needsRecalculate) {

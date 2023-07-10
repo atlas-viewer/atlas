@@ -100,6 +100,7 @@ export class Runtime {
   zoomBuffer = dna(5);
   logNextRender = false;
   pendingUpdate = true;
+  isCommitting = false;
   firstRender = true;
   lastTime: number;
   stopId?: number;
@@ -798,7 +799,7 @@ export class Runtime {
   render = (t: number) => {
     const delta = t - this.lastTime;
 
-    if (this.fpsLimit && delta < 1000 / this.fpsLimit) {
+    if (this.isCommitting || (this.fpsLimit && delta < 1000 / this.fpsLimit)) {
       this.stopId = window.requestAnimationFrame(this.render);
       return;
     }
