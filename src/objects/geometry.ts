@@ -16,7 +16,7 @@ export type GeometryProps = {
     height: number;
   };
 
-  points: number[][];
+  points: [number, number][];
 
   className?: string;
   href?: string;
@@ -101,6 +101,7 @@ const styleProps: Array<keyof GeometryStyle> = [
 export class Geometry extends BaseObject<GeometryProps> implements SpacialContent {
   id: string;
   type: 'spacial-content' = 'spacial-content';
+  isShape = true;
   points: Strand;
   hoverEvents = false;
   activeEvents = false;
@@ -113,6 +114,8 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     height: -1,
     points: dna(5),
   };
+
+  boundingBox: { x: number; y: number; width: number; height: number } | null = null;
 
   _parsed: { border: { id: string | null; match: string[] }; outline: { id: string | null; match: string[] } } = {
     border: { id: null, match: [] },
@@ -137,7 +140,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     pressStyles?: GeometryStyle;
   } = {};
 
-  shape: { type: 'none' } | { type: 'polygon'; points: number[][] };
+  shape: { type: 'none' } | { type: 'polygon'; points: [number, number][] } = { type: 'none' };
 
   constructor() {
     super();
@@ -146,7 +149,73 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     this.shape = { type: 'none' };
   }
 
+  updateBoundingBox() {
+    if (this.shape.type === 'none') return;
+    const points = this.shape.points;
+    if (this.shape.points.length > 2) {
+      const x1 = Math.min(...points.map((p) => p[0]));
+      const y1 = Math.min(...points.map((p) => p[1]));
+      const x2 = Math.max(0, ...points.map((p) => p[0]));
+      const y2 = Math.max(0, ...points.map((p) => p[1]));
+      this.boundingBox = {
+        x: x1,
+        y: y1,
+        width: x2 - x1,
+        height: y2 - y1,
+      };
+
+      return;
+    }
+    this.boundingBox = null;
+  }
+
+  intersects(pointer?: [number, number] | null): boolean {
+    if (!pointer || this.shape.type === 'none') {
+      return false;
+    }
+    // Does the point intersect with the shape?
+    const [x, y] = pointer;
+    const points = this.shape.points;
+    let box = this.boundingBox;
+
+    // @todo only enable when all points are NOT selected.
+
+    if (!box) {
+      this.updateBoundingBox();
+      box = this.boundingBox;
+    }
+    if (!box) {
+      return false;
+    }
+
+    // Outside the bounding box.
+    if (x < box.x || x > box.x + box.width || y < box.y || y > box.height + box.y) {
+      return false;
+    }
+
+    // Outside the polygon.
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      if (
+        points[i][1] > y != points[j][1] > y &&
+        x < ((points[j][0] - points[i][0]) * (y - points[i][1])) / (points[j][1] - points[i][1]) + points[i][0]
+      ) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
   getAllPointsAt(target: Strand, aggregate: Strand): Paint[] {
+    if (target[3] - target[1] === 1 && target[4] - target[2] === 1) {
+      // Clicked on a single point.
+      if (this.intersects([target[1], target[2]])) {
+        return [[this as any, this.points, aggregate]];
+      }
+      return [];
+    }
+
     // this.points[0] = 1;
     return [[this as any, this.points, aggregate]];
   }
@@ -181,6 +250,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
           type: 'polygon',
           points: props.points,
         };
+        this.updateBoundingBox();
       } else {
         let newPoints = false;
         const len = props.points.length;
@@ -195,6 +265,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
             type: 'polygon',
             points: props.points,
           };
+          this.updateBoundingBox();
         }
       }
     }

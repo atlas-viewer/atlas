@@ -12,6 +12,7 @@ import {
 } from '@atlas-viewer/dna';
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from '../spacial-content';
+import { Geometry } from '../objects/geometry';
 
 function rotate(cx: number, cy: number, x: number, y: number, angle: number) {
   const radians = (Math.PI / 180) * angle,
@@ -166,6 +167,12 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const objects: Paintable[] = [];
     for (let index = 0; index < len; index++) {
       const layer = this.layers[index] as SpacialContent | WorldObject;
+
+      if (all && (layer as Geometry).isShape) {
+        const t = transform(layer.points, translate(this.x, this.y));
+        const int = (layer as Geometry).intersects([target[1] - t[1], target[2] - t[2]]);
+        if (!int) continue;
+      }
 
       const filter = hidePointsOutsideRegion(
         transform(layer.points, translate(this.x, this.y)),

@@ -173,7 +173,7 @@ export const SelectionDemo = () => {
                 <world onClick={onDeselect}>
                   <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} rotation={rotation} />
                   {isEditing && !selectedAnnotation ? <DrawBox onCreate={onCreateNewAnnotation} /> : null}
-                  <world-object height={516} width={351} x={500} y={1000} rotation={45}>
+                  <world-object height={351} width={516} x={500} y={1000}>
                     <shape
                       id="a-box"
                       style={{

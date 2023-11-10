@@ -18,6 +18,7 @@ import { ZoneInterface } from './world-objects/zone';
 import { BaseObject } from './objects/base-object';
 import { SpacialContent } from './spacial-content/spacial-content';
 import { SupportedEvents } from './events';
+import { Geometry } from './objects/geometry';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
