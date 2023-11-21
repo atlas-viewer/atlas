@@ -90,7 +90,7 @@ export const SelectionDemo = () => {
   const [rotation, setRotation] = useState(0);
   const [scale, setScale] = useState(100);
 
-  const [renderPreset, setRenderPreset] = useState<any>('default-preset');
+  const [renderPreset, setRenderPreset] = useState<any>(['default-preset', { runtimeOptions: { maxOverZoom: 5 } }]);
 
   const goTo = (data: any) => {
     if (runtime.current) {
