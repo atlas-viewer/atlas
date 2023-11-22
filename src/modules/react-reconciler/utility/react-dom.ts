@@ -13,13 +13,26 @@ export async function renderReactDom(html: HTMLElement, toRender: any, root: Mut
     // @ts-ignore
     if (typeof ReactDOM !== 'undefined') {
       // @ts-ignore
-      const { render } = ReactDOM;
+      const { render, unmountComponentAtNode } = ReactDOM;
       render(toRender, html);
+      root.current = {
+        unmount() {
+          unmountComponentAtNode(html);
+        },
+      };
     } else {
       // Probably only bundlers or
       const module = await import('react-dom');
       const render = module.default ? module.default.render : module.render;
+      const unmountComponentAtNode = module.default
+        ? module.default.unmountComponentAtNode
+        : module.unmountComponentAtNode;
       render(toRender, html);
+      root.current = {
+        unmount() {
+          unmountComponentAtNode(html);
+        },
+      };
     }
   }
 }
