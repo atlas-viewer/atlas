@@ -16,6 +16,7 @@ export type GeometryProps = {
     height: number;
   };
 
+  open?: boolean;
   points: [number, number][];
 
   className?: string;
@@ -102,6 +103,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
   id: string;
   type: 'spacial-content' = 'spacial-content';
   isShape = true;
+  open = false;
   points: Strand;
   hoverEvents = false;
   activeEvents = false;
@@ -131,6 +133,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     backgroundColor?: string;
     border?: string;
     interactive?: boolean;
+    open?: boolean;
     className?: string;
     relativeSize?: boolean;
     relativeStyle?: boolean;
@@ -273,6 +276,11 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     if (props.interactive !== this.props.interactive) {
       didUpdate = true;
       this.props.interactive = props.interactive;
+    }
+
+    if (props.open || props.open ==== false) {
+      didUpdate = true;
+      this.props.open = props.open;
     }
 
     if (props.style) {

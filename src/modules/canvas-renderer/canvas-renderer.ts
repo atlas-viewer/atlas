@@ -496,16 +496,22 @@ export class CanvasRenderer implements Renderer {
         this.ctx.lineWidth = bw;
 
         if (isGeometry) {
-          const points = (paint as any).shape.points || [];
+          const shape = (paint as any).shape;
+          const points = shape.points || [];
           const len = points.length;
           this.ctx.beginPath();
           for (let i = 0; i < len; i++) {
             this.ctx.lineTo(x + points[i][0] * this.lastKnownScale, y + points[i][1] * this.lastKnownScale);
           }
+          if (!shape.open) {
+            this.ctx.closePath();
+          }
           if (bw) {
             this.ctx.stroke();
           }
-          this.ctx.fill();
+          if (!shape.open) {
+            this.ctx.fill();
+          }
         } else {
           if (bw) {
             this.ctx.strokeRect(x + bw / 2, y + bw / 2, width + bw, height + bw);
