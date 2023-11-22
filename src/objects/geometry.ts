@@ -278,7 +278,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
       this.props.interactive = props.interactive;
     }
 
-    if (props.open || props.open ==== false) {
+    if (props.open || props.open === false) {
       didUpdate = true;
       this.props.open = props.open;
     }
