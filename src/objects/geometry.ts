@@ -103,7 +103,6 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
   id: string;
   type: 'spacial-content' = 'spacial-content';
   isShape = true;
-  open = false;
   points: Strand;
   hoverEvents = false;
   activeEvents = false;
@@ -143,7 +142,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     pressStyles?: GeometryStyle;
   } = {};
 
-  shape: { type: 'none' } | { type: 'polygon'; points: [number, number][] } = { type: 'none' };
+  shape: { type: 'none' } | { type: 'polygon'; points: [number, number][]; open?: boolean } = { type: 'none' };
 
   constructor() {
     super();
@@ -252,6 +251,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
         this.shape = {
           type: 'polygon',
           points: props.points,
+          open: props.open,
         };
         this.updateBoundingBox();
       } else {
@@ -267,6 +267,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
           this.shape = {
             type: 'polygon',
             points: props.points,
+            open: props.open,
           };
           this.updateBoundingBox();
         }
@@ -280,7 +281,7 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
 
     if (props.open || props.open === false) {
       didUpdate = true;
-      this.open = props.open;
+      (this.shape as any).open = props.open;
     }
 
     if (props.style) {
