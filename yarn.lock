@@ -15,7 +15,7 @@
   resolved "https://registry.npmjs.org/@atlas-viewer/dna/-/dna-0.5.0.tgz"
   integrity sha512-vHyMwXoCFq6ymk+wOVIkMphUo+I+wBRoA2tBf1AIUZWJMsk51cBtO2qzOaZQUh/TmrzrqEY5aEAtgBj52LVRUg==
 
-"@atlas-viewer/iiif-image-api@2.*", "@atlas-viewer/iiif-image-api@^2.0.5":
+"@atlas-viewer/iiif-image-api@^2.0.5":
   version "2.0.5"
   resolved "https://registry.yarnpkg.com/@atlas-viewer/iiif-image-api/-/iiif-image-api-2.0.5.tgz#ccb38185d4e582471098ded8ea8615118b6ae0bf"
   integrity sha512-dUqBH2UBYALZ7rVNsCQieuLDyBXNNg0W7GJqjEiVjLKvxVGfaxpQdsqIGL+aianGK1797oT4B57opxLp75ghHw==
@@ -1087,7 +1087,7 @@
     pirates "^4.0.5"
     source-map-support "^0.5.16"
 
-"@babel/runtime@^7.0.0", "@babel/runtime@^7.12.5", "@babel/runtime@^7.17.8", "@babel/runtime@^7.3.1", "@babel/runtime@^7.5.0", "@babel/runtime@^7.7.6", "@babel/runtime@^7.8.4", "@babel/runtime@^7.9.2":
+"@babel/runtime@^7.0.0", "@babel/runtime@^7.12.5", "@babel/runtime@^7.17.8", "@babel/runtime@^7.3.1", "@babel/runtime@^7.5.0", "@babel/runtime@^7.7.6", "@babel/runtime@^7.8.4":
   version "7.18.6"
   resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.18.6.tgz#6a1ef59f838debd670421f8c7f2cbb8da9751580"
   integrity sha512-t9wi7/AW6XtKahAe20Yw0/mMljKq0B1r2fPdvaAdV/KPDZewFXdaaa6K7lxmZBZ8FBNpCiAT6iHPmd6QO9bKfQ==
@@ -1196,33 +1196,54 @@
   resolved "https://registry.npmjs.org/@humanwhocodes/object-schema/-/object-schema-1.2.1.tgz"
   integrity sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==
 
-"@iiif/parser@1.*":
-  version "1.0.10"
-  resolved "https://registry.yarnpkg.com/@iiif/parser/-/parser-1.0.10.tgz#8a3f8f70c1e284a4790704d415fa6f81ee214999"
-  integrity sha512-z8b8a02ltoBoKGetfyM4rqIXQ+gnE5rjGXKqzZwvWSAN0hnzA5nghTqisogYo0bQx3ct/Q1bIysvpMMR64uIUQ==
-  dependencies:
-    "@iiif/presentation-2" "^1.0.1"
-    "@iiif/presentation-3" "^1.0.4"
-    "@types/geojson" "^7946.0.8"
-
-"@iiif/presentation-2@1.*", "@iiif/presentation-2@^1.0.1":
+"@iiif/helpers@^1.0.2":
   version "1.0.2"
-  resolved "https://registry.yarnpkg.com/@iiif/presentation-2/-/presentation-2-1.0.2.tgz#c712c4a40cc5b7291b8d92646b0ec8b8215b9b3d"
-  integrity sha512-EN/p+td5VrHvUsQXV26VkaDFW0HG2GPRaibPlxJRip8au8ABBrOYPIcBH69Hyk3I0UnW3xzK2VsZ9TcuQEn0Mw==
+  resolved "https://registry.yarnpkg.com/@iiif/helpers/-/helpers-1.0.2.tgz#a209d9fa33d5060010eed26cd64e62ad1d6779e3"
+  integrity sha512-8bIhtytiHqegvFijuhUzYJ5cxIvP4/8Pc7Hv5KIQswFHy3YgRciIq8HOKwpcE6Jk7K/HtnzDcW/xEqIazQhhOw==
+  dependencies:
+    "@iiif/parser" "https://pkg.csb.dev/IIIF-Commons/parser/commit/5974107a/@iiif/parser"
+    "@iiif/presentation-2" "1.0.4"
+    "@iiif/presentation-3" "2.1.3"
+    "@iiif/presentation-3-normalized" "0.9.7"
+  optionalDependencies:
+    abs-svg-path "^0.1.1"
+    parse-svg-path "^0.1.2"
+    svg-arc-to-cubic-bezier "^3.2.0"
 
-"@iiif/presentation-3-normalized@^0.9.7":
+"@iiif/parser@https://pkg.csb.dev/IIIF-Commons/parser/commit/5974107a/@iiif/parser":
+  version "1.1.2"
+  resolved "https://pkg.csb.dev/IIIF-Commons/parser/commit/5974107a/@iiif/parser#36af1be6fd19660ff094f283904f47f986ef8e64"
+  dependencies:
+    "@iiif/presentation-2" "^1.0.4"
+    "@iiif/presentation-3" "^2.1.3"
+    "@iiif/presentation-3-normalized" "^0.9.7"
+    "@types/geojson" "^7946.0.10"
+
+"@iiif/presentation-2@1.0.4", "@iiif/presentation-2@^1.0.4":
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/@iiif/presentation-2/-/presentation-2-1.0.4.tgz#1664aee995462fdf66ec8dfbae54fc22b4f79c97"
+  integrity sha512-hJakpq62VBajesLJrYPtFm6hcn6c/HkKP7CmKZ5atuzu40m0nifWYsqigR1l9sZGvhhHb/DRshPmiW/0GNrJoA==
+
+"@iiif/presentation-3-normalized@0.9.7", "@iiif/presentation-3-normalized@^0.9.7":
   version "0.9.7"
   resolved "https://registry.yarnpkg.com/@iiif/presentation-3-normalized/-/presentation-3-normalized-0.9.7.tgz#19386234e07c91c996d15ac5e1d86d1e1882e128"
   integrity sha512-Aqk0sYBFIH5W3wmVxW02tnAFbNzUU5oPygGQjvszB3PP2nSkFQ1skVjqJhQPPZTyi/de1qcJUrgSy0vp6s+c5A==
   dependencies:
     "@iiif/presentation-3" "^2.0.5"
 
-"@iiif/presentation-3@*", "@iiif/presentation-3@1.*", "@iiif/presentation-3@>=1", "@iiif/presentation-3@^1.0.4":
+"@iiif/presentation-3@*":
   version "1.0.6"
   resolved "https://registry.yarnpkg.com/@iiif/presentation-3/-/presentation-3-1.0.6.tgz#bec210e4df2549c363733dc3215b20c4e9160a46"
   integrity sha512-00wzi4ocMe0bvxkYsv+SzWRPeN8ZHN2n86aJ2o2QpZiaVQ2AsewBPCMarGryAZ0x7CQv0yO9HV1xj6jiuhl9dQ==
   dependencies:
     "@types/geojson" "^7946.0.7"
+
+"@iiif/presentation-3@2.1.3", "@iiif/presentation-3@>=2", "@iiif/presentation-3@^2.1.3":
+  version "2.1.3"
+  resolved "https://registry.yarnpkg.com/@iiif/presentation-3/-/presentation-3-2.1.3.tgz#745cf3ec1f8d828b1e3aba88c3f15e6dc8e80710"
+  integrity sha512-0V9LL+UPGknn4vdEJuJnuK0BsOL93dmr4PrdXg9fSE9HUq/2P0jkp4yGJR13f7N9OpmcRsEQjqWqVceWHB8Bow==
+  dependencies:
+    "@types/geojson" "^7946.0.10"
 
 "@iiif/presentation-3@^2.0.5":
   version "2.0.5"
@@ -1230,32 +1251,6 @@
   integrity sha512-Iy5erfTKs1zOjwq8WiTmOeP5ZmrBFVVzBXMbKIIdv38ci1loeAR9fboncncPW7ZPqXUqeCMkjFGnP/HL22TggA==
   dependencies:
     "@types/geojson" "^7946.0.10"
-
-"@iiif/vault-helpers@^0.9.7":
-  version "0.9.7"
-  resolved "https://registry.yarnpkg.com/@iiif/vault-helpers/-/vault-helpers-0.9.7.tgz#fc3a35ed5e980a8fae13204c3ba4a4744fef3b90"
-  integrity sha512-nMsucZrgLnX5cRGSm1+UFwNRqiWXH4TupqbsnygIUp6wMUTiWeIv3KAh5xbib1keTYdOqENeOploDHRnK5r4Kg==
-  dependencies:
-    "@atlas-viewer/iiif-image-api" "2.*"
-    "@iiif/parser" "1.*"
-    "@iiif/presentation-2" "1.*"
-    "@iiif/presentation-3" "1.*"
-    "@iiif/vault" "0.9.*"
-    tiny-invariant "^1.2.0"
-
-"@iiif/vault@0.9.*", "@iiif/vault@^0.9.18":
-  version "0.9.18"
-  resolved "https://registry.yarnpkg.com/@iiif/vault/-/vault-0.9.18.tgz#07d6a90411f45a764635c95908b5b67c873a8384"
-  integrity sha512-714/6X5ZyIuiDGeElUZx1mm8nKFabtxORzfMX7MZyc4IAtASjn1HK68xfTtyolN2cFYDhqFiY3Tz08F7HNIKGQ==
-  dependencies:
-    "@iiif/parser" "1.*"
-    "@iiif/presentation-2" "1.*"
-    "@iiif/presentation-3" "1.*"
-    mitt "^3.0.0"
-    node-fetch "^3.1.1"
-    redux "^4.1.2"
-    tiny-invariant "^1.2.0"
-    typesafe-actions "^5.1.0"
 
 "@istanbuljs/load-nyc-config@^1.0.0":
   version "1.1.0"
@@ -2619,7 +2614,7 @@
   resolved "https://registry.yarnpkg.com/@types/geojson/-/geojson-7946.0.10.tgz#6dfbf5ea17142f7f9a043809f1cd4c448cb68249"
   integrity sha512-Nmh0K3iWQJzniTuPRcJn5hxXkfB1T1pgB89SBig5PlJQU5yocazeu4jATJlaA0GYFKWMqDdvYemoSnF2pXgLVA==
 
-"@types/geojson@^7946.0.7", "@types/geojson@^7946.0.8":
+"@types/geojson@^7946.0.7":
   version "7946.0.8"
   resolved "https://registry.npmjs.org/@types/geojson/-/geojson-7946.0.8.tgz"
   integrity sha512-1rkryxURpr6aWP7R786/UQOkJ3PcpQiWkAXBmdWc7ryFWqN6a4xfK7BtjXvFBKO9LjQ+MWQSWxYeZX1OApnArA==
@@ -3262,6 +3257,11 @@
   version "4.2.2"
   resolved "https://registry.npmjs.org/@xtuc/long/-/long-4.2.2.tgz"
   integrity sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==
+
+abs-svg-path@^0.1.1:
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/abs-svg-path/-/abs-svg-path-0.1.1.tgz#df601c8e8d2ba10d4a76d625e236a9a39c2723bf"
+  integrity sha512-d8XPSGjfyzlXC3Xx891DJRyZfqk5JU0BJrDQcsWomFIV1/BIzPW5HDH5iDdWpqWaav0YVIEzT1RHTwWr0FFshA==
 
 accepts@~1.3.5, accepts@~1.3.8:
   version "1.3.8"
@@ -7884,11 +7884,6 @@ mississippi@^3.0.0:
     stream-each "^1.1.0"
     through2 "^2.0.0"
 
-mitt@^3.0.0:
-  version "3.0.0"
-  resolved "https://registry.yarnpkg.com/mitt/-/mitt-3.0.0.tgz#69ef9bd5c80ff6f57473e8d89326d01c414be0bd"
-  integrity sha512-7dX2/10ITVyqh4aOSVI9gdape+t9l2/8QxHrFmUXu4EEUpdlxl6RudZUPZoc+zuY2hk1j7XxVroIVIan/pD/SQ==
-
 mixin-deep@^1.2.0:
   version "1.3.2"
   resolved "https://registry.npmjs.org/mixin-deep/-/mixin-deep-1.3.2.tgz"
@@ -8020,7 +8015,7 @@ node-fetch@^2.6.1, node-fetch@^2.6.7, node-fetch@^2.x.x:
   dependencies:
     whatwg-url "^5.0.0"
 
-node-fetch@^3.1.1, node-fetch@^3.2.0:
+node-fetch@^3.2.0:
   version "3.2.6"
   resolved "https://registry.yarnpkg.com/node-fetch/-/node-fetch-3.2.6.tgz#6d4627181697a9d9674aae0d61548e0d629b31b9"
   integrity sha512-LAy/HZnLADOVkVPubaxHDft29booGglPFDr2Hw0J1AercRh01UiVFm++KMDnJeH9sHgNB4hsXPii7Sgym/sTbw==
@@ -8473,6 +8468,11 @@ parse-json@^5.0.0:
     error-ex "^1.3.1"
     json-parse-even-better-errors "^2.3.0"
     lines-and-columns "^1.1.6"
+
+parse-svg-path@^0.1.2:
+  version "0.1.2"
+  resolved "https://registry.yarnpkg.com/parse-svg-path/-/parse-svg-path-0.1.2.tgz#7a7ec0d1eb06fa5325c7d3e009b859a09b5d49eb"
+  integrity sha512-JyPSBnkTJ0AI8GGJLfMXvKq42cj5c006fnLz6fXy6zfoVjJizi8BNTpu8on8ziI1cKy9d9DGNuY17Ce7wuejpQ==
 
 parse5@^6.0.0:
   version "6.0.1"
@@ -9286,13 +9286,6 @@ redent@^1.0.0:
   dependencies:
     indent-string "^2.1.0"
     strip-indent "^1.0.1"
-
-redux@^4.1.2:
-  version "4.2.0"
-  resolved "https://registry.yarnpkg.com/redux/-/redux-4.2.0.tgz#46f10d6e29b6666df758780437651eeb2b969f13"
-  integrity sha512-oSBmcKKIuIR4ME29/AeNUnl5L+hvBq7OaJWzaptTQJAntaPvxIJqfnjbaEiCzzaIz+XmVILfqAM3Ob0aXLPfjA==
-  dependencies:
-    "@babel/runtime" "^7.9.2"
 
 refractor@^3.6.0:
   version "3.6.0"
@@ -10244,6 +10237,11 @@ supports-preserve-symlinks-flag@^1.0.0:
   resolved "https://registry.npmjs.org/supports-preserve-symlinks-flag/-/supports-preserve-symlinks-flag-1.0.0.tgz"
   integrity sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==
 
+svg-arc-to-cubic-bezier@^3.2.0:
+  version "3.2.0"
+  resolved "https://registry.yarnpkg.com/svg-arc-to-cubic-bezier/-/svg-arc-to-cubic-bezier-3.2.0.tgz#390c450035ae1c4a0104d90650304c3bc814abe6"
+  integrity sha512-djbJ/vZKZO+gPoSDThGNpKDO+o+bAeA4XQKovvkNCqnIS2t+S4qnLAGQhyyrulhCFRl1WWzAp0wUDV8PpTVU3g==
+
 symbol.prototype.description@^1.0.0:
   version "1.0.5"
   resolved "https://registry.npmjs.org/symbol.prototype.description/-/symbol.prototype.description-1.0.5.tgz"
@@ -10416,11 +10414,6 @@ timers-browserify@^2.0.4:
   integrity sha512-9phl76Cqm6FhSX9Xe1ZUAMLtm1BLkKj2Qd5ApyWkXzsMRaA7dgr81kf4wJmQf/hAvg8EEyJxDo3du/0KlhPiKQ==
   dependencies:
     setimmediate "^1.0.4"
-
-tiny-invariant@^1.2.0:
-  version "1.2.0"
-  resolved "https://registry.yarnpkg.com/tiny-invariant/-/tiny-invariant-1.2.0.tgz#a1141f86b672a9148c72e978a19a73b9b94a15a9"
-  integrity sha512-1Uhn/aqw5C6RI4KejVeTg6mIS7IqxnLJ8Mv2tV5rTc0qWobay7pDUz6Wi392Cnc8ak1H0F2cjoRzb2/AW4+Fvg==
 
 tinypool@^0.2.1:
   version "0.2.2"

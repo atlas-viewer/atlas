@@ -1,6 +1,6 @@
 import { ImageServiceLoader } from '@atlas-viewer/iiif-image-api';
-import { createThumbnailHelper } from '@iiif/vault-helpers/thumbnail';
-import type { Vault } from '@iiif/vault/dist';
+import { createThumbnailHelper } from '@iiif/helpers/thumbnail';
+import type { Vault } from '@iiif/helpers/vault';
 
 function getGlobal(): any {
   if (typeof self !== 'undefined') {

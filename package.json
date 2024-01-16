@@ -15,7 +15,8 @@
     ".": {
       "require": "./dist/bundle/cjs/index.js",
       "import": "./dist/bundle/esm/index.mjs",
-      "default": "./dist/bundle/cjs/index.js"
+      "default": "./dist/bundle/cjs/index.js",
+      "types": "./dist/types/index.d.ts"
     }
   },
   "typesVersions": {
@@ -40,9 +41,8 @@
   "dependencies": {
     "@atlas-viewer/dna": "^0.5.0",
     "@atlas-viewer/iiif-image-api": "^2.0.5",
-    "@iiif/presentation-3": ">=1",
-    "@iiif/vault": "^0.9.18",
-    "@iiif/vault-helpers": "^0.9.7",
+    "@iiif/presentation-3": ">=2",
+    "@iiif/helpers": "^1.0.2",
     "lru-cache": "^7.17.0",
     "nanoid": "^3.1.9",
     "normalize-wheel": "^1.0.1",
