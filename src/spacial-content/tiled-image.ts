@@ -1,19 +1,36 @@
-import { DnaFactory, hidePointsOutsideRegion, mutate, scale, transform, Strand } from '@atlas-viewer/dna';
+import {
+  DnaFactory,
+  hidePointsOutsideRegion,
+  mutate,
+  scale,
+  transform,
+  Strand,
+  dna,
+  getIntersection,
+  Projection,
+  translate,
+} from '@atlas-viewer/dna';
 import { DisplayData } from '../types';
 import { Paint } from '../world-objects';
-import { Memoize } from 'typescript-memoize';
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from './spacial-content';
 import { stripInfoJson } from '../utils';
+import { ImageService } from '@iiif/presentation-3';
+import { clamp } from 'leva/plugin';
 
 export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
   readonly type = 'spacial-content';
   readonly display: DisplayData;
   tileWidth: number;
-
+  style: { opacity: number } = { opacity: 1 };
   points: Strand;
+  service?: ImageService;
+  format = 'jpg';
+  crop2?: Strand;
+  cropData?: Projection;
 
+  tileUrl: string;
   constructor(data: {
     url: string;
     scaleFactor: number;
@@ -22,28 +39,85 @@ export class TiledImage extends BaseObject implements SpacialContent {
     tileWidth: number;
     width: number;
     height: number;
+    format?: string;
+    id?: string;
   }) {
     super();
-    this.id = stripInfoJson(data.url);
+    this.tileUrl = stripInfoJson(data.url);
+    this.id = data.id || `${this.tileUrl}--${data.scaleFactor}`;
     this.points = data.displayPoints ? data.displayPoints : transform(data.points, scale(data.scaleFactor));
     this.tileWidth = data.tileWidth;
     this.display = {
+      x: 0,
+      y: 0,
       width: data.width / data.scaleFactor,
       height: data.height / data.scaleFactor,
       points: data.points,
       scale: data.scaleFactor,
     };
+    if (data.format) {
+      this.format = data.format;
+    }
   }
 
   applyProps(props: any) {
-    // @todo.
+    if (props.style && typeof props.style.opacity !== 'undefined') {
+      this.style.opacity = props.style.opacity;
+    }
+    if (props.service !== this.service) {
+      this.service = props.service;
+    }
+    if (props.format) {
+      this.format = props.format;
+    } else {
+      this.format = 'jpg';
+    }
+
+    if (props.crop) {
+      this.cropData = props.crop;
+
+      const crop = dna([...this.points]);
+      const len = crop.length / 5;
+
+      const minX = props.crop.x || 0;
+      const minY = props.crop.y || 0;
+      const maxX = props.crop.x + props.crop.width;
+      const maxY = props.crop.y + props.crop.height;
+
+      for (let i = 0; i < len; i++) {
+        const index = i * 5;
+        if (
+          /* x1 */ crop[index + 1] < maxX && // x1 left - x2 right
+          /* x2 */ crop[index + 3] > minX && // x2 right - x1 left
+          /* y1 */ crop[index + 2] < maxY && // y1 top - y2 bottom
+          /* y2 */ crop[index + 4] > minY // y2 bottom - y1 top
+        ) {
+          crop[index + 1] = clamp(crop[index + 1], minX, maxX);
+          crop[index + 3] = clamp(crop[index + 3], minX, maxX);
+          crop[index + 2] = clamp(crop[index + 2], minY, maxY);
+          crop[index + 4] = clamp(crop[index + 4], minY, maxY);
+        } else {
+          crop[index] = 0;
+        }
+      }
+
+      mutate(crop, translate(-props.crop.x, -props.crop.y));
+
+      if (!this.crop) {
+        this.crop = crop;
+      } else {
+        this.crop.set(crop);
+      }
+    }
   }
 
   static fromTile(
     url: string,
     canvas: { width: number; height: number },
     tile: { width: number; height?: number },
-    scaleFactor: number
+    scaleFactor: number,
+    service?: ImageService,
+    format?: string
   ): TiledImage {
     // Always set a height.
     tile.height = tile.height ? tile.height : tile.width;
@@ -80,7 +154,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
       }
     }
 
-    return new TiledImage({
+    const tiledImage = new TiledImage({
       url,
       scaleFactor,
       points: pointsFactory.build(),
@@ -88,21 +162,33 @@ export class TiledImage extends BaseObject implements SpacialContent {
       width: canvas.width,
       height: canvas.height,
       tileWidth: tile.width,
+      format,
     });
+
+    tiledImage.applyProps({
+      service,
+    });
+
+    return tiledImage;
   }
 
-  @Memoize()
   getImageUrl(index: number): string {
+    // Replace this with image service wrapper that recalculates its toString()
+    // when SETTING new variables, so that this becomes just a return.
+    // We can store these based on the index.
+
     const im = this.points.slice(index * 5, index * 5 + 5);
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];
     const w = Math.ceil(x2 / this.display.scale);
 
-    return `${this.id}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.jpg`;
+    return `${this.tileUrl}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.${
+      this.format || 'jpg'
+    }`;
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scaleFactor?: number): Paint[] {
-    const points = hidePointsOutsideRegion(this.points, target);
+    const points = hidePointsOutsideRegion(this.crop || this.points, target);
     return [[this as any, points, aggregate]];
   }
 
@@ -110,7 +196,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     mutate(this.points, op);
   }
 
-  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> | null {
-    return null;
+  getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => Promise<void>> {
+    return [];
   }
 }

@@ -1,4 +1,4 @@
-import { ViewingDirection } from '@hyperion-framework/types';
+import { ViewingDirection } from '@iiif/presentation-3';
 import { AbstractObject } from '../../world-objects/abstract-object';
 import { World } from '../../world';
 import { WorldObject } from '../../world-objects/world-object';
@@ -30,7 +30,7 @@ export class GridBuilder {
 
   addContent(content: AbstractObject[]) {
     this.content.push(
-      ...content.map(item =>
+      ...content.map((item) =>
         this.world.addObjectAt(item, {
           width: 0,
           height: 0,

@@ -1,27 +1,33 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { ReactNode, useLayoutEffect, useRef } from 'react';
 import { Box } from '../../../objects/box';
-import { render } from 'react-dom';
 import { useFrame } from '../hooks/use-frame';
 import { useRuntime } from '../hooks/use-runtime';
+import { renderReactDom } from '../utility/react-dom';
 
-export const HTMLPortal: React.FC<{
-  backgroundColor?: string;
-  interactive?: boolean;
-  relative?: boolean;
-  target?: { x: number; y: number; width: number; height: number };
-} & React.RefAttributes<Box>> = React.forwardRef<
+export const HTMLPortal: React.FC<
+  {
+    children?: ReactNode;
+    backgroundColor?: string;
+    interactive?: boolean;
+    relative?: boolean;
+    target?: { x: number; y: number; width: number; height: number };
+  } & React.RefAttributes<Box>
+> = React.forwardRef<
   Box,
   {
     backgroundColor?: string;
     interactive?: boolean;
     relative?: boolean;
     target?: { x: number; y: number; width: number; height: number };
+    style?: any;
+    children?: any;
   }
 >(({ children, ...props }, fwdRef) => {
   const ref = useRef<HTMLDivElement>();
   const runtime = useRuntime();
   const lastScale = useRef(0);
   const boxRef = useRef<Box>();
+  const root = useRef<any>();
 
   useFrame(() => {
     if (props.relative) {
@@ -34,6 +40,11 @@ export const HTMLPortal: React.FC<{
           relativeBox.style.transform = `scale(${1 / lastScale.current})`;
           relativeBox.style.width = `${lastScale.current * 100}%`;
           relativeBox.style.height = `${lastScale.current * 100}%`;
+          if (ref.current && boxRef.current?.__owner.value?.rotation) {
+            relativeBox.style.transform = `scale(${1 / lastScale.current}) translate(50%, 50%) rotate(${
+              boxRef.current?.__owner.value?.rotation || 0
+            }deg)  translate(-50%, -50%)`;
+          }
         }
       }
     }
@@ -48,22 +59,32 @@ export const HTMLPortal: React.FC<{
         fwdRef.current = box;
       }
     }
-    if (box && box.__host) {
-      if (props.relative) {
-        render(<div ref={ref as any}>{children}</div>, box.__host.element);
-      } else {
-        render(children as any, box.__host.element);
+    async function renderHost() {
+      if (box && box.__host) {
+        const toRender = props.relative ? <div ref={ref as any}>{children as any}</div> : (children as any);
+
+        await renderReactDom(box.__host.element, toRender, root);
       }
+    }
+
+    if (box && box.__host) {
+      renderHost();
     } else if (box) {
-      box.__onCreate = () => {
-        if (props.relative) {
-          render(<div ref={ref as any}>{children}</div>, box.__host.element);
-        } else {
-          render(children as any, box.__host.element);
-        }
-      };
+      box.__onCreate = renderHost;
     }
   }, [fwdRef, children, boxRef, props.relative]);
 
-  return <box {...props} ref={boxRef} />;
+  useLayoutEffect(() => {
+    return () => {
+      if (root.current) {
+        setTimeout(() => {
+          root.current.unmount();
+        }, 0);
+      }
+    };
+  }, []);
+
+  return <box html {...props} ref={boxRef} />;
 });
+
+HTMLPortal.displayName = 'HTMLPortal';

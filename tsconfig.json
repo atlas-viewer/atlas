@@ -19,7 +19,7 @@
     ],
     "jsx": "react",
     "target": "es2015",
-    "module": "es2015",
+    "module": "es2020",
     "moduleResolution": "node",
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
@@ -33,7 +33,10 @@
     "pretty": false,
     "removeComments": true,
     "sourceMap": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": [
+      "vitest/globals"
+    ]
   },
   "include": [
     "./src/**/*",

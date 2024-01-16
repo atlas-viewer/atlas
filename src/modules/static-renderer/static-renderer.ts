@@ -6,18 +6,52 @@ import { SpacialContent } from '../../spacial-content/spacial-content';
 import { PositionPair } from '../../types';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
+import { Stylesheet } from '../../utility/stylesheet';
+
+type StaticRendererOptions = {
+  imageClass: string;
+  addPart: boolean;
+  setDraggableFalse: boolean;
+  widthStylesheet: boolean;
+  sheetPrefix: string;
+  background: string;
+};
 
 export class StaticRenderer implements Renderer {
   container: HTMLElement;
   width: number;
   height: number;
   pending = true;
+  options: StaticRendererOptions;
+  stylesheet: Stylesheet;
+  zIndex = 0;
+  lastKnownScale = 1;
+  rendererPosition: DOMRect;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, options?: Partial<StaticRendererOptions>) {
     this.container = container;
-    const { width, height } = container.getBoundingClientRect();
+    this.rendererPosition = container.getBoundingClientRect();
+    const { width, height } = this.rendererPosition;
     this.width = width;
     this.height = height;
+    this.options = {
+      addPart: false,
+      setDraggableFalse: false,
+      imageClass: '',
+      widthStylesheet: false,
+      sheetPrefix: 'position-',
+      background: '#000',
+      ...(options || {}),
+    };
+    this.stylesheet = new Stylesheet({ sheetPrefix: this.options.sheetPrefix });
+    this.container.classList.add(
+      this.stylesheet.addStylesheet(`
+        background: ${this.options.background};
+      `)
+    );
+    if (this.options.widthStylesheet) {
+      this.container.appendChild(this.stylesheet.getElement());
+    }
   }
 
   isReady(): boolean {
@@ -25,16 +59,28 @@ export class StaticRenderer implements Renderer {
   }
 
   resize() {
-    // no-op.
+    this.rendererPosition = this.container.getBoundingClientRect();
+    this.width = this.rendererPosition.width;
+    this.height = this.rendererPosition.height;
+  }
+
+  getRendererScreenPosition() {
+    return this.rendererPosition;
   }
 
   afterFrame(world: World, delta: number, target: Strand): void {
+    this.stylesheet.updateSheet();
+
     for (const item of this.previouslyVisible) {
-      item.style.display = 'none';
+      if (this.currentlyVisible.indexOf(item) === -1) {
+        this.container.removeChild(item);
+      }
     }
 
     for (const item of this.currentlyVisible) {
-      item.style.display = 'block';
+      if (this.previouslyVisible.indexOf(item) === -1) {
+        this.container.appendChild(item);
+      }
     }
 
     this.previouslyVisible = this.currentlyVisible;
@@ -43,16 +89,31 @@ export class StaticRenderer implements Renderer {
 
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void {}
 
-  beforeFrame(world: World, delta: number, target: Strand): void {}
+  beforeFrame(world: World, delta: number, target: Strand): void {
+    this.stylesheet.clearClasses();
+    this.zIndex = 0;
+  }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
     return world.getPointsAt(target, aggregate, scaleFactor);
   }
 
   getScale(width: number, height: number): number {
+    // It shouldn't happen, but it will. If the canvas is a different shape
+    // to the viewport, then this will choose the largest scale to use.
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return this.lastKnownScale;
+    }
+
     const w = this.width / width;
     const h = this.height / height;
-    return w < h ? h : w;
+    const scale = w < h ? h : w;
+
+    if (!Number.isNaN(scale)) {
+      this.lastKnownScale = scale;
+    }
+
+    return this.lastKnownScale;
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {
@@ -62,26 +123,56 @@ export class StaticRenderer implements Renderer {
   currentlyVisible: HTMLElement[] = [];
   previouslyVisible: HTMLElement[] = [];
 
+  createImage() {
+    const image = document.createElement('img');
+
+    if (this.options.imageClass) {
+      image.className = this.options.imageClass;
+      if (this.options.addPart) {
+        image.setAttribute('part', this.options.imageClass);
+      }
+    } else {
+      image.style.position = 'absolute';
+      image.style.pointerEvents = 'none';
+      image.style.userSelect = 'none';
+    }
+    if (this.options.setDraggableFalse) {
+      image.setAttribute('draggable', 'false');
+    }
+    return image;
+  }
+
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
+    // Unsure.
+    this.pending = false;
+    this.zIndex++;
+
     if (paint instanceof SingleImage) {
       if (!paint.__host) {
-        this.pending = false;
-        const image = document.createElement('img');
+        const image = this.createImage();
         image.src = paint.uri;
-        image.style.position = 'absolute';
         paint.__host = image;
         this.container.appendChild(paint.__host);
       }
 
-      const scale = width / paint.width;
-      const element: HTMLDivElement = paint.__host;
-
+      const element: HTMLImageElement = paint.__host;
       this.currentlyVisible.push(element);
-      this.previouslyVisible.unshift(element);
 
-      element.style.display = 'block';
-      element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
-      element.style.transformOrigin = `0px 0px`;
+      element.style.zIndex = `${this.zIndex}`;
+      element.style.opacity = `${paint.style.opacity}`;
+
+      if (this.options.widthStylesheet) {
+        element.className =
+          this.options.imageClass +
+          ' ' +
+          this.stylesheet.addStylesheet(
+            `width:${(width + Number.MIN_VALUE).toFixed(2)}px;height:${(height + Number.MIN_VALUE).toFixed(2)}px;`
+          );
+      } else {
+        element.style.width = `${width + Number.MIN_VALUE}px`;
+        element.style.height = `${height + Number.MIN_VALUE}px`;
+      }
+      element.style.transform = `translate(${x}px, ${y}px)`;
     }
     if (paint instanceof TiledImage) {
       if (!paint.__host) {
@@ -92,26 +183,29 @@ export class StaticRenderer implements Renderer {
 
       if (!paint.__host.images[index]) {
         const url = paint.getImageUrl(index);
-        const image = document.createElement('img');
+        const image = this.createImage();
         image.src = url;
-        image.style.position = 'absolute';
         paint.__host.images[index] = image;
         this.container.appendChild(image);
       }
-
-      const scale = width / paint.display.width;
-      const element: HTMLDivElement = paint.__host.images[index];
+      const element: HTMLImageElement = paint.__host.images[index];
+      element.style.zIndex = `${this.zIndex}`;
+      element.style.opacity = `${paint.style.opacity}`;
 
       this.currentlyVisible.push(element);
-      this.previouslyVisible.unshift(element);
 
-      element.style.width = `${paint.display.width + 0.8}px`;
-      element.style.height = `${paint.display.height + 0.8}px`;
-      element.style.display = 'block';
-      element.style.top = `${Math.floor(y)}px`;
-      element.style.left = `${Math.floor(x)}px`;
-      element.style.transform = `scale(${scale * 1.001})`;
-      element.style.transformOrigin = `0px 0px`;
+      if (this.options.widthStylesheet) {
+        element.className =
+          this.options.imageClass +
+          ' ' +
+          this.stylesheet.addStylesheet(
+            `width:${(width + Number.MIN_VALUE).toFixed(2)}px;height:${(height + Number.MIN_VALUE).toFixed(2)}px;`
+          );
+      } else {
+        element.style.width = `${width + Number.MIN_VALUE}px`;
+        element.style.height = `${height + Number.MIN_VALUE}px`;
+      }
+      element.style.transform = `translate(${x}px, ${y}px)`;
     }
   }
 
@@ -120,4 +214,6 @@ export class StaticRenderer implements Renderer {
   }
 
   prepareLayer(paint: SpacialContent): void {}
+  finishLayer(paint: SpacialContent): void {}
+  reset() {}
 }

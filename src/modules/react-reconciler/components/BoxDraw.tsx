@@ -1,18 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { useAfterFrame } from '../hooks/use-after-frame';
 import { useFrame } from '../hooks/use-frame';
 import { useCanvas } from '../hooks/use-canvas';
-import { useAtlas } from '../hooks/use-atlas';
 import { useRuntime } from '../hooks/use-runtime';
 import { useMode } from '../hooks/use-mode';
+import { useCanvasPosition } from '../hooks/use-canvas-position';
 
 export const DrawBox: React.FC<{
+  children?: ReactNode;
   onCreate: (bounds: { x: number; y: number; width: number; height: number }) => void;
 }> = ({ onCreate }) => {
   const mousePosition = useRef({ x: 0, y: 0 });
   const canvas = useCanvas();
+  const canvasPosition = useCanvasPosition();
   const runtime = useRuntime();
-  const atlas = useAtlas() as any;
   const [firstCorner, setFirstCorner] = useState<{ x: number; y: number } | undefined>();
   const [secondCorner, setSecondCorner] = useState<{ x: number; y: number } | undefined>();
   const mode = useMode();
@@ -47,11 +48,8 @@ export const DrawBox: React.FC<{
 
   useEffect(() => {
     const cb = (e: MouseEvent) => {
-      if (atlas.canvasPosition && runtime) {
-        const { x, y } = runtime.viewerToWorld(
-          e.clientX - atlas.canvasPosition.left,
-          e.clientY - atlas.canvasPosition.top
-        );
+      if (canvasPosition && runtime) {
+        const { x, y } = runtime.viewerToWorld(e.clientX - canvasPosition.left, e.clientY - canvasPosition.top);
         mousePosition.current.x = ~~x;
         mousePosition.current.y = ~~y;
       }
@@ -63,7 +61,7 @@ export const DrawBox: React.FC<{
     return () => {
       // no-op
     };
-  }, [atlas.canvasPosition, canvas, runtime]);
+  }, [canvasPosition, canvas, runtime]);
 
   useEffect(() => {
     const cb = (e: MouseEvent) => {

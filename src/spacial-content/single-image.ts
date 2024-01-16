@@ -1,5 +1,5 @@
 import { SpacialContent } from './spacial-content';
-import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
+import { dna, DnaFactory, mutate, Strand, transform, translate } from '@atlas-viewer/dna';
 import { DisplayData, SpacialSize } from '../types';
 import { BaseObject } from '../objects/base-object';
 import { Paint } from '../world-objects/paint';
@@ -7,9 +7,12 @@ import { Paint } from '../world-objects/paint';
 type SingleImageProps = {
   uri: string;
   id?: string;
-  display?: { width: number; height: number };
+  display?: { width: number; height: number; rotation?: number };
   target: { width: number; height: number; x?: number; y?: number };
+  crop?: { x: number; y: number; width: number; height: number };
   scale?: number;
+  priority?: boolean;
+  style?: any;
 };
 
 export class SingleImage extends BaseObject implements SpacialContent {
@@ -39,6 +42,16 @@ export class SingleImage extends BaseObject implements SpacialContent {
    * */
   points: Strand;
 
+  /**
+   * Displayed as priority
+   */
+  priority?: boolean;
+
+  /**
+   * Some simple styling options
+   */
+  style: { opacity: number } = { opacity: 1 };
+
   constructor(data?: {
     id?: string;
     uri: string;
@@ -47,12 +60,13 @@ export class SingleImage extends BaseObject implements SpacialContent {
     scale?: number;
     x?: number;
     y?: number;
+    rotation?: number;
   }) {
     super();
     if (!data) {
       this.id = '';
       this.uri = '';
-      this.display = { scale: 1, width: 0, height: 0, points: dna(5) };
+      this.display = { x: 0, y: 0, scale: 1, width: 0, height: 0, points: dna(5) };
       this.points = dna(5);
     } else {
       const scale = data.scale || 1;
@@ -61,10 +75,13 @@ export class SingleImage extends BaseObject implements SpacialContent {
       this.points = DnaFactory.singleBox(data.width, data.height, data.x, data.y);
 
       this.display = {
+        x: 0,
+        y: 0,
         scale: scale,
         width: data.width / scale,
         height: data.height / scale,
-        points: scale !== 1 ? DnaFactory.singleBox(data.width / scale, data.height / scale) : this.points,
+        points: DnaFactory.singleBox(data.width / scale, data.height / scale),
+        rotation: data?.rotation,
       };
     }
   }
@@ -77,11 +94,33 @@ export class SingleImage extends BaseObject implements SpacialContent {
     this.uri = props.uri;
     this.points.set(DnaFactory.singleBox(props.target.width, props.target.height, props.target.x, props.target.y));
 
-    this.display.scale = scale;
-    this.display.width = props.target.width / scale;
-    this.display.height = props.target.height / scale;
-    this.display.points =
-      scale !== 1 ? DnaFactory.singleBox(props.target.width / scale, props.target.height / scale) : this.points;
+    if (props.style && typeof props.style.opacity !== 'undefined') {
+      this.style.opacity = props.style.opacity;
+    }
+
+    if (props.crop) {
+      this.cropData = props.crop;
+      const crop = DnaFactory.singleBox(props.crop.width, props.crop.height, props.crop.x, props.crop.y);
+      mutate(crop, translate(-props.crop.x, -props.crop.y));
+      if (!this.crop) {
+        this.crop = dna(crop);
+      } else {
+        this.crop.set(crop);
+      }
+    }
+
+    if (props.display) {
+      this.display.scale = scale;
+      this.display.width = props.display.width;
+      this.display.height = props.display.height;
+      this.display.rotation = props.display.rotation;
+      this.display.points = DnaFactory.singleBox(props.display.width, props.display.height);
+    } else {
+      this.display.scale = scale;
+      this.display.width = props.target.width / scale;
+      this.display.height = props.target.height / scale;
+      this.display.points = DnaFactory.singleBox(props.target.width / scale, props.target.height / scale);
+    }
   }
 
   getAllPointsAt(target: Strand, aggregate?: Strand, scale?: number): Paint[] {

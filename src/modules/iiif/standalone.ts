@@ -1,4 +1,4 @@
-import { ImageService } from '@hyperion-framework/types';
+import { ImageService } from '@iiif/presentation-3';
 import { getId, GetTile } from './shared';
 import { imageServiceLoader } from '@atlas-viewer/iiif-image-api';
 

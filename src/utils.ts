@@ -16,7 +16,11 @@ export function bestResourceAtRatio<T extends SpacialContent>(ratio: number, res
   return best;
 }
 
-export function bestResourceIndexAtRatio<T extends SpacialContent>(ratio: number, resources: T[]): number | never {
+export function bestResourceIndexAtRatio<T extends SpacialContent>(
+  ratio: number,
+  resources: T[],
+  quality = 1
+): number | never {
   const len = resources.length;
   if (len === 0) {
     throw new Error('No resources passed in.');
@@ -27,7 +31,10 @@ export function bestResourceIndexAtRatio<T extends SpacialContent>(ratio: number
     if (!resources[i] || !resources[i].display) {
       break;
     }
-    best = Math.abs(resources[i].display.scale - ratio) < Math.abs(resources[best].display.scale - ratio) ? i : best;
+    best =
+      Math.abs(resources[i].display.scale - ratio) * quality < Math.abs(resources[best].display.scale - ratio)
+        ? i
+        : best;
   }
   return best;
 }

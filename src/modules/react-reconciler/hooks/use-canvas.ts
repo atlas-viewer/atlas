@@ -1,6 +1,6 @@
 import { useAtlas } from './use-atlas';
 
 export const useCanvas = () => {
-  const { canvas } = useAtlas();
-  return canvas ? canvas.current : undefined;
+  const atlas = useAtlas();
+  return atlas && atlas.canvas ? atlas.canvas : undefined;
 };

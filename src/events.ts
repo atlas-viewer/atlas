@@ -28,7 +28,7 @@ export const supportedEventAttributes = [
   'onDragExit',
   'onDrag',
   'onDragOver',
-];
+] as const;
 
 export function createDefaultEventMap(): SupportedEventMap {
   return supportedEventAttributes.reduce((acc, next) => {

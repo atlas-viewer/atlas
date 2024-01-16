@@ -4,9 +4,8 @@ import { nanoid } from 'nanoid';
 export const useControlledAnnotationList = (
   initialList: Array<{ x: number; y: number; width: number; height: number; id: any }> = []
 ) => {
-  const [annotations, setAnnotations] = useState<
-    Array<{ x: number; y: number; width: number; height: number; id: any }>
-  >(initialList);
+  const [annotations, setAnnotations] =
+    useState<Array<{ x: number; y: number; width: number; height: number; id: any }>>(initialList);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedAnnotation, setSelectedAnnotation] = useState<string | undefined>();
 
@@ -21,8 +20,8 @@ export const useControlledAnnotationList = (
   }, []);
 
   const onUpdateAnnotation = (newAnno: any) => {
-    setAnnotations(val =>
-      val.map(ann => {
+    setAnnotations((val) =>
+      val.map((ann) => {
         if (ann.id === newAnno.id) {
           return newAnno;
         }
@@ -33,7 +32,7 @@ export const useControlledAnnotationList = (
 
   const onCreateNewAnnotation = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
     const id = nanoid();
-    setAnnotations(a => [...a, { id, ...bounds }]);
+    setAnnotations((a) => [...a, { id, ...bounds }]);
     setIsEditing(false);
     setSelectedAnnotation(undefined);
   }, []);

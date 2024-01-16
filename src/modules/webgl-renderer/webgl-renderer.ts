@@ -1,7 +1,6 @@
 import { Renderer } from '../../renderer/renderer';
 import { SpacialContent } from '../../spacial-content/spacial-content';
 import { Box } from '../../objects/box';
-import { Text } from '../../objects/text';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
 import { Strand } from '@atlas-viewer/dna';
@@ -9,6 +8,10 @@ import { World } from '../../world';
 import { Paint } from '../../world-objects/paint';
 import { PositionPair } from '../../types';
 import { ImageTexture } from '../../spacial-content/image-texture';
+
+export type WebGLRendererOptions = {
+  dpi?: number;
+};
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
@@ -71,14 +74,18 @@ export class WebGLRenderer implements Renderer {
     position: WebGLBuffer;
     texCoord: WebGLBuffer;
   };
+  rendererPosition: DOMRect;
+  dpi: number;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, options?: WebGLRendererOptions) {
     this.canvas = canvas;
+    this.rendererPosition = canvas.getBoundingClientRect();
     this.gl = canvas.getContext('webgl2') as WebGL2RenderingContext;
 
     this.fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, this.fragmentShaderSource);
     this.vertexShader = this.createShader(this.gl.VERTEX_SHADER, this.vertexShaderSource);
     this.program = this.createProgram(this.vertexShader, this.fragmentShader);
+    this.dpi = options?.dpi || 1;
 
     // Shader locations.
     this.attributes = {
@@ -112,6 +119,7 @@ export class WebGLRenderer implements Renderer {
   resize() {
     this.resizeCanvasToDisplaySize();
     this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
+    this.rendererPosition = this.canvas.getBoundingClientRect();
   }
 
   isReady() {
@@ -135,7 +143,6 @@ export class WebGLRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent) {
     // no-op.
-    // console.log('prepare', paint);
     if (!paint.__host || !paint.__host.webgl) {
       if (paint instanceof SingleImage || paint instanceof TiledImage) {
         // create it if it does not exist.
@@ -283,10 +290,29 @@ export class WebGLRenderer implements Renderer {
     // no-op.
   }
 
-  getScale(width: number, height: number): number {
-    const w = this.canvas.width / width;
-    const h = this.canvas.height / height;
-    return w < h ? h : w;
+  lastKnownScale = 1;
+
+  getScale(width: number, height: number, dpi?: boolean): number {
+    // It shouldn't happen, but it will. If the canvas is a different shape
+    // to the viewport, then this will choose the largest scale to use.
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return this.lastKnownScale;
+    }
+
+    const canvas = this.getCanvasDims();
+    const w = canvas.width / width;
+    const h = canvas.height / height;
+    const scale = (w < h ? h : w) * (dpi ? this.dpi || 1 : 1);
+
+    if (!Number.isNaN(scale)) {
+      this.lastKnownScale = scale;
+    }
+
+    return this.lastKnownScale;
+  }
+
+  getCanvasDims() {
+    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {
@@ -377,4 +403,11 @@ export class WebGLRenderer implements Renderer {
     this.rectBuffer.set([x1, y1, x2, y1, x1, y2, x1, y2, x2, y1, x2, y2]);
     return this.rectBuffer;
   }
+
+  getRendererScreenPosition() {
+    return this.rendererPosition;
+  }
+
+  finishLayer() {}
+  reset() {}
 }

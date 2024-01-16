@@ -1,10 +1,11 @@
 import * as React from 'react';
 import '../src/modules/react-reconciler/types';
 import { Atlas } from '../src/modules/react-reconciler/Atlas';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { UpdateTextureFunction } from '../src/spacial-content/image-texture';
 // @ts-ignore
 import img from './assets/img.png';
+
 import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 
 export default { title: 'Atlas demos' };
@@ -94,27 +95,43 @@ export const AllEvents = () => {
 };
 
 export const HTMLPerformance = () => {
+  const [c, setC] = useState(false);
   const boxes = [];
-  const number = 25;
-  const size = 150;
+  const number = 40;
+  const size = 100;
   for (let i = 0; i < number; i++) {
     for (let j = 0; j < number; j++) {
       boxes.push(
-        <worldObject key={`${i}-${j}`} id={`${i}-${j}`} width={size} height={size} x={i * size} y={j * size}>
-          <box target={{ x: 0, y: 0, width: size, height: size }} backgroundColor={(j + i) % 2 ? 'red' : 'blue'} />
+        <worldObject key={`${i}--${j}`} id={`${i}-${j}`} width={size} height={size} x={i * size} y={j * size}>
+          <box
+            className={c ? undefined : (j + i) % 2 ? 'red' : 'blue'}
+            target={{ x: 0, y: 0, width: size, height: size }}
+            style={c ? { backgroundColor: (j + i) % 2 ? 'red' : 'blue' } : undefined}
+          />
         </worldObject>
       );
     }
   }
 
   return (
-    <Atlas
-      width={400}
-      height={400}
-      onCreated={rt => rt.runtime?.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
-    >
-      {boxes}
-    </Atlas>
+    <>
+      <button onClick={() => setC((t) => !t)}>current: {c ? 'canvas' : 'html'}</button>
+      <Atlas
+        width={400}
+        height={400}
+        key={c ? 'a' : 'b'}
+        renderPreset={['default-preset', { canvasBox: c }]}
+        onCreated={(rt) => rt.runtime?.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
+      >
+        {boxes}
+      </Atlas>
+      <style>
+        {`
+          .blue{background: blue}
+          .red{background: red}
+        `}
+      </style>
+    </>
   );
 };
 

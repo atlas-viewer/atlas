@@ -1,0 +1,3 @@
+interface SupportsHtmlImageHost {
+  src: string;
+}

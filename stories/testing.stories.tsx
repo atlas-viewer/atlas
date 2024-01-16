@@ -1,11 +1,9 @@
-import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 import * as React from 'react';
 import { Atlas } from '../src/modules/react-reconciler/Atlas';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Runtime } from '../src/renderer/runtime';
 import '../src/modules/react-reconciler/types';
-import { useAfterFrame } from '../src/modules/react-reconciler/hooks/use-after-frame';
 
 export default { title: 'Tests' };
 
@@ -38,14 +36,14 @@ export const EnsureMouseEventsAreAccurateWhenBoxChanges = () => {
     <>
       <button
         onClick={() => {
-          setSelected(s => !s);
+          setSelected((s) => !s);
         }}
       >
         change size
       </button>
       <div style={{ height: selected ? 300 : 0 }} />
       <Atlas
-        onCreated={r => {
+        onCreated={(r) => {
           (ref as any).current = r.runtime;
         }}
         width={500}
@@ -62,7 +60,7 @@ export const EnsureMouseEventsAreAccurateWhenBoxChanges = () => {
 };
 
 export const EnsureWorldItemCountMatches = () => {
-  const rt = useRef<Runtime | null>(null);
+  const rt = useRef<Runtime>();
   const [boxes, setBoxes] = useState<Array<{ x: number; y: number; width: number; height: number }>>([
     {
       x: 10,
@@ -73,8 +71,8 @@ export const EnsureWorldItemCountMatches = () => {
   ]);
 
   useEffect(() => {
-    let t = setInterval(() => {
-      console.log(rt.current.world.getObjects());
+    const t = setInterval(() => {
+      console.log(rt.current!.world.getObjects());
     }, 1000);
     return () => {
       clearInterval(t);
@@ -85,7 +83,7 @@ export const EnsureWorldItemCountMatches = () => {
     <>
       <button
         onClick={() => {
-          setBoxes(bs => [
+          setBoxes((bs) => [
             ...bs,
             {
               x: (bs.length + 1) * 10,
@@ -100,7 +98,7 @@ export const EnsureWorldItemCountMatches = () => {
       </button>
       <button
         onClick={() => {
-          setBoxes(bs => bs.slice(0, -1));
+          setBoxes((bs) => bs.slice(0, -1));
         }}
       >
         Remove
@@ -108,18 +106,80 @@ export const EnsureWorldItemCountMatches = () => {
       <Atlas
         height={500}
         width={500}
-        onCreated={r => {
+        onCreated={(r) => {
           rt.current = r.runtime;
         }}
       >
-        {boxes.map(box => {
+        {boxes.map((box) => {
           return (
             <world-object width={500} height={500}>
-              <box target={box} backgroundColor={'rgba(255, 255, 0, .3)'} />
+              <box target={box} style={{ background: 'rgba(255, 255, 0, .3)' }} />
             </world-object>
           );
         })}
       </Atlas>
     </>
+  );
+};
+
+export const zoomDebug = () => {
+  const [rt, setRt] = useState<Runtime>();
+  const [zoom, setZoom] = useState(1);
+
+  useLayoutEffect(() => {
+    if (rt) {
+      return rt.registerHook('useFrame', () => {
+        setZoom(rt.getScaleFactor());
+      });
+    }
+    return () => {};
+  }, [rt]);
+
+  const goHome = () => {
+    if (rt) {
+      rt.world.goHome();
+    }
+  };
+  const zoomBy = (factor: number) => {
+    if (rt) {
+      rt.transitionManager.zoomTo(factor);
+    }
+  };
+
+  const goTo = (data: { x: number; y: number; width: number; height: number }) => {
+    if (rt) {
+      rt.transitionManager.goToRegion(data);
+    }
+  };
+
+  const regions = {
+    a: { width: 200, height: 200, x: 100, y: 100 },
+    b: { width: 200, height: 200, x: 600, y: 400 },
+    c: { width: 200, height: 200, x: 200, y: 800 },
+  };
+
+  return (
+    <div>
+      <button onClick={() => goHome()}>Home</button>
+      <button onClick={() => zoomBy(1 / 1.5)}>Zoom in</button>
+      <button onClick={() => zoomBy(1.3)}>Zoom out</button>
+      <button onClick={() => goTo(regions.a)}>Go A</button>
+      <button onClick={() => goTo(regions.b)}>Go B</button>
+      <button onClick={() => goTo(regions.c)}>Go C</button>
+      <div>Zoom: {zoom}</div>
+      <Atlas
+        width={800}
+        height={500}
+        onCreated={(r) => {
+          setRt(r.runtime);
+        }}
+      >
+        <ImageService
+          id="https://iiif.bodleian.ox.ac.uk/iiif/image/5009dea1-d1ae-435d-a43d-453e3bad283f/info.json"
+          width={4093}
+          height={2743}
+        />
+      </Atlas>
+    </div>
   );
 };

@@ -3,9 +3,11 @@ import { distance } from '../../utils';
 import { BaseObject } from '../../objects/base-object';
 import { supportedEventMap } from '../../events';
 
-/**
- * This could work with popmotion if it was a proxy for events.
- */
+export type BrowserEventManagerOptions = {
+  /** Default 50ms **/
+  simulationRate: number;
+};
+
 export class BrowserEventManager {
   element: HTMLElement;
   runtime: Runtime;
@@ -41,14 +43,23 @@ export class BrowserEventManager {
     lastTouches: [],
   };
 
-  constructor(element: HTMLElement, runtime: Runtime) {
+  options: BrowserEventManagerOptions;
+
+  constructor(element: HTMLElement, runtime: Runtime, options?: Partial<BrowserEventManagerOptions>) {
     this.element = element;
     this.runtime = runtime;
     this.unsubscribe = runtime.world.addLayoutSubscriber(this.layoutSubscriber.bind(this));
     this.bounds = element.getBoundingClientRect();
+    this.options = {
+      simulationRate: 0,
+      ...(options || {}),
+    };
 
-    runtime.registerHook('useFrame', () => {
-      if (this.pointerMoveEvent) {
+    let tAcc = 0;
+    runtime.registerHook('useFrame', (t: number) => {
+      tAcc += t;
+      if (tAcc > this.options.simulationRate && this.pointerMoveEvent) {
+        tAcc = 0;
         runtime.updateNextFrame();
       }
     });
@@ -65,6 +76,7 @@ export class BrowserEventManager {
 
   updateBounds() {
     this.bounds = this.element.getBoundingClientRect();
+    this.runtime.updateRendererScreenPosition();
   }
 
   layoutSubscriber(type: string) {
@@ -117,15 +129,17 @@ export class BrowserEventManager {
     for (let i = 0; i < len; i++) {
       const touch = e.touches.item(i);
       if (!touch) continue;
-      const { x, y } = this.runtime.viewerToWorld(touch.pageX - this.bounds.left, touch.pageY - this.bounds.top);
+      const { x, y } = this.runtime.viewerToWorld(touch.clientX - this.bounds.left, touch.clientY - this.bounds.top);
 
       const atlasTouch = { id: touch.identifier, x, y };
 
       atlasTouches.push(atlasTouch);
     }
 
-    // Assign the first touch to the main atlas variable
-    this.assignToEvent(e, atlasTouches[0].x, atlasTouches[0].y);
+    if (atlasTouches.length) {
+      // Assign the first touch to the main atlas variable
+      this.assignToEvent(e, atlasTouches[0].x, atlasTouches[0].y);
+    }
 
     if (type !== 'onTouchEnd') {
       this.pointerEventState.lastTouches = atlasTouches;
@@ -150,13 +164,13 @@ export class BrowserEventManager {
   onPointerDown = (e: PointerEvent | MouseEvent) => {
     this.pointerEventState.isPressed = true;
     this.pointerEventState.isClicking = true;
-    this.pointerEventState.mouseDownStart.x = e.pageX;
-    this.pointerEventState.mouseDownStart.y = e.pageY;
+    this.pointerEventState.mouseDownStart.x = e.clientX;
+    this.pointerEventState.mouseDownStart.y = e.clientY;
     setTimeout(() => {
       if (this.runtime) {
         this.pointerEventState.isClicking = false;
       }
-    }, 200);
+    }, 250);
     setTimeout(() => {
       if (this.runtime && this.pointerEventState.isPressed && !this.pointerEventState.isDragging) {
         const dragStart = this.runtime.viewerToWorld(
@@ -171,7 +185,7 @@ export class BrowserEventManager {
           dragStart.y
         );
       }
-    }, 600);
+    }, 800);
 
     // And then handle as normal pointer event.
     this.onPointerEvent(e);
@@ -179,7 +193,7 @@ export class BrowserEventManager {
 
   onPointerUp = (e: PointerEvent | MouseEvent) => {
     if (this.pointerEventState.isClicking) {
-      const { x, y } = this.runtime.viewerToWorld(e.pageX - this.bounds.left, e.pageY - this.bounds.top);
+      const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
 
       this.assignToEvent(e, x, y);
 
@@ -202,7 +216,11 @@ export class BrowserEventManager {
 
   onPointerMove = (e: PointerEvent | MouseEvent) => {
     this.pointerMoveEvent = undefined;
-    const { x, y } = this.runtime.viewerToWorld(e.pageX - this.bounds.left, e.pageY - this.bounds.top);
+    const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
+
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      return;
+    }
 
     this.assignToEvent(e, x, y);
 
@@ -249,7 +267,7 @@ export class BrowserEventManager {
     if (
       this.pointerEventState.isPressed &&
       !this.pointerEventState.isDragging &&
-      distance(this.pointerEventState.mouseDownStart, { x: e.pageX, y: e.pageY }) > 50
+      distance(this.pointerEventState.mouseDownStart, { x: e.clientX, y: e.clientY }) > 50
     ) {
       const dragStart = this.runtime.viewerToWorld(
         this.pointerEventState.mouseDownStart.x - this.bounds.left,

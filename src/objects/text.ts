@@ -26,15 +26,30 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
   points: Strand;
   color = '#000';
   backgroundColor?: string;
+  hovering?: boolean;
+  pressing?: boolean;
   text = '';
   display = {
+    x: 0,
+    y: 0,
     scale: 1,
     width: 100,
     height: 100,
     points: dna(5),
   };
+  className?: string;
+  html?: boolean;
   interactive = false;
-  props: TextWrapperOptions & { interactive?: boolean } = {
+  props: TextWrapperOptions & {
+    title?: string;
+    href?: string;
+    hrefTarget?: string;
+    interactive?: boolean;
+    relativeSize?: boolean;
+    relativeStyle?: boolean;
+    className?: string;
+    html?: boolean;
+  } = {
     font: '18px Arial, sans-serif',
     lineHeight: 1,
     textAlign: 'left',
@@ -51,6 +66,7 @@ export class Text extends BaseObject<TextProps> implements SpacialContent {
     renderHDPI: false,
     textDecoration: 'none',
     interactive: false,
+    relativeSize: false,
   };
 
   constructor() {

@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
-import { useMode } from '../hooks/use-mode';
+import React, { ReactNode, useCallback } from 'react';
 import { ResizeWorldItem } from './ResizeWorldItem';
+import { BoxStyle } from '../../../objects/box';
 
 type RegionHighlightType = {
   id: any;
@@ -10,20 +10,33 @@ type RegionHighlightType = {
   height: number;
 };
 
-export const RegionHighlight: React.FC<{
+export type RegionHighlightProps = {
   id?: string;
   region: RegionHighlightType;
   isEditing: boolean;
+  rotation?: number;
   onSave: (annotation: RegionHighlightType) => void;
   onClick: (annotation: RegionHighlightType) => void;
-  background?: string;
-  border?: string;
   interactive?: boolean;
-}> = ({ interactive, region, onClick, onSave, isEditing, border = 'none', background = 'rgba(0,0,0,.4)' }) => {
-  const mode = useMode();
+  maintainAspectRatio?: boolean;
+  disableCardinalControls?: boolean;
+  style?: BoxStyle;
+  children?: ReactNode;
+};
 
+export function RegionHighlight({
+  interactive,
+  region,
+  onClick,
+  onSave,
+  maintainAspectRatio,
+  disableCardinalControls,
+  isEditing,
+  rotation,
+  style = { backgroundColor: 'rgba(0,0,0,.5)' },
+}: RegionHighlightProps) {
   const saveCallback = useCallback(
-    bounds => {
+    (bounds: any) => {
       onSave({ id: region.id, x: region.x, y: region.y, height: region.height, width: region.width, ...bounds });
     },
     [onSave, region.id, region.x, region.y, region.height, region.width]
@@ -33,26 +46,24 @@ export const RegionHighlight: React.FC<{
     <ResizeWorldItem
       x={region.x}
       y={region.y}
+      rotation={rotation}
       width={region.width}
       height={region.height}
       resizable={isEditing}
       onSave={saveCallback}
+      maintainAspectRatio={maintainAspectRatio}
+      disableCardinalControls={disableCardinalControls}
     >
       <box
         interactive={interactive}
-        onClick={
-          mode === 'explore'
-            ? e => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClick(region);
-              }
-            : () => void 0
-        }
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick(region);
+        }}
         target={{ x: 0, y: 0, width: region.width, height: region.height }}
-        backgroundColor={background}
-        border={border}
+        style={style}
       />
     </ResizeWorldItem>
   );
-};
+}

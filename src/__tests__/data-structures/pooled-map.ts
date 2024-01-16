@@ -56,7 +56,7 @@ describe('pooled map', () => {
   test('can use a function to get fresh value', () => {
     const map = new PooledMap<string>(3);
 
-    const mockSetter = jest.fn(() => 'A');
+    const mockSetter = vitest.fn(() => 'A');
 
     map.set('a', 'A');
     map.set('b', 'B');

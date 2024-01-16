@@ -1,0 +1,60 @@
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport'
+          content='width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0'>
+    <meta http-equiv='X-UA-Compatible' content='ie=edge'>
+    <title>Document</title>
+</head>
+<body>
+
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/scheduler@0.23.0/umd/scheduler.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+<script src='../dist/index.umd.js' type="application/javascript"></script>
+
+<script>
+  console.log(AtlasViewer);
+
+  const h = React.createElement;
+
+  function Component() {
+    return h(AtlasViewer.AtlasAuto, {}, [
+      h('world', {}, [
+        h('world-object', { width: 742, height: 1024 }, [
+          h('world-image', {
+            uri: 'https://iiif.wellcomecollection.org/image/b18035723_0001.JP2/full/742,1024/0/default.jpg',
+            target: { width: 742, height: 1024 },
+            display: { width: 742, height: 1024 },
+          }),
+          h(AtlasViewer.HTMLPortal, {
+            target: { x: 120, y: 120, width: 100, height: 100 },
+          }, [
+            h('div', {
+              onClick: () => console.log('Should not log'),
+              style: { height: 100, width: 100, background: 'red' }
+            }, ['Non interactive']),
+          ]),
+          h(AtlasViewer.HTMLPortal, {
+            interactive: true,
+            target: { x: 320, y: 120, width: 100, height: 100 },
+          }, [
+            h('div', {
+              onClick: () => console.log('Clicked'),
+              style: { userSelect: 'text', height: 100, width: 100, background: 'green' }
+            }, ['Interactive']),
+          ]),
+        ]),
+      ]),
+    ]);
+  }
+
+
+  ReactDOM.render(
+    React.createElement(Component),
+    document.getElementById('root'),
+  );
+</script>
+</body>
+</html>

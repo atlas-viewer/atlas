@@ -18,6 +18,7 @@ import { ZoneInterface } from './world-objects/zone';
 import { BaseObject } from './objects/base-object';
 import { SpacialContent } from './spacial-content/spacial-content';
 import { SupportedEvents } from './events';
+import { Geometry } from './objects/geometry';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
@@ -44,6 +45,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   translationBuffer = dna(9);
   needsRecalculate = true;
   emptyPaintables = [];
+  renderOrder: number[] = [];
 
   get x(): number {
     return 0;
@@ -95,7 +97,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   propagateTouchEvent(eventName: string, e: TouchEvent, touchTargets: Array<{ x: number; y: number }>) {
-    if (this.activatedEvents.indexOf(eventName) === -1) return [];
+    // if (this.activatedEvents.indexOf(eventName) === -1) return [];
 
     const targets = [];
     for (const touch of touchTargets) {
@@ -105,7 +107,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       }
     }
 
-    return targets.map(target => this.propagateEvent(eventName, e, target, { bubbles: true, cancelable: true }));
+    return targets.map((target) => this.propagateEvent(eventName, e, target, { bubbles: true, cancelable: true }));
   }
 
   propagatePointerEvent<Name extends keyof SupportedEvents>(
@@ -168,17 +170,23 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     }
 
     const len = this._propagateEventTargets.length;
+    let didFire = false;
     for (let i = 0; i < len; i++) {
       e.atlasTarget = this._propagateEventTargets[i];
       e.atlasWorld = this;
-      this._propagateEventTargets[i].dispatchEvent(eventName as any, e);
+      didFire = this._propagateEventTargets[i].dispatchEvent(eventName as any, e) || didFire;
       if (stopped) break;
+    }
+
+    if (didFire) {
+      this.triggerRepaint();
     }
     return this._propagateEventTargets;
   }
 
   appendChild(item: WorldObject) {
-    this.appendWorldObject(item);
+    const idx = this.appendWorldObject(item);
+    this.renderOrder.push(idx / 5);
   }
 
   removeChild(item: WorldObject) {
@@ -195,6 +203,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     }
 
     this.objects[index] = null;
+    this.renderOrder = this.renderOrder.filter((t) => t !== index);
+    this.points[index * 5] = 0;
     this.triggerRepaint();
     this.needsRecalculate = true;
   }
@@ -205,42 +215,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       return;
     }
 
-    // // 1st case is reuse existing points.
-    // if (this.objects[beforeIndex - 1] === null) {
-    //   const availablePoints = this.points.subarray((beforeIndex - 1) * 5, beforeIndex - 1 + 5);
-    //   if (availablePoints) {
-    //     this.objects[beforeIndex - 1] = item;
-    //
-    //     const pointValues = item.points;
-    //     item.points = availablePoints;
-    //     item.points[1] = pointValues[1];
-    //     item.points[2] = pointValues[2];
-    //     item.points[3] = pointValues[3];
-    //     item.points[4] = pointValues[4];
-    //
-    //     this.triggerRepaint();
-    //     this.needsRecalculate = true;
-    //   }
-    //
-    //   return;
-    // }
-
-    // Fix points array.
-    // this.checkResizeInternalBuffer();
-    // 1. List of all objects after item including `before` item
-    // 2. Shift those items 5 places in the points array
-    // 3. Zero out the item before one
-    // 4. Set new item
-    // 1. Make space for new numbers in buffer.
-    // 2. Reset ALL of the worldItems with new array offsets.
-
-    console.warn('insertBefore: Not fully implemented');
-    this.appendWorldObject(item);
+    const idx = this.appendWorldObject(item);
+    this.renderOrder.splice(beforeIndex - 1, 0, idx / 5);
   }
 
   hideInstance() {
     // not yet implemented.
-    console.warn('hideInstance: Not yet implemented');
+    // console.warn('hideInstance: Not yet implemented');
   }
 
   asWorldObject(): WorldObject | null {
@@ -298,6 +279,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   appendWorldObject(object: WorldObject) {
     this.checkResizeInternalBuffer();
 
+    const index = this.objects.length * 5;
     const pointValues = object.points;
     object.points = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
     object.points[1] = pointValues[1];
@@ -307,10 +289,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
     this.objects.push(object);
     this.filteredPointsBuffer = dna(this.objects.length * 5);
-    this.recalculateWorldSize();
     this.needsRecalculate = true;
 
     this.triggerRepaint();
+
+    return index;
   }
 
   recalculateWorldSize() {
@@ -318,11 +301,14 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     if (this.needsRecalculate) {
       const wBuffer = new Int32Array(this.objects.length);
       const hBuffer = new Int32Array(this.objects.length);
-      const totalObjects = this.objects.length;
-      for (let x = 0; x < totalObjects; x++) {
-        if (!this.objects[x]) continue;
-        wBuffer[x] = this.points[x * 5 + 3];
-        hBuffer[x] = this.points[x * 5 + 4];
+      const len = this.renderOrder.length;
+      for (let _index = 0; _index < len; _index++) {
+        const index = this.renderOrder[_index];
+        const object = this.objects[index];
+        if (object) {
+          wBuffer[_index] = this.points[index * 5 + 3];
+          hBuffer[_index] = this.points[index * 5 + 4];
+        }
       }
       const newWidth = Math.max(...wBuffer);
       if (newWidth !== this._width) {
@@ -444,7 +430,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
-    return [];
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
     const len = this.objects.length;
     this._updatedList = [];
@@ -461,10 +446,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const zone = this.getActiveZone();
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
 
-    const len = this.objects.length;
+    const len = this.renderOrder.length;
     const objects: Array<[WorldObject, Paintable[]]> = [];
 
-    for (let index = 0; index < len; index++) {
+    for (let _index = 0; _index < len; _index++) {
+      const index = this.renderOrder[_index];
       if (filteredPoints[index * 5] !== 0) {
         const object = this.objects[index];
         if (!object || (zone && zone.objects.indexOf(object) === -1)) {
@@ -475,14 +461,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
           continue;
         }
         if (all) {
-          objects.push([object, object.getObjectsAt(target)]);
+          objects.push([object, object.getObjectsAt(target, all)]);
         } else {
           objects.push([object, this.emptyPaintables]);
         }
       }
     }
 
-    // console.log(objects);
     return objects;
   }
 
@@ -491,9 +476,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
+
     const layers: Paint[] = [];
     for (let index = 0; index < len; index++) {
-      layers.push(...objects[index][0].getAllPointsAt(target, transformer, scaleFactor));
+      if (objects[index]) {
+        layers.push(...objects[index][0].getAllPointsAt(target, transformer, scaleFactor));
+      }
     }
     return layers;
   }
@@ -544,8 +532,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.trigger('goto-region', data);
   }
 
-  goHome(immediate = true) {
-    this.trigger('goto-region', { x: 0, y: 0, width: this._width, height: this._height });
+  goHome(immediate = false) {
+    this.trigger('go-home', {
+      immediate,
+    });
   }
 
   zoomTo(factor: number, point?: { x: number; y: number }, stream?: boolean) {

@@ -2,18 +2,36 @@ import { Strand } from '@atlas-viewer/dna';
 import { Runtime } from './renderer/runtime';
 
 export type RuntimeController = {
-  start(runtime: Runtime): void;
-  stop(runtime: Runtime): void;
+  start(runtime: Runtime): () => void;
   updatePosition(x: number, y: number, width: number, height: number): void;
 };
-export type Position = { x: number; y: number };
-export type PositionPair = { x1: number; y1: number; x2: number; y2: number };
-export type SpacialSize = { width: number; height: number };
-export type Scaled = { scale: number };
-export type Projection = Position & SpacialSize;
-export type Viewer = Projection & Scaled;
-export type DisplayData = SpacialSize & Scaled & { points: Strand };
-export type WorldTime = { start: number; end: number };
+export interface Position {
+  x: number;
+  y: number;
+}
+export interface PositionPair {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+export interface SpacialSize {
+  width: number;
+  height: number;
+}
+export interface Scaled {
+  scale: number;
+}
+export interface Projection extends Position, SpacialSize {}
+export interface Viewer extends Projection, Scaled {}
+export interface DisplayData extends SpacialSize, Position, Scaled {
+  points: Strand;
+  rotation?: number;
+}
+export interface WorldTime {
+  start: number;
+  end: number;
+}
 export type ViewingDirection = 'left-to-right' | 'right-to-left' | 'top-to-bottom' | 'bottom-to-top';
 
 /** @internal */

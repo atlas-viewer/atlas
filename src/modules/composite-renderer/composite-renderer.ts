@@ -57,6 +57,10 @@ export class CompositeRenderer implements Renderer {
     return this.renderers[0].getViewportBounds(world, target, padding);
   }
 
+  getRendererScreenPosition() {
+    return this.renderers[0].getRendererScreenPosition();
+  }
+
   isReady(): boolean {
     for (let i = 0; i < this.length; i++) {
       if (!this.renderers[i].isReady()) {
@@ -81,15 +85,27 @@ export class CompositeRenderer implements Renderer {
     return false;
   }
 
-  prepareLayer(paint: SpacialContent): void {
+  prepareLayer(paint: SpacialContent, point: Strand): void {
     for (let i = 0; i < this.length; i++) {
-      this.renderers[i].prepareLayer(paint);
+      this.renderers[i].prepareLayer(paint, point);
     }
   }
 
-  resize(width: number, height: number): void {
+  finishLayer(paint: SpacialContent, point: Strand): void {
+    for (let i = 0; i < this.length; i++) {
+      this.renderers[i].finishLayer(paint, point);
+    }
+  }
+
+  resize(width?: number, height?: number): void {
     for (let i = 0; i < this.length; i++) {
       this.renderers[i].resize(width, height);
+    }
+  }
+
+  reset() {
+    for (let i = 0; i < this.length; i++) {
+      this.renderers[i].reset();
     }
   }
 }

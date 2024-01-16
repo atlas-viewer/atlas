@@ -11,6 +11,17 @@ import {
   hidePointsOutsideRegion,
 } from '@atlas-viewer/dna';
 import { BaseObject } from '../objects/base-object';
+import { SpacialContent } from '../spacial-content';
+import { Geometry } from '../objects/geometry';
+
+function rotate(cx: number, cy: number, x: number, y: number, angle: number) {
+  const radians = (Math.PI / 180) * angle,
+    cos = Math.cos(radians),
+    sin = Math.sin(radians),
+    nx = cos * (x - cx) + sin * (y - cy) + cx,
+    ny = cos * (y - cy) - sin * (x - cx) + cy;
+  return [nx, ny];
+}
 
 type WorldObjectProps = {
   id: string;
@@ -19,6 +30,7 @@ type WorldObjectProps = {
   scale?: number;
   x?: number;
   y?: number;
+  rotation?: number;
 };
 
 export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
@@ -44,8 +56,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   intersectionBuffer = dna(5);
   aggregateBuffer = dna(9);
   invertedBuffer = dna(9);
+  rotation = 0;
   filteredPointsBuffer: Strand;
   _updatedList: any[] = [];
+  geometry?: any;
 
   constructor(props?: AbstractObject, position?: { x: number; y: number }) {
     super();
@@ -62,8 +76,8 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       this.id = props.id || '';
       this.scale = 1;
       this.layers = props.layers;
-      this.points = dna([1, x, y, props.width, props.height]);
-      this.worldPoints = dna([1, x, y, props.width, props.height]);
+      this.points = dna([1, x, y, x + props.width, y + props.height]);
+      this.worldPoints = dna([1, x, y, x + props.width, y + props.height]);
       this.filteredPointsBuffer = dna(props.layers.length * 5);
     }
   }
@@ -86,9 +100,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     this.points[2] = y;
     this.points[3] = x + props.width;
     this.points[4] = y + props.height;
+    this.rotation = props.rotation || 0;
 
-    this.worldPoints[3] = this.worldPoints[1] + props.width * s;
-    this.worldPoints[4] = this.worldPoints[2] + props.height * s;
+    this.worldPoints[3] = this.worldPoints[1] + props.width;
+    this.worldPoints[4] = this.worldPoints[2] + props.height;
 
     if (props.scale && props.scale !== 1) {
       this.atScale(s);
@@ -108,12 +123,13 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     if (item.points[0] === 0) {
       item.points.set(this.points);
     }
+    item.__owner.value = this;
 
     this.addLayers([item]);
   }
 
   removeChild(item: Paintable) {
-    this.layers = this.layers.filter(layer => layer !== item);
+    this.layers = this.layers.filter((layer) => layer !== item);
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
 
@@ -122,9 +138,14 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     if (index === -1) {
       return;
     }
+    if (this.layers.indexOf(item) !== -1) {
+      return;
+    }
 
-    const beforeLayers = this.layers.slice(0, index - 1);
+    // const beforeLayers = this.layers.slice(0, index - 1);
+    const beforeLayers = this.layers.slice(0, index);
     const afterLayers = this.layers.slice(index);
+
     this.layers = [...beforeLayers, item, ...afterLayers];
   }
 
@@ -132,7 +153,11 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     console.warn('hideInstance: not yet implemented');
   }
 
-  getObjectsAt(target: Strand): Paintable[] {
+  getObjectsAt(target: Strand, all?: boolean): Paintable[] {
+    if (this.rotation) {
+      target = this.applyRotation(target);
+    }
+
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
     if (filteredPoints[0] === 0) {
       return [];
@@ -141,7 +166,13 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const len = this.layers.length;
     const objects: Paintable[] = [];
     for (let index = 0; index < len; index++) {
-      const layer = this.layers[index];
+      const layer = this.layers[index] as SpacialContent | WorldObject;
+
+      if (all && (layer as Geometry).isShape) {
+        const t = transform(layer.points, translate(this.x, this.y));
+        const int = (layer as Geometry).intersects([target[1] - t[1], target[2] - t[2]]);
+        if (!int) continue;
+      }
 
       const filter = hidePointsOutsideRegion(
         transform(layer.points, translate(this.x, this.y)),
@@ -150,14 +181,48 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       );
 
       if (filter[0] !== 0) {
-        objects.push(layer);
+        objects.push(layer as SpacialContent);
+      }
+
+      if (all) {
+        const object = layer as WorldObject;
+        objects.push(...object.getObjectsAt(target, all));
       }
     }
     return objects;
   }
 
+  applyRotation(target: Strand) {
+    if (this.rotation) {
+      const a = { x: target[1], y: target[2] };
+      const b = { x: target[1], y: target[4] };
+      const c = { x: target[3], y: target[2] };
+      const d = { x: target[3], y: target[4] };
+
+      const x = this.points[1] + (this.points[3] - this.points[1]) / 2;
+      const y = this.points[2] + (this.points[4] - this.points[2]) / 2;
+
+      const [x1, y1] = rotate(x, y, a.x, a.y, this.rotation);
+      const [x2, y2] = rotate(x, y, b.x, b.y, this.rotation);
+      const [x3, y3] = rotate(x, y, c.x, c.y, this.rotation);
+      const [x4, y4] = rotate(x, y, d.x, d.y, this.rotation);
+
+      const rx1 = Math.min(x1, x2, x3, x4);
+      const rx2 = Math.max(x1, x2, x3, x4);
+      const ry1 = Math.min(y1, y2, y3, y4);
+      const ry2 = Math.max(y1, y2, y3, y4);
+
+      return dna([target[0], rx1, ry1, rx2, ry2]);
+    }
+    return target;
+  }
+
   getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
     const transformer = compose(translate(this.x, this.y), scale(this.scale), this.aggregateBuffer);
+
+    if (this.rotation) {
+      target = this.applyRotation(target);
+    }
 
     const inter = getIntersection(target, this.points, this.intersectionBuffer);
     const len = this.layers.length;
@@ -166,6 +231,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const t = transform(inter, compose(scale(1 / this.scale), translate(-this.x, -this.y), this.invertedBuffer));
     const agg = aggregate ? compose(aggregate, transformer, this.aggregateBuffer) : transformer;
     const s = scaleFactor * this.scale;
+
     for (let i = 0; i < len; i++) {
       // Crop intersection.
       arr.push(...this.layers[i].getAllPointsAt(t, agg, s));
@@ -174,7 +240,12 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   addLayers(paintables: Paintable[]) {
+    const paintablesToAdd = [];
     for (const paintable of paintables) {
+      if (this.layers.indexOf(paintable) !== -1) {
+        continue;
+      }
+      paintablesToAdd.push(paintable);
       // Check for crop.
       if (
         paintable.points.length === 5 &&
@@ -188,17 +259,19 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
           paintable.points[4] > this.worldPoints[4] / this.scale)
       ) {
         // @todo support for tiled crops.
-        paintable.crop = dna([
-          1,
-          Math.max(this.worldPoints[1] / this.scale, paintable.points[1]),
-          Math.max(this.worldPoints[2] / this.scale, paintable.points[2]),
-          Math.min(this.worldPoints[3] / this.scale, paintable.points[3]),
-          Math.min(this.worldPoints[4] / this.scale, paintable.points[4]),
-        ]);
+        paintable.crop =
+          paintable.crop ||
+          dna([
+            1,
+            Math.max(this.worldPoints[1] / this.scale, paintable.points[1]),
+            Math.max(this.worldPoints[2] / this.scale, paintable.points[2]),
+            Math.min(this.worldPoints[3] / this.scale, paintable.points[3]),
+            Math.min(this.worldPoints[4] / this.scale, paintable.points[4]),
+          ]);
       }
     }
 
-    this.layers = this.layers.concat(paintables);
+    this.layers = this.layers.concat(paintablesToAdd);
 
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
