@@ -319,6 +319,7 @@ export const ReactAtlas = {
       roots.set(runtime, newRoot);
     }
   },
+  unmountComponentAtNode(runtime: Runtime, callback?: (runtime: any) => void) {
     unmountComponentAtNode(runtime, callback);
   },
 };
