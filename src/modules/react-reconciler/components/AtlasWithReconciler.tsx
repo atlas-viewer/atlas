@@ -77,6 +77,9 @@ export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.mem
           ReactAtlas.unmountComponentAtNode(runtime);
         };
       }
+      return () => {
+        // no-op
+      };
     }, [preset]);
 
     return null;
