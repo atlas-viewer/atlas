@@ -1,4 +1,4 @@
-import React, { MutableRefObject, ReactNode, useCallback, useEffect, useLayoutEffect } from 'react';
+import React, { ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { ReactAtlas } from '../reconciler';
 import { ModeContext } from '../hooks/use-mode';
 import { AtlasContext, BoundsContext } from './AtlasContext';
@@ -17,14 +17,16 @@ type AtlasWithReconcilerProps = {
 
 export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.memo(
   ({ children, setIsReady, onCreated, bounds, preset, mode = 'explore' }) => {
-    const Canvas = useCallback(
-      function Canvas(props: { children: React.ReactElement }): JSX.Element {
+    const AtlasRoot = useCallback(
+      function AtlasRoot(props: { children: React.ReactElement }): JSX.Element {
+        const strictModeDoubleRender = useRef(false);
+
         const activate = () => {
           setIsReady(true);
         };
 
         useEffect(() => {
-          if (preset) {
+          if (preset && !strictModeDoubleRender.current) {
             preset.runtime.goHome();
 
             const result = onCreated && onCreated(preset);
@@ -33,6 +35,10 @@ export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.mem
           return () => {
             // no-op
           };
+        }, []);
+
+        useEffect(() => {
+          strictModeDoubleRender.current = true;
         }, []);
 
         return props.children;
@@ -50,18 +56,28 @@ export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.mem
 
         ReactAtlas.render(
           <React.StrictMode>
-            <Canvas>
+            <AtlasRoot>
               <BoundsContext.Provider value={bounds}>
                 <ModeContext.Provider value={mode}>
                   <AtlasContext.Provider value={preset}>{children}</AtlasContext.Provider>
                 </ModeContext.Provider>
               </BoundsContext.Provider>
-            </Canvas>
+            </AtlasRoot>
           </React.StrictMode>,
           runtime
         );
       }
     }, [preset, mode, children]);
+
+    useLayoutEffect(() => {
+      if (preset) {
+        const runtime = preset.runtime;
+
+        return () => {
+          ReactAtlas.unmountComponentAtNode(runtime);
+        };
+      }
+    }, [preset]);
 
     return null;
   }

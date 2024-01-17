@@ -69,6 +69,7 @@ export const Atlas: React.FC<
   // Set by React by passing <canvas ref={...} />
   // Used to instantiate the controller and viewer with the correct HTML element.
   const [isReady, setIsReady] = useState(false);
+  const strictModeDoubleRender = useRef(false);
 
   const renderPreset = useMemo<PresetNames | Presets>(() => {
     if (typeof _renderPreset === 'string') {
@@ -337,6 +338,8 @@ export const Atlas: React.FC<
       }
     }
   }, [background]);
+
+  strictModeDoubleRender.current = true;
 
   const { height: _, width: __, ...canvasProps } = restProps;
   const widthClassName = useClassname([restProps.width, restProps.height]);

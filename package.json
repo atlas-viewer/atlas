@@ -43,6 +43,7 @@
     "@atlas-viewer/iiif-image-api": "^2.0.5",
     "@iiif/presentation-3": ">=2",
     "@iiif/helpers": "^1.0.3",
+    "@iiif/parser": "2.0.1",
     "lru-cache": "^7.17.0",
     "nanoid": "^3.1.9",
     "normalize-wheel": "^1.0.1",

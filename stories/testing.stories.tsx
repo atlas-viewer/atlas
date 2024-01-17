@@ -21,6 +21,26 @@ export const EnsureMouseEventsAreAccurateWhenScrolling = () => {
   );
 };
 
+const onPointerDown = () => {
+  console.log('times');
+};
+
+export const OneEventPerClick = () => {
+  return (
+    <React.StrictMode>
+      <Atlas width={500} height={500}>
+        <world-object width={4093} height={2743} onPointerDown={onPointerDown}>
+          <ImageService
+            id="https://iiif.bodleian.ox.ac.uk/iiif/image/5009dea1-d1ae-435d-a43d-453e3bad283f/info.json"
+            width={4093}
+            height={2743}
+          />
+        </world-object>
+      </Atlas>
+    </React.StrictMode>
+  );
+};
+
 // Needs to be done manually until: https://github.com/pmndrs/react-use-measure/issues/9
 export const EnsureMouseEventsAreAccurateWhenBoxChanges = () => {
   const ref = useRef<Runtime>(null);
