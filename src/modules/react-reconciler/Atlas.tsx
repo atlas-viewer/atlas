@@ -25,6 +25,8 @@ export type AtlasProps = {
   controllerConfig?: PopmotionControllerConfig;
   renderPreset?: PresetNames | Presets;
   hideInlineStyle?: boolean;
+  homeCover?: boolean;
+  homeOnResize?: boolean;
   homePosition?: Projection;
   className?: string;
   background?: string;
@@ -58,6 +60,8 @@ export const Atlas: React.FC<
   className,
   containerProps = {},
   homePosition,
+  homeOnResize,
+  homeCover,
   background: _background,
   runtimeOptions,
   debug,
@@ -139,10 +143,13 @@ export const Atlas: React.FC<
 
   useEffect(() => {
     if (preset) {
-      preset.runtime.manualHomePosition = !!homePosition;
-      preset.runtime.setHomePosition(homePosition);
+      // Home cover handled separately.
+      if (!homeCover) {
+        preset.runtime.manualHomePosition = !!homePosition;
+        preset.runtime.setHomePosition(homePosition);
+      }
     }
-  }, [preset, homePosition]);
+  }, [preset, homeCover, homePosition]);
 
   // When the width and height change this will resize the viewer and then reset the view to fit the element.
   // @todo improve or make configurable.
@@ -172,8 +179,41 @@ export const Atlas: React.FC<
         preset.container.style.width = `${bounds.width}px`;
         preset.container.style.height = `${bounds.height}px`;
       }
+
+      if (homeCover) {
+        const w = preset.runtime.world.width;
+        const h = preset.runtime.world.height;
+        const ratio = w / h;
+
+        const viewportWidth = viewport.current.width;
+        const viewportHeight = viewport.current.height;
+        const viewportRatio = viewportWidth / viewportHeight;
+
+        if (ratio > viewportRatio) {
+          // Viewport too tall.
+          preset.runtime.manualHomePosition = true;
+          preset.runtime.setHomePosition({
+            x: (w - h / viewportRatio) / 2,
+            y: 0,
+            width: h / viewportRatio,
+            height: h,
+          });
+        } else {
+          // Viewport too wide. Need to make the home position cover the entire width.
+          preset.runtime.manualHomePosition = true;
+          preset.runtime.setHomePosition({
+            x: 0,
+            y: (h - w / viewportRatio) / 2,
+            width: w,
+            height: w / viewportRatio,
+          });
+        }
+        if (homeOnResize) {
+          preset.runtime.goHome({ cover: true });
+        }
+      }
     }
-  }, [preset, bounds.height, bounds.width]);
+  }, [preset, bounds.height, bounds.width, homeCover]);
 
   // When the window resizes we need to recalculate the width.
   // @todo possibly move to controller.

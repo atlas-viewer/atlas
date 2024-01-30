@@ -285,3 +285,38 @@ export const flexbox = () => {
     </>
   );
 };
+
+export const objectFitCover = () => {
+  const [i, setI] = useState(0);
+  return (
+    <>
+      <style>{`
+        .atlas-flex {
+          height: 100%;
+          width: 100%;
+          box-sizing: border-box;
+          padding: 1em;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          max-height: 100%;
+          
+          --atlas-background: #f0f0f0;
+          --atlas-focus: 5px solid green;
+          --atlas-container-flex: 1 1 0px;
+        }
+      `}</style>
+      <div style={{ resize: 'both', padding: 20, overflow: 'auto', height: 400, width: 600 }}>
+        <div className="atlas-flex">
+          <AtlasAuto key={i} homeCover homeOnResize renderPreset={['default-preset', { canvasBox: true }]}>
+            <world>
+              <ImageService key="wunder" {...staticTiles[1]} />
+            </world>
+          </AtlasAuto>
+        </div>
+      </div>
+      <button onClick={() => setI((i) => i + 1)}>Resize</button>
+      <style>{`body[style]{padding: 0 !important}`}</style>
+    </>
+  );
+};
