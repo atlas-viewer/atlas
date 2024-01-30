@@ -25,7 +25,7 @@ export type AtlasProps = {
   controllerConfig?: PopmotionControllerConfig;
   renderPreset?: PresetNames | Presets;
   hideInlineStyle?: boolean;
-  homeCover?: boolean;
+  homeCover?: true | false | 'start' | 'end';
   homeOnResize?: boolean;
   homePosition?: Projection;
   className?: string;
@@ -187,29 +187,44 @@ export const Atlas: React.FC<
 
         const viewportWidth = viewport.current.width;
         const viewportHeight = viewport.current.height;
-        const viewportRatio = viewportWidth / viewportHeight;
+        let viewportRatio = viewportWidth / viewportHeight;
 
         if (ratio > viewportRatio) {
+          viewportRatio = viewportHeight / viewportWidth;
           // Viewport too tall.
           preset.runtime.manualHomePosition = true;
+          let x = (w - h / viewportRatio) / 2;
+          if (homeCover === 'start') {
+            x = 0;
+          }
+          if (homeCover === 'end') {
+            x = w - h / viewportRatio;
+          }
           preset.runtime.setHomePosition({
-            x: (w - h / viewportRatio) / 2,
+            x,
             y: 0,
             width: h / viewportRatio,
             height: h,
           });
         } else {
+          let y = (h - w / viewportRatio) / 2;
+          if (homeCover === 'start') {
+            y = 0;
+          }
+          if (homeCover === 'end') {
+            y = h - w / viewportRatio;
+          }
           // Viewport too wide. Need to make the home position cover the entire width.
           preset.runtime.manualHomePosition = true;
           preset.runtime.setHomePosition({
             x: 0,
-            y: (h - w / viewportRatio) / 2,
+            y,
             width: w,
             height: w / viewportRatio,
           });
         }
         if (homeOnResize) {
-          preset.runtime.goHome({ cover: true });
+          preset.runtime.goHome({});
         }
       }
     }
