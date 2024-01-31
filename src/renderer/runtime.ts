@@ -28,6 +28,22 @@ type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
 
 export type ViewerMode = 'static' | 'explore' | 'sketch';
 
+export type ViewerFilters = {
+  grayscale: number;
+  contrast: number;
+  brightness: number;
+  saturate: number;
+  hueRotate: number;
+  sepia: number;
+  invert: number;
+  blur: number;
+};
+
+export type HookOptions = {
+  enableFilters?: boolean;
+  filters: ViewerFilters;
+};
+
 export type RuntimeOptions = {
   visibilityRatio: number;
   maxOverZoom: number;
@@ -119,6 +135,18 @@ export class Runtime {
   };
   fpsLimit: number | undefined;
   options: RuntimeOptions;
+  hookOptions: HookOptions = {
+    filters: {
+      grayscale: 0,
+      contrast: 0,
+      brightness: 0,
+      saturate: 0,
+      sepia: 0,
+      invert: 0,
+      hueRotate: 0,
+      blur: 0,
+    },
+  };
 
   constructor(
     renderer: Renderer,
@@ -845,7 +873,7 @@ export class Runtime {
 
     this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
-    this.renderer.beforeFrame(this.world, delta, this.target);
+    this.renderer.beforeFrame(this.world, delta, this.target, this.hookOptions);
     // Calculate a scale factor by passing in the height and width of the target.
     const scaleFactor = this.getScaleFactor();
     // Get the points to render based on this scale factor and the current x,y,w,h in the target buffer.
@@ -902,7 +930,7 @@ export class Runtime {
       this.renderer.finishLayer(paint, point);
     }
     // A final hook after the entire frame is complete.
-    this.renderer.afterFrame(this.world, delta, this.target);
+    this.renderer.afterFrame(this.world, delta, this.target, this.hookOptions);
     this.hook('useAfterFrame', delta);
     // Finally at the end, we set up the frame we just rendered.
     this.lastTarget[0] = this.target[0];

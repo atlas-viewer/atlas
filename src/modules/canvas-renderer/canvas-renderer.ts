@@ -12,6 +12,7 @@ import { Box } from '../../objects/box';
 import { h } from '../../clean-objects/runtime/h';
 import LRUCache from 'lru-cache';
 import { Geometry } from '../../objects/geometry';
+import { HookOptions } from 'src/standalone';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -281,7 +282,7 @@ export class CanvasRenderer implements Renderer {
     return this.lastKnownScale;
   }
 
-  beforeFrame(world: World, delta: number, target: Strand): void {
+  beforeFrame(world: World, delta: number, target: Strand, options: HookOptions): void {
     // const scale = this.getScale(target[3] - target[1], target[4] - target[1]);
     // this.ctx.setTransform(scale, 0, 0, scale, -target[1], -target[2]);
 
@@ -304,6 +305,48 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
+
+    if (
+      options.enableFilters &&
+      (options.filters.brightness ||
+        options.filters.contrast ||
+        options.filters.grayscale ||
+        options.filters.invert ||
+        options.filters.sepia ||
+        options.filters.saturate ||
+        options.filters.hueRotate ||
+        options.filters.blur)
+    ) {
+      let filter = '';
+      if (options.filters.brightness) {
+        filter += `brightness(${~~(100 + options.filters.brightness * 100)}%) `;
+      }
+      if (options.filters.contrast) {
+        filter += `contrast(${~~(100 + options.filters.contrast * 100)}%) `;
+      }
+      if (options.filters.grayscale) {
+        filter += `grayscale(${~~(options.filters.grayscale * 100)}%) `;
+      }
+      if (options.filters.invert) {
+        filter += `invert(${~~(options.filters.invert * 100)}%) `;
+      }
+      if (options.filters.sepia) {
+        filter += `sepia(${~~(options.filters.sepia * 100)}%) `;
+      }
+      if (options.filters.saturate) {
+        filter += `saturate(${~~(100 + options.filters.saturate * 100)}%) `;
+      }
+      if (options.filters.hueRotate) {
+        filter += `hue-rotate(${options.filters.hueRotate}deg) `;
+      }
+      if (options.filters.blur) {
+        filter += `blur(${options.filters.blur}px) `;
+      }
+
+      this.ctx.filter = filter;
+    } else {
+      this.ctx.filter = 'none';
+    }
   }
 
   applyTransform(paint: Paintable, x: number, y: number, width: number, height: number) {

@@ -325,3 +325,84 @@ export const objectFitCover = () => {
     </>
   );
 };
+
+const filters = {
+  grayscale: 0,
+  contrast: 0,
+  brightness: 0,
+  saturate: 0,
+  sepia: 0,
+  invert: 0,
+  hueRotate: 0,
+  blur: 0,
+};
+
+const filtersMinMax = {
+  grayscale: [0, 1],
+  contrast: [-1, 1],
+  brightness: [-1, 5],
+  saturate: [0, 1],
+  sepia: [0, 1],
+  invert: [0, 1],
+  hueRotate: [0, 360],
+  blur: [0, 10],
+};
+
+const filterReducer = (state: any, action: any) => {
+  if (action.type === 'reset') return filters;
+  return {
+    ...state,
+    [action.type]: action.value,
+  };
+};
+
+const preset = ['default-preset', { canvasBox: true }];
+
+export const viewerFilters = () => {
+  const [appliedFilters, dispatch] = React.useReducer(filterReducer, filters);
+
+  return (
+    <>
+      <style>{`
+        .atlas-flex {
+          height: 100vh;
+          box-sizing: border-box;
+          padding: 1em;
+          display: flex;
+          flex-direction: column;
+          
+          --atlas-background: #f0f0f0;
+          --atlas-focus: 5px solid green;
+          --atlas-container-flex: 1 1 0px;
+        }
+      `}</style>
+      <div style={{ display: 'flex', flexDirection: 'row', gap: 10 }}>
+        <button onClick={() => dispatch({ type: 'reset' })}>Reset</button>
+        {Object.keys(appliedFilters).map((key) => {
+          const [min, max] = filtersMinMax[key];
+          return (
+            <div key={key}>
+              <label>{key}</label>
+              <input
+                type="range"
+                min={min * 100}
+                max={max * 100}
+                value={appliedFilters[key] * 100}
+                onChange={(e) => dispatch({ type: key, value: e.target.valueAsNumber / 100 })}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="atlas-flex">
+        <AtlasAuto renderPreset={preset} filters={appliedFilters}>
+          <world>
+            <ImageService key="wunder" {...staticTiles[1]} />
+          </world>
+        </AtlasAuto>
+      </div>
+      <style>{`body[style]{padding: 0 !important}`}</style>
+    </>
+  );
+};

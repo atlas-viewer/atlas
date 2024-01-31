@@ -1,5 +1,5 @@
 import React, { ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Runtime, RuntimeOptions, ViewerMode } from '../../renderer/runtime';
+import { Runtime, RuntimeOptions, ViewerFilters, ViewerMode } from '../../renderer/runtime';
 import { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
 import useMeasure from 'react-use-measure';
@@ -34,7 +34,19 @@ export type AtlasProps = {
   htmlChildren?: ReactNode;
   children: ReactNode;
   runtimeOptions?: Partial<RuntimeOptions>;
+  filters?: Partial<ViewerFilters>;
 };
+
+const filterProperties = [
+  'brightness',
+  'contrast',
+  'grayscale',
+  'hueRotate',
+  'invert',
+  'saturate',
+  'sepia',
+  'blur',
+] as const;
 
 export const Atlas: React.FC<
   AtlasProps & {
@@ -65,6 +77,7 @@ export const Atlas: React.FC<
   background: _background,
   runtimeOptions,
   debug,
+  filters,
   ...restProps
 }) => {
   const [background, setBackground] = useState(_background);
@@ -165,6 +178,39 @@ export const Atlas: React.FC<
       viewport.current.didUpdate = true;
     }
   }, [preset, restProps.width, restProps.height]);
+
+  useEffect(() => {
+    if (filters && preset) {
+      const rt: Runtime = preset.runtime;
+      let didUpdate = false;
+      rt.hookOptions.enableFilters = true;
+
+      for (const property of filterProperties) {
+        if (filters[property]) {
+          if (filters[property] !== preset.runtime.hookOptions.filters[property]) {
+            rt.hookOptions.filters[property] = filters[property] as number;
+            didUpdate = true;
+          }
+        } else if (rt.hookOptions.filters[property]) {
+          rt.hookOptions.filters[property] = 0;
+          didUpdate = true;
+        }
+      }
+
+      if (didUpdate) {
+        rt.updateNextFrame();
+      }
+    } else {
+      if (preset) {
+        const rt: Runtime = preset.runtime;
+        for (const property of filterProperties) {
+          rt.hookOptions.filters[property] = 0;
+        }
+        rt.hookOptions.enableFilters = false;
+        rt.updateNextFrame();
+      }
+    }
+  }, [preset, filters]);
 
   // When the bounds of the container change, we need to reflect those changes in the overlay.
   // @todo move to canvas.

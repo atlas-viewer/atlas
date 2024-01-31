@@ -4,6 +4,7 @@ import { World } from '../../world';
 import { Strand } from '@atlas-viewer/dna';
 import { SpacialContent } from '../../spacial-content/spacial-content';
 import { PositionPair } from '../../types';
+import { HookOptions } from 'src/standalone';
 
 export class CompositeRenderer implements Renderer {
   renderers: Renderer[] = [];
@@ -18,9 +19,9 @@ export class CompositeRenderer implements Renderer {
     this.length = this.renderers.length;
   }
 
-  afterFrame(world: World, delta: number, target: Strand): void {
+  afterFrame(world: World, delta: number, target: Strand, options: HookOptions): void {
     for (let i = 0; i < this.length; i++) {
-      this.renderers[i].afterFrame(world, delta, target);
+      this.renderers[i].afterFrame(world, delta, target, options);
     }
   }
 
@@ -30,9 +31,9 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
-  beforeFrame(world: World, delta: number, target: Strand): void {
+  beforeFrame(world: World, delta: number, target: Strand, options: HookOptions): void {
     for (let i = 0; i < this.length; i++) {
-      this.renderers[i].beforeFrame(world, delta, target);
+      this.renderers[i].beforeFrame(world, delta, target, options);
     }
   }
 
