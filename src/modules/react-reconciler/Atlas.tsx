@@ -448,7 +448,7 @@ export const Atlas: React.FC<
   return (
     <Container
       ref={ref}
-      className={['atlas', hideInlineStyle ? '' : `atlas-width-${widthClassName}`, containerClassName, className]
+      className={['atlas', hideInlineStyle ? '' : `atlas-width-${widthClassName}`, containerClassName, className, `atlas-${presetName}`]
         .filter(Boolean)
         .join(' ')
         .trim()}
@@ -517,6 +517,7 @@ export const Atlas: React.FC<
         .atlas-canvas { flex: 1 1 0px; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }
+        .atlas-static-preset { touch-action: inherit; }
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
         .atlas-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
         .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
