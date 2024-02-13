@@ -134,6 +134,46 @@ export const HTMLPerformance = () => {
     </>
   );
 };
+export const StaticRendererPreset = () => {
+  const [c, setC] = useState(false);
+  const boxes = [];
+  const number = 40;
+  const size = 100;
+  for (let i = 0; i < number; i++) {
+    for (let j = 0; j < number; j++) {
+      boxes.push(
+        <worldObject key={`${i}--${j}`} id={`${i}-${j}`} width={size} height={size} x={i * size} y={j * size}>
+          <box
+            className={c ? undefined : (j + i) % 2 ? 'red' : 'blue'}
+            target={{ x: 0, y: 0, width: size, height: size }}
+            style={c ? { backgroundColor: (j + i) % 2 ? 'red' : 'blue' } : undefined}
+          />
+        </worldObject>
+      );
+    }
+  }
+
+  return (
+    <>
+      <button onClick={() => setC((t) => !t)}>current: {c ? 'canvas' : 'html'}</button>
+      <Atlas
+        width={400}
+        height={400}
+        key={c ? 'a' : 'b'}
+        renderPreset={['static-preset', { canvasBox: c }]}
+        onCreated={(rt) => rt.runtime?.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
+      >
+        {boxes}
+      </Atlas>
+      <style>
+        {`
+          .blue{background: blue}
+          .red{background: red}
+        `}
+      </style>
+    </>
+  );
+};
 
 export const RawTexture = () => {
   const video = useRef<HTMLVideoElement>(null);
