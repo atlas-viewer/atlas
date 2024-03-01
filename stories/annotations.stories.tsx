@@ -11,11 +11,16 @@ import { ImageService } from '../src/modules/react-reconciler/components/ImageSe
 export default { title: 'Annotations' };
 
 const staticTiles = [
-  {
-    id: 'https://dlcs.io/iiif-img/4/21/quilt/info.json',
-    width: 13038,
-    height: 12916,
-  },
+  // {
+  //   id: 'https://adore.ugent.be/IIIF/images/archive.ugent.be%3A5BB5CA24-28E5-11E6-988F-2EF3D43445F2%3ADS.1/info.json',
+  //   width: 6480,
+  //   height: 9340,
+  // },
+  // {
+  //   id: 'https://dlcs.io/iiif-img/4/21/quilt/info.json',
+  //   width: 13038,
+  //   height: 12916,
+  // },
   {
     id: 'https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
     width: 5233,
@@ -39,12 +44,12 @@ const staticTiles = [
 ];
 
 const sizes = [
+  { width: undefined, height: undefined },
   { width: 800, height: 600 },
   { width: 400, height: 600 },
   { width: 800, height: 300 },
   { width: 900, height: 600 },
   { width: 1000, height: 600 },
-  { width: '100%', height: '100vh' },
 ];
 
 export const SelectionDemo = () => {
@@ -86,7 +91,7 @@ export const SelectionDemo = () => {
   ]);
   const [tileIndex, setTileIndex] = useState(1);
   const [isWebGL, setIsWebGL] = useState(false);
-  const [size, setSize] = useState<any>({ width: 800, height: 600, idx: 0 });
+  const [size, setSize] = useState<any>({ width: undefined, height: undefined, idx: 0 });
   const [rotation, setRotation] = useState(0);
   const [scale, setScale] = useState(100);
 
@@ -120,9 +125,28 @@ export const SelectionDemo = () => {
     <>
       <div style={{ height: '200vh' }}>
         <div style={{ display: 'block', height: 400 }}></div>
-        <div>
+        <div style={{ background: '#eee', borderRadius: 3, padding: 20 }} id="fs-viewer">
           <h3>Viewer</h3>
           <p>isEditing: {isEditing ? 'true' : 'false'}</p>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => {
+                const el = document.getElementById('fs-viewer');
+                if (el) {
+                  el.requestFullscreen();
+                }
+              }}
+            >
+              Enter Fullscreen
+            </button>
+            <button
+              onClick={() => {
+                document.exitFullscreen();
+              }}
+            >
+              Exit Fullscreen
+            </button>
+          </div>
           <button
             onClick={() => {
               const idx = (size.idx + 1) % sizes.length;
@@ -156,7 +180,7 @@ export const SelectionDemo = () => {
             }}
           />
           <div style={{ display: 'flex' }}>
-            <div style={{ flex: '1 1 0px' }}>
+            <div style={{ flex: '1 1 0px', minWidth: 0 }}>
               <AtlasAuto
                 unstable_webglRenderer={isWebGL && tileIndex !== 0}
                 key={isWebGL ? 'webgl' : 'canvas'}
@@ -402,6 +426,7 @@ export const viewerFilters = () => {
           </world>
         </AtlasAuto>
       </div>
+
       <style>{`body[style]{padding: 0 !important}`}</style>
     </>
   );

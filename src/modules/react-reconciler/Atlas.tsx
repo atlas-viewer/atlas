@@ -331,7 +331,7 @@ export const Atlas: React.FC<
     return () => {
       // no-op
     };
-  }, [preset]);
+  }, [preset, restProps.width, restProps.height]);
 
   const Canvas = useCallback(
     function Canvas(props: { children: React.ReactElement }): JSX.Element {
@@ -448,7 +448,13 @@ export const Atlas: React.FC<
   return (
     <Container
       ref={ref}
-      className={['atlas', hideInlineStyle ? '' : `atlas-width-${widthClassName}`, containerClassName, className, `atlas-${presetName}`]
+      className={[
+        'atlas',
+        hideInlineStyle ? '' : `atlas-width-${widthClassName}`,
+        containerClassName,
+        className,
+        `atlas-${presetName}`,
+      ]
         .filter(Boolean)
         .join(' ')
         .trim()}
