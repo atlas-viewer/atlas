@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Runtime, RuntimeOptions, ViewerFilters, ViewerMode } from '../../renderer/runtime';
 import { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
@@ -11,6 +11,7 @@ import { usePreset } from './hooks/use-preset';
 import { Projection } from '@atlas-viewer/dna';
 import { useClassname } from './hooks/use-classname';
 import { Container } from './components/Container';
+import { useIsomorphicLayoutEffect } from './utility/react';
 
 export type AtlasProps = {
   debug?: boolean;
@@ -214,7 +215,7 @@ export const Atlas: React.FC<
 
   // When the bounds of the container change, we need to reflect those changes in the overlay.
   // @todo move to canvas.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (preset) {
       if (preset.overlay) {
         preset.overlay.style.width = `${bounds.width}px`;
@@ -278,7 +279,7 @@ export const Atlas: React.FC<
 
   // When the window resizes we need to recalculate the width.
   // @todo possibly move to controller.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const windowResizeCallback = () => {
       if (preset) {
         const rt: Runtime = preset.runtime;
@@ -317,7 +318,7 @@ export const Atlas: React.FC<
     }
   };
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (preset) {
       recalculateNavigatorDimensions();
       const rt = preset.runtime;
@@ -430,7 +431,7 @@ export const Atlas: React.FC<
     };
   }, [preset]);
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (outerContainerRef.current && !background) {
       const computed = getComputedStyle(outerContainerRef.current);
       const _background = computed.getPropertyValue('--atlas-background');

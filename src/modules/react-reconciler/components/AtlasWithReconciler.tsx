@@ -5,6 +5,7 @@ import { AtlasContext, BoundsContext } from './AtlasContext';
 import { ViewerMode } from '../../../renderer/runtime';
 import { Preset } from '../presets/_types';
 import { RectReadOnly } from 'react-use-measure';
+import { useIsomorphicLayoutEffect } from '../utility/react';
 
 type AtlasWithReconcilerProps = {
   onCreated?: (ctx: Preset) => void | Promise<void>;
@@ -47,7 +48,7 @@ export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.mem
       [preset]
     );
 
-    useLayoutEffect(() => {
+    useIsomorphicLayoutEffect(() => {
       if (preset) {
         const runtime = preset.runtime;
         if (mode !== runtime.mode) {
@@ -69,7 +70,7 @@ export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.mem
       }
     }, [preset, mode, children]);
 
-    useLayoutEffect(() => {
+    useIsomorphicLayoutEffect(() => {
       if (preset) {
         const runtime = preset.runtime;
 

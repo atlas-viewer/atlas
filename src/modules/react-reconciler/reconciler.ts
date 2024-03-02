@@ -14,6 +14,7 @@ import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import { version } from 'react';
 import { Geometry } from '../../objects/geometry';
+import { DefaultEventPriority } from 'react-reconciler/constants';
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
@@ -279,6 +280,50 @@ const reconciler = Reconciler<
   clearContainer() {
     return false;
   },
+
+  // 0.29.0 and later
+  supportsHydration: false,
+  supportsPersistence: false,
+
+  detachDeletedInstance(node) {
+    // no-op?
+    // console.log('detachDeletedInstance', node);
+  },
+
+  afterActiveInstanceBlur() {
+    // no-op
+  },
+
+  beforeActiveInstanceBlur() {
+    // no-op
+  },
+
+  getCurrentEventPriority() {
+    // If in the browser, check `window.event` and maybe do something different.
+    return DefaultEventPriority;
+  },
+
+  getInstanceFromNode(node) {
+    throw new Error('Not implemented');
+  },
+
+  getInstanceFromScope(scopeInstance) {
+    throw new Error('Not implemented');
+    // return nodeToInstanceMap.get(scopeInstance) || null;
+  },
+
+  prepareScopeUpdate(scopeInstance, instance) {
+    throw new Error('Not implemented');
+    // nodeToInstanceMap.set(scopeInstance, instance);
+  },
+
+  logRecoverableError() {
+    // noop
+  },
+
+  requestPostPaintCallback() {
+    // noop
+  },
 });
 
 reconciler.injectIntoDevTools({
@@ -300,8 +345,9 @@ export function unmountComponentAtNode(runtime: Runtime, callback?: (runtime: an
 export const ReactAtlas = {
   render(whatToRender: any, runtime: any) {
     const root = roots.get(runtime);
+
     if (root) {
-      reconciler.updateContainer(whatToRender, root, null, () => undefined);
+      reconciler.updateContainer(whatToRender, root, null);
     } else {
       const newRoot = reconciler.createContainer(
         runtime,
@@ -315,7 +361,8 @@ export const ReactAtlas = {
         },
         null
       );
-      reconciler.updateContainer(whatToRender, newRoot, null, null);
+
+      reconciler.updateContainer(whatToRender, newRoot, null);
       roots.set(runtime, newRoot);
     }
   },

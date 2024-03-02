@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
 import { ReactAtlas } from '../reconciler';
 import { Runtime, ViewerMode } from '../../../renderer/runtime';
@@ -9,6 +9,7 @@ import { AtlasContext } from '../components/AtlasContext';
 import { ModeContext } from './use-mode';
 import { Preset } from '../presets/_types';
 import { usePreset } from './use-preset';
+import { useIsomorphicLayoutEffect } from '../utility/react';
 
 type AtlasProps = {
   width: number;
@@ -57,14 +58,14 @@ export const useAtlasImage: (
   });
 
   // Create our in memory canvas.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const $cvs = document.createElement('canvas');
     $cvs.height = bounds.height;
     $cvs.width = bounds.width;
     canvasRef.current = $cvs;
   }, []);
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const $cvs = canvasRef.current;
     if ($cvs) {
       $cvs.height = bounds.height;
@@ -145,7 +146,7 @@ export const useAtlasImage: (
 
   // When the bounds of the container change, we need to reflect those changes in the overlay.
   // @todo move to canvas.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
     overlay.style.width = `${bounds.width}px`;
@@ -156,7 +157,7 @@ export const useAtlasImage: (
 
   // When the window resizes we need to recalculate the width.
   // @todo possibly move to controller.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const windowResizeCallback = () => {
       if (preset && preset.runtime) {
         const rt: Runtime = preset.runtime;
@@ -188,7 +189,7 @@ export const useAtlasImage: (
         }
         return () => {
           // no-op
-        }
+        };
       }, []);
 
       return props.children;
@@ -214,7 +215,7 @@ export const useAtlasImage: (
     };
   }, [preset, cover, resetWorldOnChange]);
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (preset) {
       ReactAtlas.render(
         <Canvas>
