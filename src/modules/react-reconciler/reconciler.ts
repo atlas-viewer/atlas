@@ -186,7 +186,9 @@ const reconciler = Reconciler<
   unknown, // TimeoutHandle,
   unknown // NoTimeout
 >({
+  // @ts-ignore
   unstable_now: now,
+  // @ts-ignore
   now,
   createInstance,
   removeChild,
@@ -299,20 +301,24 @@ const reconciler = Reconciler<
   },
 
   getCurrentEventPriority() {
+    console.log('getCurrentEventPriority');
     // If in the browser, check `window.event` and maybe do something different.
     return DefaultEventPriority;
   },
 
   getInstanceFromNode(node) {
+    console.log('getInstanceFromNode', node);
     throw new Error('Not implemented');
   },
 
   getInstanceFromScope(scopeInstance) {
+    console.log('getInstanceFromScope', scopeInstance);
     throw new Error('Not implemented');
     // return nodeToInstanceMap.get(scopeInstance) || null;
   },
 
   prepareScopeUpdate(scopeInstance, instance) {
+    console.log('prepareScopeUpdate', scopeInstance, instance);
     throw new Error('Not implemented');
     // nodeToInstanceMap.set(scopeInstance, instance);
   },

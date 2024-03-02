@@ -47,6 +47,7 @@ export const reconcilerConfig: HostConfig<
   any, // TimeoutHandle,
   any // NoTimeout,
 > = {
+  // @ts-ignore
   now,
   // supports appendChild and removeChild
   supportsMutation: true,
