@@ -10608,10 +10608,10 @@ typesafe-actions@^5.1.0:
   resolved "https://registry.npmjs.org/typesafe-actions/-/typesafe-actions-5.1.0.tgz"
   integrity sha512-bna6Yi1pRznoo6Bz1cE6btB/Yy8Xywytyfrzu/wc+NFW3ZF0I+2iCGImhBsoYYCOWuICtRO4yHcnDlzgo1AdNg==
 
-typescript@^4.5.2:
-  version "4.7.4"
-  resolved "https://registry.npmjs.org/typescript/-/typescript-4.7.4.tgz"
-  integrity sha512-C0WQT0gezHuw6AdY1M2jxUO83Rjf0HP7Sk1DtXj6j1EwkQNZrHAg2XPWlq62oqEhYvONq5pkC2Y9oPljWToLmQ==
+typescript@^5.4.2:
+  version "5.4.2"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-5.4.2.tgz#0ae9cebcfae970718474fe0da2c090cad6577372"
+  integrity sha512-+2/g0Fds1ERlP6JsakQQDXjZdZMM+rqpamFZJEKh4kwTIn3iDkgKtby0CeNd5ATNZ4Ry1ax15TMx0W2V+miizQ==
 
 uglify-js@^3.1.4:
   version "3.16.2"
