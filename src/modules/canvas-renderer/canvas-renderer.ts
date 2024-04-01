@@ -440,13 +440,14 @@ export class CanvasRenderer implements Renderer {
                 1 + (paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1]) / paint.display.scale,
                 1 + (paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2]) / paint.display.scale,
               ];
-
+              
               source[0] += paint.cropData.x / paint.display.scale;
               source[1] += paint.cropData.y / paint.display.scale;
-
+              
               const translationDeltaX = paint.x * this.lastKnownScale;
               const translationDeltaY = paint.y * this.lastKnownScale;
-
+              console.log('cropped', {translationDeltaX, translationDeltaY});
+              
               const target = [x + translationDeltaX, y + translationDeltaY, width, height];
 
               // What we need?
@@ -691,6 +692,7 @@ export class CanvasRenderer implements Renderer {
                     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
                     canvas.width = points[3] - points[1];
                     canvas.height = points[4] - points[2];
+                    console.log('drawing canvas', {width: points[3] - points[1], height: points[4] - points[2]});
                     // document.body.append(canvas);
                     this.hostCache.set(imageBuffer.canvases[index], canvas);
                     this.drawCalls.push(() => {
