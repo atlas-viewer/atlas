@@ -468,6 +468,14 @@ export class CanvasRenderer implements Renderer {
               );
             }
           } else {
+            console.log('writing image', {
+              x,
+              y,
+              width + Number.MIN_VALUE,
+              height + Number.MIN_VALUE,
+              w1: paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
+              h1: paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
+            });
             this.ctx.drawImage(
               canvasToPaint,
               0, // paint.display.points[index * 5 + 1],
@@ -476,8 +484,8 @@ export class CanvasRenderer implements Renderer {
               paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
               x,
               y,
-              width + Number.MIN_VALUE,
-              height + Number.MIN_VALUE
+              width + Number.MIN_VALUE + 1,
+              height + Number.MIN_VALUE + 1
             );
           }
         }
