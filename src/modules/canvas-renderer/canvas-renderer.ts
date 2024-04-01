@@ -381,6 +381,8 @@ export class CanvasRenderer implements Renderer {
       height: height,
       x,
       y,
+      index,
+      tiledImage: paint instanceof TiledImage
     });
 
     // Only supporting single and tiled images at the moment.
