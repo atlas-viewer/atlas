@@ -147,6 +147,15 @@ export class StaticRenderer implements Renderer {
     this.pending = false;
     this.zIndex++;
 
+    const useMinValue = true;
+    const minValue = useMinValue ? Number.MIN_VALUE : Number.MIN_VALUE + 1;
+    console.log({
+        width: (width + minValue).toFixed(2),
+        height: (height + minValue).toFixed(2),
+        x,
+        y,
+      });
+
     if (paint instanceof SingleImage) {
       if (!paint.__host) {
         const image = this.createImage();
@@ -166,11 +175,11 @@ export class StaticRenderer implements Renderer {
           this.options.imageClass +
           ' ' +
           this.stylesheet.addStylesheet(
-            `width:${(width + Number.MIN_VALUE).toFixed(2)}px;height:${(height + Number.MIN_VALUE).toFixed(2)}px;`
+            `width:${(width + minValue).toFixed(2)}px;height:${(height + minValue).toFixed(2)}px;`
           );
       } else {
-        element.style.width = `${width + Number.MIN_VALUE}px`;
-        element.style.height = `${height + Number.MIN_VALUE}px`;
+        element.style.width = `${width + minValue}px`;
+        element.style.height = `${height + minValue}px`;
       }
       element.style.transform = `translate(${x}px, ${y}px)`;
     }
@@ -199,11 +208,11 @@ export class StaticRenderer implements Renderer {
           this.options.imageClass +
           ' ' +
           this.stylesheet.addStylesheet(
-            `width:${(width + Number.MIN_VALUE).toFixed(2)}px;height:${(height + Number.MIN_VALUE).toFixed(2)}px;`
+            `width:${(width + minValue).toFixed(2)}px;height:${(height + minValue).toFixed(2)}px;`
           );
       } else {
-        element.style.width = `${width + Number.MIN_VALUE}px`;
-        element.style.height = `${height + Number.MIN_VALUE}px`;
+        element.style.width = `${width + minValue}px`;
+        element.style.height = `${height + minValue}px`;
       }
       element.style.transform = `translate(${x}px, ${y}px)`;
     }
