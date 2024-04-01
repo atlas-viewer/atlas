@@ -471,8 +471,8 @@ export class CanvasRenderer implements Renderer {
             console.log('writing image', {
               x,
               y,
-              width + Number.MIN_VALUE,
-              height + Number.MIN_VALUE,
+              width: width + Number.MIN_VALUE,
+              height: height + Number.MIN_VALUE,
               w1: paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
               h1: paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
             });
