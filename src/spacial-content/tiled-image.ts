@@ -122,12 +122,12 @@ export class TiledImage extends BaseObject implements SpacialContent {
     // Always set a height.
     tile.height = tile.height ? tile.height : tile.width;
     // Dimensions of full image (scaled).
-    const fullWidth = Math.round(canvas.width / scaleFactor);
-    const fullHeight = Math.round(canvas.height / scaleFactor);
+    const fullWidth = Math.ceil(canvas.width / scaleFactor);
+    const fullHeight = Math.ceil(canvas.height / scaleFactor);
     // number of points in the x direction.
-    const mWidth = Math.round(fullWidth / tile.width);
+    const mWidth = Math.ceil(fullWidth / tile.width);
     // number of points in the y direction
-    const mHeight = Math.round(fullHeight / tile.height);
+    const mHeight = Math.ceil(fullHeight / tile.height);
 
     const pointsFactory = DnaFactory.grid(mWidth, mHeight);
     const displayPoints = DnaFactory.grid(mWidth, mHeight);
@@ -180,7 +180,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const im = this.points.slice(index * 5, index * 5 + 5);
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];
-    const w = Math.round(x2 / this.display.scale);
+    const w = Math.ceil(x2 / this.display.scale);
 
     return `${this.tileUrl}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.${
       this.format || 'jpg'

@@ -464,8 +464,8 @@ export class CanvasRenderer implements Renderer {
               paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
               x,
               y,
-              width + Number.MIN_VALUE,
-              height + Number.MIN_VALUE
+              width + Number.MIN_VALUE + 0.5,
+              height + Number.MIN_VALUE + 0.5
             );
           }
         }
