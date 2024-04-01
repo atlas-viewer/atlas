@@ -461,7 +461,6 @@ export class CanvasRenderer implements Renderer {
               width: width + Number.MIN_VALUE,
               y,
               height: height + Number.MIN_VALUE,
-              ctx: this.ctx,
             });
             this.ctx.drawImage(
               canvasToPaint,
@@ -687,7 +686,6 @@ export class CanvasRenderer implements Renderer {
                     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
                     canvas.width = points[3] - points[1];
                     canvas.height = points[4] - points[2];
-                    console.log('drawing canvas', {width: points[3] - points[1], height: points[4] - points[2]});
                     // document.body.append(canvas);
                     this.hostCache.set(imageBuffer.canvases[index], canvas);
                     this.drawCalls.push(() => {
