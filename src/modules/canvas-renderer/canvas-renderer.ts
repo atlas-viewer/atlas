@@ -375,6 +375,14 @@ export class CanvasRenderer implements Renderer {
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
     const ga = this.ctx.globalAlpha;
 
+
+    console.log('canvas-renderer', {
+      width: width,
+      height: height,
+      x,
+      y,
+    });
+
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
       if (paint.display.rotation) {

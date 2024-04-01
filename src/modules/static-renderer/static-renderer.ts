@@ -149,12 +149,12 @@ export class StaticRenderer implements Renderer {
 
     const useMinValue = true;
     const minValue = useMinValue ? Number.MIN_VALUE : Number.MIN_VALUE + 1;
-    console.log({
-        width: (width + minValue).toFixed(2),
-        height: (height + minValue).toFixed(2),
-        x,
-        y,
-      });
+    console.log('static-renderer', {
+      width: (width + minValue).toFixed(2),
+      height: (height + minValue).toFixed(2),
+      x,
+      y,
+    });
 
     if (paint instanceof SingleImage) {
       if (!paint.__host) {
