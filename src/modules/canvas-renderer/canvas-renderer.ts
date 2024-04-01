@@ -375,16 +375,6 @@ export class CanvasRenderer implements Renderer {
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
     const ga = this.ctx.globalAlpha;
 
-
-    console.log('canvas-renderer', {
-      width: width,
-      height: height,
-      x,
-      y,
-      index,
-      tiledImage: paint instanceof TiledImage
-    });
-
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
       if (paint.display.rotation) {
@@ -440,14 +430,12 @@ export class CanvasRenderer implements Renderer {
                 1 + (paint.crop[index * 5 + 3] - paint.crop[index * 5 + 1]) / paint.display.scale,
                 1 + (paint.crop[index * 5 + 4] - paint.crop[index * 5 + 2]) / paint.display.scale,
               ];
-              
+
               source[0] += paint.cropData.x / paint.display.scale;
               source[1] += paint.cropData.y / paint.display.scale;
-              
+
               const translationDeltaX = paint.x * this.lastKnownScale;
               const translationDeltaY = paint.y * this.lastKnownScale;
-              console.log('cropped', {translationDeltaX, translationDeltaY});
-              
               const target = [x + translationDeltaX, y + translationDeltaY, width, height];
 
               // What we need?
@@ -470,11 +458,10 @@ export class CanvasRenderer implements Renderer {
           } else {
             console.log('writing image', {
               x,
-              y,
               width: width + Number.MIN_VALUE,
+              y,
               height: height + Number.MIN_VALUE,
-              w1: paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
-              h1: paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
+              ctx: this.ctx,
             });
             this.ctx.drawImage(
               canvasToPaint,
@@ -484,8 +471,8 @@ export class CanvasRenderer implements Renderer {
               paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
               x,
               y,
-              width + Number.MIN_VALUE,
-              height + Number.MIN_VALUE
+              width + Number.MIN_VALUE + 1,
+              height + Number.MIN_VALUE + 1
             );
           }
         }
