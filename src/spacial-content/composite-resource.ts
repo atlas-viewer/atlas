@@ -15,7 +15,7 @@ type RenderOptions = {
   quality: number;
 };
 
-type CompositeResourceProps = RenderOptions;
+export type CompositeResourceProps = RenderOptions;
 
 export class CompositeResource
   extends AbstractContent

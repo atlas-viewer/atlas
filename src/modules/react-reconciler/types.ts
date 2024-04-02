@@ -3,6 +3,7 @@ import { UpdateTextureFunction } from '../../spacial-content/image-texture';
 import { BoxStyle } from '../../objects/box';
 import { EventListenerProps } from '../../clean-objects/traits/evented';
 import { GeometryProps } from '../../objects/geometry';
+import { CompositeResourceProps } from '../../spacial-content/composite-resource';
 
 type BaseElement = {
   id?: string;
@@ -68,6 +69,7 @@ declare global {
         height: number;
         children?: React.ReactNode;
         crop?: any;
+        renderOptions?: CompositeResourceProps;
       } & AllEvents;
       tiledImage: BaseElement & {
         uri: string;

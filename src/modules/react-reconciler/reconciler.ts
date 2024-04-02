@@ -140,6 +140,7 @@ function createInstance(
         width: props.width,
         height: props.height,
         images: [],
+        renderOptions: props.renderOptions,
       });
       break;
     case 'tiledImage':

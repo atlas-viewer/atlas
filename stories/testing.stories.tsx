@@ -221,8 +221,8 @@ export function testStaticRender() {
       </button>
       <Atlas
         key={staticPreset ? 'a' : 'b'}
-        width={2677}
-        height={4117}
+        width={1000}
+        height={800}
         onCreated={(r) => {
           setRt(r.runtime);
         }}
@@ -235,6 +235,11 @@ export function testStaticRender() {
           height={tile.height}
           enableSizes={false}
           enableThumbnail={false}
+          renderOptions={{
+            quality: 1,
+            renderLayers: 1,
+            renderSmallestFallback: false,
+          }}
         />
       </Atlas>
     </>
