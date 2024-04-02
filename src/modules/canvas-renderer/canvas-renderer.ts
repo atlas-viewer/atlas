@@ -9,7 +9,6 @@ import { TiledImage } from '../../spacial-content/tiled-image';
 import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
 import { Box } from '../../objects/box';
-import { h } from '../../clean-objects/runtime/h';
 import LRUCache from 'lru-cache';
 import { Geometry } from '../../objects/geometry';
 import { HookOptions } from 'src/standalone';
@@ -28,6 +27,7 @@ export type CanvasRendererOptions = {
   polygon?: boolean;
   background?: string;
   lruCache?: boolean;
+  unstable_addCanvasPadding?: number;
 };
 
 export type ImageBuffer = {
@@ -99,6 +99,7 @@ export class CanvasRenderer implements Renderer {
   lastPaintedObject?: WorldObject;
   hostCache: LRUCache<string, HTMLCanvasElement>;
   invalidated: string[] = [];
+  unstable_addCanvasPadding = 0;
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
@@ -112,6 +113,7 @@ export class CanvasRenderer implements Renderer {
     this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
     this.dpi = options?.dpi || 1;
+    this.unstable_addCanvasPadding = options?.unstable_addCanvasPadding || 0;
 
     this.hostCache = options?.lruCache
       ? new LRUCache<string, HTMLCanvasElement>({
@@ -464,8 +466,8 @@ export class CanvasRenderer implements Renderer {
               paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
               x,
               y,
-              width + Number.MIN_VALUE + 0.5,
-              height + Number.MIN_VALUE + 0.5
+              width + Number.MIN_VALUE + this.unstable_addCanvasPadding,
+              height + Number.MIN_VALUE + this.unstable_addCanvasPadding
             );
           }
         }

@@ -15,6 +15,7 @@ export type DefaultPresetName = 'default-preset';
 export type DefaultPresetOptions = {
   controllerConfig?: any;
   unstable_webglRenderer?: boolean;
+  unstable_addCanvasPadding?: number;
   interactive?: boolean;
   dpi?: number;
   debug?: boolean;
@@ -31,6 +32,7 @@ export function defaultPreset({
   overlayElement,
   controllerConfig,
   unstable_webglRenderer,
+  unstable_addCanvasPadding,
   dpi,
   debug,
   canvasBox = true,
@@ -57,7 +59,14 @@ export function defaultPreset({
   const renderer = new CompositeRenderer([
     unstable_webglRenderer
       ? new WebGLRenderer(canvasElement, { dpi })
-      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, background }),
+      : new CanvasRenderer(canvasElement, {
+          dpi,
+          debug,
+          box: canvasBox,
+          polygon,
+          background,
+          unstable_addCanvasPadding,
+        }),
     overlayElement
       ? new OverlayRenderer(overlayElement, {
           box: unstable_webglRenderer || !canvasBox,

@@ -20,6 +20,7 @@ export type AtlasProps = {
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
   unstable_noReconciler?: boolean;
+  unstable_addCanvasPadding?: number;
   overlayStyle?: any;
   containerStyle?: any;
   containerProps?: any;
@@ -64,6 +65,8 @@ export const Atlas: React.FC<
   unstable_webglRenderer = false,
   // eslint-disable-next-line
   unstable_noReconciler = false,
+  // eslint-disable-next-line
+  unstable_addCanvasPadding = 0,
   hideInlineStyle = false,
   controllerConfig,
   children,
@@ -110,16 +113,13 @@ export const Atlas: React.FC<
   // This measures the height and width of the Atlas element.
   const [_ref, bounds, forceRefresh] = useMeasure({ scroll: true });
   const outerContainerRef = useRef<HTMLDivElement>();
-  const ref = (component: HTMLDivElement) => {
-    outerContainerRef.current = component;
-    _ref(component);
-  };
 
   const [presetName, preset, viewport, refs] = usePreset(renderPreset, {
     width: restProps.width,
     height: restProps.height,
     forceRefresh,
     unstable_webglRenderer,
+    unstable_addCanvasPadding,
   });
 
   // This holds the class name for the container. This is changes when the

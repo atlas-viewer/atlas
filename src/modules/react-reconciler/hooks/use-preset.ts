@@ -7,7 +7,14 @@ const defaultArgs = {};
 
 export function usePreset(
   renderPreset: PresetNames | Presets | undefined,
-  options: { width: number; height: number; forceRefresh?: any; unstable_webglRenderer?: boolean; background?: string }
+  options: {
+    width: number;
+    height: number;
+    forceRefresh?: any;
+    unstable_webglRenderer?: boolean;
+    background?: string;
+    unstable_addCanvasPadding?: number;
+  }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
   const canvasRef = useRef<HTMLCanvasElement>();
@@ -41,6 +48,7 @@ export function usePreset(
       dpi: window.devicePixelRatio || 1,
       forceRefresh: options.forceRefresh,
       unstable_webglRenderer: options.unstable_webglRenderer,
+      unstable_addCanvasPadding: options.unstable_addCanvasPadding,
       ...(presetArgs || {}),
     });
 
