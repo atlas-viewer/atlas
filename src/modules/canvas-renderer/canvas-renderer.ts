@@ -9,7 +9,6 @@ import { TiledImage } from '../../spacial-content/tiled-image';
 import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
 import { Box } from '../../objects/box';
-import { h } from '../../clean-objects/runtime/h';
 import LRUCache from 'lru-cache';
 import { Geometry } from '../../objects/geometry';
 import { HookOptions } from 'src/standalone';
@@ -89,7 +88,7 @@ export class CanvasRenderer implements Renderer {
   currentTask: Promise<any> = Promise.resolve();
   tasksRunning = 0;
   stats?: Stats;
-  averageJobTime = 1000; // ms
+  averageJobTime = 64; // ms
   lastKnownScale = 1;
   visible: Array<SpacialContent> = [];
   previousVisible: Array<SpacialContent> = [];
@@ -258,9 +257,17 @@ export class CanvasRenderer implements Renderer {
       clearInterval(this._scheduled);
       this._scheduled = 0;
     }
+
+    let parallel = this.parallelTasks || 1;
+
+    if (!this.firstMeaningfulPaint && this.loadingQueue.length) {
+      parallel = this.loadingQueue.length;
+    }
     // And here's our working being called. Since JS is blocking, this will complete
     // before the next tick, so its possible that this could be more than 1ms.
-    this._worker();
+    for (let i = 0; i <= parallel; i++) {
+      this._worker();
+    }
   };
 
   getScale(width: number, height: number, dpi?: boolean): number {
@@ -482,6 +489,7 @@ export class CanvasRenderer implements Renderer {
     const isBox = paint instanceof Box && this.options.box;
     const isGeometry = paint instanceof Geometry && this.options.polygon;
     if ((isBox || isGeometry) && !paint.props.className && !paint.props.html && !paint.props.href) {
+      this.visible.push(paint);
       if (paint.props.style) {
         const style = Object.assign(
           //
@@ -782,7 +790,16 @@ export class CanvasRenderer implements Renderer {
       this.imagesPending === 0 &&
       this.loadingQueue.length === 0 &&
       this.tasksRunning === 0; /*&& this.visible.length > 0*/
-    if (!this.firstMeaningfulPaint && ready) {
+
+    if (!ready && this.visible.length === 0) {
+      // If its still not ready by 500ms, force it to be.
+      setTimeout(() => {
+        this.canvas.style.opacity = '1';
+        this.firstMeaningfulPaint = true;
+      }, 500);
+    }
+
+    if (!this.firstMeaningfulPaint && ready && this.visible.length) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
       // We've not rendered yet, can we render this  frame?
