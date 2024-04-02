@@ -88,6 +88,7 @@ export const Atlas: React.FC<
   // Used to instantiate the controller and viewer with the correct HTML element.
   const [isReady, setIsReady] = useState(false);
   const strictModeDoubleRender = useRef(false);
+  const [worldSizeIteration, setWorldSizeIteration] = useState(0);
 
   const renderPreset = useMemo<PresetNames | Presets>(() => {
     if (typeof _renderPreset === 'string') {
@@ -275,7 +276,7 @@ export const Atlas: React.FC<
         }
       }
     }
-  }, [preset, bounds.height, bounds.width, homeCover]);
+  }, [preset, bounds.height, bounds.width, homeCover, worldSizeIteration]);
 
   // When the window resizes we need to recalculate the width.
   // @todo possibly move to controller.
@@ -326,6 +327,7 @@ export const Atlas: React.FC<
         if (type === 'recalculate-world-size') {
           recalculateNavigatorDimensions();
           rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
+          setWorldSizeIteration((n) => n + 1);
         }
       });
     }
