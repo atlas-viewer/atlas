@@ -16,6 +16,8 @@ import { HookOptions } from 'src/standalone';
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
 const shadowRegexCache: any = {};
+const isFirefox =
+  typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().includes('firefox');
 
 export type CanvasRendererOptions = {
   beforeFrame?: (delta: number) => void;
@@ -464,17 +466,31 @@ export class CanvasRenderer implements Renderer {
               );
             }
           } else {
-            this.ctx.drawImage(
-              canvasToPaint,
-              0, // paint.display.points[index * 5 + 1],
-              0, // paint.display.points[index * 5 + 2],
-              paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
-              paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
-              x,
-              y,
-              width + Number.MIN_VALUE,
-              height + Number.MIN_VALUE
-            );
+            if (isFirefox) {
+              this.ctx.drawImage(
+                canvasToPaint,
+                0, // paint.display.points[index * 5 + 1],
+                0, // paint.display.points[index * 5 + 2],
+                paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
+                paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
+                x,
+                y,
+                width + 1,
+                height + 1
+              );
+            } else {
+              this.ctx.drawImage(
+                canvasToPaint,
+                0, // paint.display.points[index * 5 + 1],
+                0, // paint.display.points[index * 5 + 2],
+                paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
+                paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
+                x,
+                y,
+                width + Number.MIN_VALUE,
+                height + Number.MIN_VALUE
+              );
+            }
           }
         }
       } catch (err) {
