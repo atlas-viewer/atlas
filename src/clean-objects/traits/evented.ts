@@ -254,7 +254,7 @@ export function removeEventListener<Name extends SupportedEventNames>(
 }
 
 export function isEvented(t: unknown): t is Evented {
-  return !!(t && (t as any).events.handlers);
+  return !!(t && (t as any).events && (t as any).events.handlers);
 }
 
 export function dispatchEvent<Name extends SupportedEventFunctionNames | SupportedEventNames>(
