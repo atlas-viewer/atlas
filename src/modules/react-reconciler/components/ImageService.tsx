@@ -13,6 +13,8 @@ export const ImageService: React.FC<{
   scale?: number;
   children?: ReactNode;
   crop?: any;
+  enableSizes?: boolean;
+  enableThumbnail?: boolean;
 }> = (props) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
 
@@ -33,6 +35,8 @@ export const ImageService: React.FC<{
           height={props.crop?.height || props.height}
           rotation={props.rotation}
           crop={props.crop}
+          enableSizes={props.enableSizes}
+          enableThumbnail={props.enableThumbnail}
         >
           {props.children}
         </TileSet>
