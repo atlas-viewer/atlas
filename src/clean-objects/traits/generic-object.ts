@@ -260,6 +260,7 @@ export function applyGenericObjectProps(
       } else {
         toObject.points.set(targetPoints);
       }
+
       toObject.display.scale = scale;
       toObject.display.width = target.width / scale;
       toObject.display.height = target.height / scale;

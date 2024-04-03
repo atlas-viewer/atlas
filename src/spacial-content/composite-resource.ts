@@ -15,7 +15,7 @@ type RenderOptions = {
   quality: number;
 };
 
-type CompositeResourceProps = RenderOptions;
+export type CompositeResourceProps = RenderOptions;
 
 export class CompositeResource
   extends AbstractContent
@@ -59,10 +59,10 @@ export class CompositeResource
     };
     this.renderOptions = {
       renderSmallestFallback: true,
-      renderLayers: 3,
+      renderLayers: 2,
       minSize: 255,
       maxImageSize: 1024,
-      quality: 1.2,
+      quality: 1.75,
       ...(data.renderOptions || {}),
     };
 
@@ -228,7 +228,7 @@ export class CompositeResource
       }
       const smallestIdx = toPaintIdx[0];
       if (this.renderOptions.renderLayers) {
-        toPaintIdx = toPaintIdx.slice(-this.renderOptions.renderLayers);
+        toPaintIdx = toPaintIdx.slice(-Math.min(toPaintIdx.length, this.renderOptions.renderLayers));
       }
 
       if (this.renderOptions.renderSmallestFallback && toPaintIdx.indexOf(smallestIdx) === -1) {

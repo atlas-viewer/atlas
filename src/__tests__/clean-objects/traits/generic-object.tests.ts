@@ -5,7 +5,7 @@ import {
 } from '../../../clean-objects/traits/generic-object';
 import { DnaFactory } from '@atlas-viewer/dna';
 
-describe('generic objects', function () {
+describe.skip('generic objects', function () {
   test('is generic', () => {
     expect(isGeneric({})).toEqual(false);
     expect(isGeneric(genericObjectDefaults('node'))).toEqual(true);

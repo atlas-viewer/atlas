@@ -203,3 +203,45 @@ export const zoomDebug = () => {
     </div>
   );
 };
+
+const preset = ['static-preset', { interactive: true }];
+
+export function testStaticRender() {
+  const [rt, setRt] = useState<Runtime>();
+  const [staticPreset, setStaticPreset] = useState(false);
+  const tile = {
+    id: 'https://iiif.ghentcdh.ugent.be/iiif/images/getuigenissen:brugse_vrije:RABrugge_I15_16999_V02:RABrugge_I15_16999_V02_01/info.json',
+    width: 2677,
+    height: 4117,
+  };
+  return (
+    <>
+      <button onClick={() => setStaticPreset((r) => !r)}>
+        {staticPreset ? 'Change to canvas' : 'Change to static'}
+      </button>
+      <Atlas
+        key={staticPreset ? 'a' : 'b'}
+        width={1000}
+        height={800}
+        onCreated={(r) => {
+          setRt(r.runtime);
+        }}
+        renderPreset={staticPreset ? preset : undefined}
+        containerStyle={{ '--atlas-background': 'red' }}
+      >
+        <ImageService
+          id={tile.id}
+          width={tile.width}
+          height={tile.height}
+          enableSizes={false}
+          enableThumbnail={false}
+          renderOptions={{
+            quality: 1,
+            renderLayers: 1,
+            renderSmallestFallback: false,
+          }}
+        />
+      </Atlas>
+    </>
+  );
+}

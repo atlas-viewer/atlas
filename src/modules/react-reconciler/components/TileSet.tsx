@@ -1,5 +1,6 @@
 import React, { ReactNode, useMemo } from 'react';
 import { GetTile } from '../../iiif/shared';
+import { CompositeResourceProps } from '../../../spacial-content';
 
 export const TileSet: React.FC<{
   tiles: GetTile;
@@ -13,6 +14,7 @@ export const TileSet: React.FC<{
   enableThumbnail?: boolean;
   enableSizes?: boolean;
   onClick?: (e: any) => void;
+  renderOptions?: CompositeResourceProps;
 }> = (props) => {
   const scale = props.width / (props.crop?.width || props.tiles.width);
   const tiles = props.tiles.imageService.tiles || [];
@@ -44,6 +46,7 @@ export const TileSet: React.FC<{
         width={props.crop?.width || props.tiles.width}
         height={props.crop?.height || props.tiles.height}
         crop={props.crop}
+        renderOptions={props.renderOptions}
       >
         {enableThumbnail && props.tiles.thumbnail ? (
           <world-image

@@ -27,6 +27,7 @@ type UnwrapHook<T> = T extends Array<infer R> ? R : never;
 type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
 
 export type ViewerMode = 'static' | 'explore' | 'sketch';
+const MIN = Number.MIN_VALUE + 1;
 
 export type ViewerFilters = {
   grayscale: number;
@@ -284,18 +285,18 @@ export class Runtime {
       const fullWidth = ar * target.height;
       const space = (fullWidth - target.width) / 2;
 
-      this.target[1] = -space + target.x;
-      this.target[2] = target.y;
-      this.target[3] = fullWidth - space + target.x;
-      this.target[4] = target.height + target.y;
+      this.target[1] = Math.round(-space + target.x);
+      this.target[2] = Math.round(target.y);
+      this.target[3] = Math.round(fullWidth - space + target.x);
+      this.target[4] = Math.round(target.height + target.y);
     } else {
       const fullHeight = target.width / ar;
       const space = (fullHeight - target.height) / 2;
 
-      this.target[1] = target.x;
-      this.target[2] = target.y - space;
-      this.target[3] = target.x + target.width;
-      this.target[4] = target.y + fullHeight - space;
+      this.target[1] = Math.round(target.x);
+      this.target[2] = Math.round(target.y - space);
+      this.target[3] = Math.round(target.x + target.width);
+      this.target[4] = Math.round(target.y + fullHeight - space);
     }
 
     this.constrainBounds(this.target);
@@ -420,8 +421,8 @@ export class Runtime {
    * @param data
    */
   setViewport = (data: { x?: number; y?: number; width?: number; height?: number }) => {
-    const x = typeof data.x === 'undefined' ? this.target[1] : data.x;
-    const y = typeof data.y === 'undefined' ? this.target[2] : data.y;
+    const x = Math.round(typeof data.x === 'undefined' ? this.target[1] : data.x);
+    const y = Math.round(typeof data.y === 'undefined' ? this.target[2] : data.y);
 
     if (data.width) {
       this.target[3] = x + data.width;
@@ -449,8 +450,8 @@ export class Runtime {
 
     let isConstrained = false;
     const constrained = ref ? target : dna(target);
-    const width = target[3] - target[1];
-    const height = target[4] - target[2];
+    const width = Math.round(target[3] - target[1]);
+    const height = Math.round(target[4] - target[2]);
 
     if (minX > target[1]) {
       isConstrained = true;
@@ -550,10 +551,10 @@ export class Runtime {
     // const minY = addConstraintPaddingY ? yA : yB;
     // const maxY = addConstraintPaddingY ? yC : yD;
 
-    const maxX = Math.max(xB, xD);
-    const minX = Math.min(xB, xD);
-    const maxY = Math.max(yB, yD);
-    const minY = Math.min(yB, yD);
+    const maxX = Math.round(Math.max(xB, xD));
+    const minX = Math.round(Math.min(xB, xD));
+    const maxY = Math.round(Math.max(yB, yD));
+    const minY = Math.round(Math.min(yB, yD));
 
     return { minX, maxX, minY, maxY } as const;
   }

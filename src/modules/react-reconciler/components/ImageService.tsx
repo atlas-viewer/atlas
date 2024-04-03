@@ -2,6 +2,7 @@ import React, { ReactNode, useEffect, useState } from 'react';
 import { GetTile } from '../../iiif/shared';
 import { TileSet } from './TileSet';
 import { getTileFromImageService } from '../../iiif/get-tiles';
+import { CompositeResourceProps } from '../../../spacial-content';
 
 export const ImageService: React.FC<{
   id: string;
@@ -13,6 +14,9 @@ export const ImageService: React.FC<{
   scale?: number;
   children?: ReactNode;
   crop?: any;
+  enableSizes?: boolean;
+  enableThumbnail?: boolean;
+  renderOptions?: CompositeResourceProps;
 }> = (props) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
 
@@ -33,6 +37,9 @@ export const ImageService: React.FC<{
           height={props.crop?.height || props.height}
           rotation={props.rotation}
           crop={props.crop}
+          enableSizes={props.enableSizes}
+          enableThumbnail={props.enableThumbnail}
+          renderOptions={props.renderOptions}
         >
           {props.children}
         </TileSet>

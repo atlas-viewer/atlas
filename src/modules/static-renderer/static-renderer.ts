@@ -17,6 +17,9 @@ type StaticRendererOptions = {
   background: string;
 };
 
+// @todo make this configurable.
+const MIN = 1 + Number.MIN_VALUE;
+
 export class StaticRenderer implements Renderer {
   container: HTMLElement;
   width: number;
@@ -165,12 +168,10 @@ export class StaticRenderer implements Renderer {
         element.className =
           this.options.imageClass +
           ' ' +
-          this.stylesheet.addStylesheet(
-            `width:${(width + Number.MIN_VALUE).toFixed(2)}px;height:${(height + Number.MIN_VALUE).toFixed(2)}px;`
-          );
+          this.stylesheet.addStylesheet(`width:${(width + MIN).toFixed(2)}px;height:${(height + MIN).toFixed(2)}px;`);
       } else {
-        element.style.width = `${width + Number.MIN_VALUE}px`;
-        element.style.height = `${height + Number.MIN_VALUE}px`;
+        element.style.width = `${width + MIN}px`;
+        element.style.height = `${height + MIN}px`;
       }
       element.style.transform = `translate(${x}px, ${y}px)`;
     }
@@ -198,12 +199,10 @@ export class StaticRenderer implements Renderer {
         element.className =
           this.options.imageClass +
           ' ' +
-          this.stylesheet.addStylesheet(
-            `width:${(width + Number.MIN_VALUE).toFixed(2)}px;height:${(height + Number.MIN_VALUE).toFixed(2)}px;`
-          );
+          this.stylesheet.addStylesheet(`width:${(width + MIN).toFixed(2)}px;height:${(height + MIN).toFixed(2)}px;`);
       } else {
-        element.style.width = `${width + Number.MIN_VALUE}px`;
-        element.style.height = `${height + Number.MIN_VALUE}px`;
+        element.style.width = `${width + MIN}px`;
+        element.style.height = `${height + MIN}px`;
       }
       element.style.transform = `translate(${x}px, ${y}px)`;
     }
