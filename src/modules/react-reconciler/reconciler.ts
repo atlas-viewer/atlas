@@ -14,7 +14,7 @@ import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import { version } from 'react';
 import { Geometry } from '../../objects/geometry';
-import { DefaultEventPriority } from 'react-reconciler/constants';
+const DefaultEventPriority = 0b0000000000000000000000000010000;
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
