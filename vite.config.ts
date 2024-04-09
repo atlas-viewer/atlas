@@ -11,6 +11,7 @@ export default defineConfig({
         nested: resolve(__dirname, 'canvas.html'),
       },
     },
+    outDir: './storybook-static',
   },
   plugins: [
     storylitePlugin({
