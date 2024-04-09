@@ -1,6 +1,5 @@
 import React, { useEffect, useReducer } from 'react';
 import { ContainerDefinition, GenericObject } from '../traits/generic-object';
-import { useControls, button } from 'leva';
 import { getDefinitionByTag } from '../runtime/reconciler-config';
 import { addEventListener, isEvented } from '../traits/evented';
 import { hasStyles } from '../traits/has-styles';
@@ -94,23 +93,23 @@ export function ItemControls({ item }: { item: GenericObject }) {
     });
     return undefined;
   };
-  useControls(item.id, {
-    width: {
-      value: item.display.width,
-      onChange: (value) => update({ width: value }),
-    },
-    height: { value: item.display.height, onChange: (value) => update({ height: value }) },
-    'console log': button(() => console.log(item)),
-    position: {
-      value: { x: item.display.points[1], y: item.display.points[2] },
-      step: 1,
-      onChange: (value) =>
-        update({
-          x: value.x,
-          y: value.y,
-        }),
-    },
-  });
+  // useControls(item.id, {
+  //   width: {
+  //     value: item.display.width,
+  //     onChange: (value) => update({ width: value }),
+  //   },
+  //   height: { value: item.display.height, onChange: (value) => update({ height: value }) },
+  //   'console log': button(() => console.log(item)),
+  //   position: {
+  //     value: { x: item.display.points[1], y: item.display.points[2] },
+  //     step: 1,
+  //     onChange: (value) =>
+  //       update({
+  //         x: value.x,
+  //         y: value.y,
+  //       }),
+  //   },
+  // });
 
   return null;
 

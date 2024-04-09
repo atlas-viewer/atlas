@@ -210,10 +210,10 @@ describe('Container', function () {
     const object = genericObjectDefaults('node');
     const child1 = genericObjectDefaults('node');
 
-    expect(() => append(object as any, child1)).toThrowErrorMatchingInlineSnapshot(`"Can only insert into container"`);
-    expect(() => remove(object as any, child1)).toThrowErrorMatchingInlineSnapshot(`"Can only remove from container"`);
+    expect(() => append(object as any, child1)).toThrowErrorMatchingInlineSnapshot(`[Error: Can only insert into container]`);
+    expect(() => remove(object as any, child1)).toThrowErrorMatchingInlineSnapshot(`[Error: Can only remove from container]`);
     expect(() => insertBefore(object as any, child1, child1)).toThrowErrorMatchingInlineSnapshot(
-      `"Can only insert into container"`
+      `[Error: Can only insert into container]`
     );
   });
 

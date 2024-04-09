@@ -16,7 +16,10 @@ import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from './spacial-content';
 import { stripInfoJson } from '../utils';
 import { ImageService } from '@iiif/presentation-3';
-import { clamp } from 'leva/plugin';
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
 
 export class TiledImage extends BaseObject implements SpacialContent {
   readonly id: string;
@@ -28,7 +31,6 @@ export class TiledImage extends BaseObject implements SpacialContent {
   service?: ImageService;
   format = 'jpg';
   crop2?: Strand;
-  cropData?: Projection;
 
   tileUrl: string;
   constructor(data: {

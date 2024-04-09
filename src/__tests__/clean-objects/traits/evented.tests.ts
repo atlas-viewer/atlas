@@ -24,7 +24,7 @@ describe('evented trait', function () {
 
     expect(() => {
       addEventListener(exampleEvented, 'nope' as any, clickCb);
-    }).toThrowErrorMatchingInlineSnapshot(`"Unknown event nope"`);
+    }).toThrowErrorMatchingInlineSnapshot(`[Error: Unknown event nope]`);
   });
 
   test('removeEventListener', () => {
@@ -43,7 +43,7 @@ describe('evented trait', function () {
 
     expect(() => {
       removeEventListener(exampleEvented, 'nope' as any, clickCb);
-    }).toThrowErrorMatchingInlineSnapshot(`"Unknown event nope"`);
+    }).toThrowErrorMatchingInlineSnapshot(`[Error: Unknown event nope]`);
   });
 
   test('dispatchEvent', () => {
