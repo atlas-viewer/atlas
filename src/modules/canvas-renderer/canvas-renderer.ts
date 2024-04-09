@@ -11,7 +11,7 @@ import { World } from '../../world';
 import { Box } from '../../objects/box';
 import LRUCache from 'lru-cache';
 import { Geometry } from '../../objects/geometry';
-import { HookOptions } from 'src/standalone';
+import { HookOptions } from '../../standalone';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -89,7 +89,7 @@ export class CanvasRenderer implements Renderer {
   }> = [];
   currentTask: Promise<any> = Promise.resolve();
   tasksRunning = 0;
-  stats?: Stats;
+  stats?: any;
   averageJobTime = 64; // ms
   lastKnownScale = 1;
   visible: Array<SpacialContent> = [];
@@ -136,17 +136,17 @@ export class CanvasRenderer implements Renderer {
           },
         } as any);
 
-    if (process.env.NODE_ENV !== 'production' && this.options.debug) {
-      import('stats.js')
-        .then((s) => new s.default())
-        .then((stats) => {
-          this.stats = stats;
-          this.stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-          if (document && document.body) {
-            document.body.appendChild(this.stats.dom);
-          }
-        });
-    }
+    // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
+    //   import('stats.js')
+    //     .then((s) => new s.default())
+    //     .then((stats) => {
+    //       this.stats = stats;
+    //       this.stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+    //       if (document && document.body) {
+    //         document.body.appendChild(this.stats.dom);
+    //       }
+    //     });
+    // }
   }
 
   getCanvasDims() {

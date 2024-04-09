@@ -1,11 +1,22 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import storylitePlugin from '@storylite/vite-plugin';
+import { resolve } from 'node:path';
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        nested: resolve(__dirname, 'canvas.html'),
+      },
+    },
+  },
   plugins: [
-    react({
-      jsxRuntime: 'classic',
+    storylitePlugin({
+      stories: 'stories/**/*.stories.tsx', // relative to process.cwd()
     }),
+    react({}),
   ],
   test: {
     include: ['**/*.{test,tests,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],

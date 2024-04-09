@@ -1,31 +1,21 @@
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Document</title>
-</head>
-<body>
-
-<ul id="list">
-
-</ul>
-
-<script type="module">
-    const htmls = Object.keys(import.meta.glob('./pkg-tests/*.html'));
-    const $ul = document.getElementById('list');
-
-    for (const htmlLink of htmls) {
-      const $li = document.createElement('li');
-      const $a = document.createElement('a');
-      $a.href = htmlLink;
-      console.log(htmlLink);
-      $a.innerText = htmlLink.slice('./pkg-tests/'.length, htmlLink.length - '.html'.length);
-      $li.appendChild($a)
-      $ul.appendChild($li);
-    }
-</script>
-
-</body>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StoryLite - Design System (React)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@iiif/vault@0.9.19/dist/index.umd.js"></script>
+    <script>
+      // Render blocking JS to fix theme flickering:
+      const slParams = window.localStorage.getItem('storylite.parameters');
+      if (slParams) {
+        document.documentElement.dataset.theme = JSON.parse(slParams)?.theme?.value ?? 'auto';
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/.storylite/index.tsx"></script>
+  </body>
 </html>
