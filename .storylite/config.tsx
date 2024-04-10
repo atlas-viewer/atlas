@@ -2,7 +2,7 @@ import type { SLAddonPropsWithoutId, SLAppComponentProps } from '@storylite/stor
 
 const config: Partial<SLAppComponentProps> = {
   title: ' ⚡️ Atlas Viewer',
-  defaultStory: 'index-default',
+  defaultStory: 'annotations-selectiondemo',
   useIframeStyles: false,
   iframeProps: {
     style: {},
