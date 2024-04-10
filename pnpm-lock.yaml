@@ -23,9 +23,6 @@ dependencies:
   lru-cache:
     specifier: ^7.17.0
     version: 7.18.3
-  nanoid:
-    specifier: ^5.0.7
-    version: 5.0.7
   normalize-wheel:
     specifier: ^1.0.1
     version: 1.0.1
@@ -73,6 +70,9 @@ devDependencies:
   happy-dom:
     specifier: ^6.0.3
     version: 6.0.4
+  nanoid:
+    specifier: ^5.0.7
+    version: 5.0.7
   prettier:
     specifier: ^2.4.1
     version: 2.8.8
@@ -2187,6 +2187,7 @@ packages:
     resolution: {integrity: sha512-oLxFY2gd2IqnjcYyOXD8XGCftpGtZP2AbHbOkthDkvRywH5ayNtPVy9YlOPcHckXzbLTCHpkb7FB+yuxKV13pQ==}
     engines: {node: ^18 || >=20}
     hasBin: true
+    dev: true
 
   /node-fetch@2.7.0:
     resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
