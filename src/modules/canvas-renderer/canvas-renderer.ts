@@ -71,6 +71,11 @@ export class CanvasRenderer implements Renderer {
   imagesLoaded = 0;
 
   /**
+   * The ids of the completed images, use to dedupe
+   */
+  imageIdsLoaded: string[] = [];
+
+  /**
    * Can be used to avoid or stop work when frame is or isn't rendering outside of the main loop.
    */
   frameIsRendering = false;
@@ -694,7 +699,10 @@ export class CanvasRenderer implements Renderer {
                 distance: priority,
                 task: () => {
                   return new Promise<void>((innerResolve) => {
-                    this.imagesLoaded++;
+                    if (!this.imageIdsLoaded.includes(id)) {
+                      this.imagesLoaded++;
+                      this.imageIdsLoaded.push(id);
+                    }
                     imageBuffer.loaded.push(index);
                     if (imageBuffer.loaded.length === imageBuffer.indices.length) {
                       imageBuffer.loading = false;
