@@ -175,7 +175,7 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
     // After we've rendered, we'll set the pending and loading to correct values.
-    this.imagesPending = this.imagesPending - this.imagesLoaded;
+    this.imagesPending = Math.min(0, this.imagesPending - this.imagesLoaded);
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
