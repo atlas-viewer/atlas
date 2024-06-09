@@ -6,6 +6,10 @@ import { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
 import { toBox } from '../../utility/to-box';
 
+const INTENT_PAN = 'pan';
+const INTENT_SCROLL = 'scroll';
+const INTENT_GESTURE = 'gesture';
+
 export type PopmotionControllerConfig = {
   zoomOutFactor?: number;
   zoomInFactor?: number;
@@ -23,6 +27,11 @@ export type PopmotionControllerConfig = {
   devicePixelRatio?: number;
   enableWheel?: boolean;
   enableClickToZoom?: boolean;
+  debug?: boolean;
+  ignoreSingleFingerTouch?: boolean;
+  enablePanOnWait?: boolean;
+  panOnWaitDelay?: number;
+  parentElement?: HTMLElement | null;
   onPanInSketchMode?: () => void;
 };
 
@@ -47,16 +56,30 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   devicePixelRatio: 1,
   // Flags
   enableWheel: true,
-  enableClickToZoom: false,
+  enableClickToZoom: true,
+  ignoreSingleFingerTouch: true,
+  enablePanOnWait: true,
+  panOnWaitDelay: 40,
+  debug: true,
   onPanInSketchMode: () => {
     // no-op
   },
+  parentElement: null,
 };
 
 export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
   return {
     start: function (runtime) {
-      const { zoomWheelConstant, enableWheel, enableClickToZoom } = {
+      const {
+        zoomWheelConstant,
+        enableWheel,
+        enableClickToZoom,
+        ignoreSingleFingerTouch,
+        enablePanOnWait,
+        panOnWaitDelay,
+        debug,
+        parentElement,
+      } = {
         ...defaultConfig,
         ...config,
       };
@@ -165,9 +188,16 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
+      function resetState() {
+        currentDistance = 0;
+        intent = '';
+        setDebugBorder();
+        touchStartTime = 0;
+      }
+
       function onMouseUp() {
         runtime.world.constraintBounds();
-        currentDistance = 0;
+        resetState();
       }
 
       function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
@@ -187,6 +217,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onWindowMouseUp() {
+        resetState();
         if (state.isPressing) {
           if (runtime.mode === 'explore') {
             runtime.world.constraintBounds();
@@ -196,14 +227,23 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       let currentDistance = 0;
+      // the performance.now() time at 'touch-start'
+      let touchStartTime = 0;
+      // what the user's intent would be for the behavior
+      let intent = '';
       function onTouchStart(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
         if (runtime.mode === 'explore') {
           if (e.atlasTouches.length === 1) {
-            e.preventDefault();
+            touchStartTime = performance.now();
+            if (ignoreSingleFingerTouch == false) {
+              // this prevents the touch propagation to the window, and thus doesn't drag the page
+              e.preventDefault();
+            }
             state.pointerStart.x = e.atlasTouches[0].x;
             state.pointerStart.y = e.atlasTouches[0].y;
           }
           if (e.atlasTouches.length === 2) {
+            intent = INTENT_GESTURE;
             e.preventDefault();
             const x1 = e.atlasTouches[0].x;
             const x2 = e.atlasTouches[1].x;
@@ -224,12 +264,21 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
+      function setDebugBorder(border = '1px solid transparent') {
+        if (debug == false) {
+          return;
+        }
+        const el = document.querySelector('.atlas') as HTMLElement;
+        if (el) {
+          el.style.border = border;
+        }
+      }
+
       function onTouchMove(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
         let clientX = null;
         let clientY = null;
         let isMulti = false;
         let newDistance = 0;
-
         if (state.isPressing && e.touches.length === 2) {
           // We have 2?
           const x1 = e.touches[0].clientX;
@@ -244,8 +293,27 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             { x: e.touches[1].clientX, y: e.touches[1].clientY }
           );
           isMulti = true;
+          setDebugBorder('1px solid blue');
         }
+
         if (state.isPressing && e.touches.length === 1) {
+          if (enablePanOnWait) {
+            // if there is a delay between the touch-start and the 1st touch-move of < xms, then treat that as a PAN, 
+            // anything faster is a window scroll
+            if (performance.now() - touchStartTime < panOnWaitDelay && intent == '') {
+              intent = INTENT_SCROLL;
+              setDebugBorder('1px solid red');
+            }
+            if (intent == '') {
+              setDebugBorder('1px solid green');
+              intent = INTENT_PAN;
+            }
+          }
+          // if we are ignoring a single finger touch, or it's a window-scroll, just 'return'
+          if ((intent == '' && ignoreSingleFingerTouch == true) || intent == INTENT_SCROLL) {
+            // have CanvasPanel do nothing... scroll the page
+            return;
+          }
           const touch = e.touches[0];
           clientX = touch.clientX;
           clientY = touch.clientY;
@@ -276,6 +344,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             });
           }
           currentDistance = newDistance;
+        }
+
+        if (intent == INTENT_PAN) {
+          // if we're panning, prevent default
+          // this does the same thing as touchEvents: none; pointerEvents: none;
+          e.preventDefault();
         }
       }
 
@@ -327,11 +401,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       runtime.world.addEventListener('touchstart', onTouchStart);
       runtime.world.addEventListener('mousedown', onMouseDown);
 
-      window.addEventListener('touchend', onWindowMouseUp);
+      runtime.world.addEventListener('touchend', onWindowMouseUp);
       window.addEventListener('mouseup', onWindowMouseUp);
 
       window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('touchmove', onTouchMove as any);
+
+      if (parentElement) {
+        parentElement.addEventListener('touchmove', onTouchMove as any);
+      }
 
       if (enableClickToZoom) {
         runtime.world.activatedEvents.push('onClick');
@@ -378,12 +455,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.world.removeEventListener('touchstart', onTouchStart);
         runtime.world.removeEventListener('mousedown', onMouseDown);
 
-        window.removeEventListener('touchend', onWindowMouseUp);
+        runtime.world.removeEventListener('touchend', onWindowMouseUp);
         window.removeEventListener('mouseup', onWindowMouseUp);
 
         runtime.world.removeEventListener('mousemove', onMouseMove);
-        runtime.world.removeEventListener('touchmove', onMouseMove);
-
+        if (parentElement) {
+          parentElement.removeEventListener('touchmove', onMouseMove);
+        }
         if (enableClickToZoom) {
           runtime.world.removeEventListener('click', onClick);
         }

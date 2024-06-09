@@ -266,8 +266,11 @@ export const mobileSize = () => {
     <>
       <style>{`
         .my-atlas {
-          --atlas-background: #fff; 
           --atlas-focus: 5px solid green;
+        }
+        body {
+          /* this background helps with identifying whether the window or the image is moving */
+          background: repeating-linear-gradient( 45deg, #606dbc, #606dbc 10px,#465298 10px, #465298 20px);
         }
       `}</style>
       <div className="my-atlas" style={{ height: '100vh', width: '100%', background: 'red' }}>
@@ -278,6 +281,14 @@ export const mobileSize = () => {
         </AtlasAuto>
       </div>
       <style>{`body[style]{padding: 0 !important}`}</style>
+      <br />
+      <br />
+      <br />
+      <br />
+      <br />
+      <br />
+      <br />
+      <i>this allows testing of scrolling</i>
     </>
   );
 };
