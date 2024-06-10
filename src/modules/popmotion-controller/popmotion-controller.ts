@@ -191,7 +191,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       function resetState() {
         currentDistance = 0;
         intent = '';
-        setDebugBorder();
+        setDataAttribute();
         touchStartTime = 0;
       }
 
@@ -264,13 +264,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
-      function setDebugBorder(border = '1px solid transparent') {
-        if (debug == false) {
-          return;
-        }
-        const el = document.querySelector('.atlas') as HTMLElement;
-        if (el) {
-          el.style.border = border;
+      function setDataAttribute(_intent?: string) {
+        if (parentElement) {
+          parentElement.dataset.intent = _intent;
         }
       }
 
@@ -293,8 +289,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             { x: e.touches[1].clientX, y: e.touches[1].clientY }
           );
           isMulti = true;
-          setDebugBorder('1px solid blue');
         }
+        setDataAttribute(intent);
 
         if (state.isPressing && e.touches.length === 1) {
           if (enablePanOnWait) {
@@ -302,13 +298,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             // anything faster is a window scroll
             if (performance.now() - touchStartTime < panOnWaitDelay && intent == '') {
               intent = INTENT_SCROLL;
-              setDebugBorder('1px solid red');
             }
             if (intent == '') {
-              setDebugBorder('1px solid green');
               intent = INTENT_PAN;
             }
           }
+          setDataAttribute(intent);
           // if we are ignoring a single finger touch, or it's a window-scroll, just 'return'
           if ((intent == '' && ignoreSingleFingerTouch == true) || intent == INTENT_SCROLL) {
             // have CanvasPanel do nothing... scroll the page

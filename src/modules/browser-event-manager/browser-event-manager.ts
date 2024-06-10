@@ -70,6 +70,8 @@ export class BrowserEventManager {
         this.onPointerMove(this.pointerMoveEvent);
       }
     });
+
+    this.activateEvents();
   }
 
   updateBounds() {
@@ -79,6 +81,7 @@ export class BrowserEventManager {
 
   layoutSubscriber(type: string) {
     if (type === 'event-activation' && this.listening == false) {
+      console.log(`${this.listening} ${type}`);
       this.activateEvents();
     }
   }
@@ -90,6 +93,7 @@ export class BrowserEventManager {
   }
 
   activateEvents() {
+    console.log('activating events');
     this.listening = true;
     this.element.addEventListener('pointermove', this._realPointerMove);
     this.element.addEventListener('pointerup', this.onPointerUp);
