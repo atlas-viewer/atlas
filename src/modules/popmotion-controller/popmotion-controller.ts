@@ -188,10 +188,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       //   }
       // }
 
+      /**
+       * Resets the event state after the gesture of behavior has finished
+       */
       function resetState() {
         currentDistance = 0;
         intent = '';
         setDataAttribute();
+        setDataAttribute(undefined, 'notice');
         touchStartTime = 0;
       }
 
@@ -264,6 +268,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
+      /**
+       * Sets a data attribute to expose the current intent/behavior/note to the user
+       *
+       * @param value {string} - the data-attribute value
+       * @param dataAttribute {string} - the data-attribute name
+       */
       function setDataAttribute(value?: string, dataAttribute = 'intent') {
         if (parentElement) {
           parentElement.dataset[dataAttribute] = value;
