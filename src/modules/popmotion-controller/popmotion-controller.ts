@@ -27,9 +27,9 @@ export type PopmotionControllerConfig = {
   devicePixelRatio?: number;
   enableWheel?: boolean;
   enableClickToZoom?: boolean;
-  debug?: boolean;
   ignoreSingleFingerTouch?: boolean;
   enablePanOnWait?: boolean;
+  requireMetaKeyForWheelZoom?: boolean;
   panOnWaitDelay?: number;
   parentElement?: HTMLElement | null;
   onPanInSketchMode?: () => void;
@@ -57,10 +57,10 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   // Flags
   enableWheel: true,
   enableClickToZoom: true,
-  ignoreSingleFingerTouch: true,
-  enablePanOnWait: true,
+  ignoreSingleFingerTouch: false,
+  enablePanOnWait: false,
+  requireMetaKeyForWheelZoom: true,
   panOnWaitDelay: 40,
-  debug: false,
   onPanInSketchMode: () => {
     // no-op
   },
@@ -77,8 +77,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         ignoreSingleFingerTouch,
         enablePanOnWait,
         panOnWaitDelay,
-        debug,
         parentElement,
+        requireMetaKeyForWheelZoom,
       } = {
         ...defaultConfig,
         ...config,
@@ -115,78 +115,78 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       //  el.onpointercancel = pointerup_handler;
       //  el.onpointerout = pointerup_handler;
       //  el.onpointerleave = pointerup_handler;
-      const eventCache: PointerEvent[] = [];
-      const atlasPointsCache: any[] = [];
-      let prevDiff = -1;
-      function removeFromEventCache(e: PointerEvent) {
-        // Remove this event from the target's cache
-        for (let i = 0; i < eventCache.length; i++) {
-          if (eventCache[i].pointerId == e.pointerId) {
-            eventCache.splice(i, 1);
-            atlasPointsCache.splice(i, 1);
-            break;
-          }
-        }
-      }
+      // const eventCache: PointerEvent[] = [];
+      // const atlasPointsCache: any[] = [];
+      // let prevDiff = -1;
+      // function removeFromEventCache(e: PointerEvent) {
+      //   // Remove this event from the target's cache
+      //   for (let i = 0; i < eventCache.length; i++) {
+      //     if (eventCache[i].pointerId == e.pointerId) {
+      //       eventCache.splice(i, 1);
+      //       atlasPointsCache.splice(i, 1);
+      //       break;
+      //     }
+      //   }
+      // }
 
-      function pointerDown(e: PointerEvent) {
-        eventCache.push(e);
-        atlasPointsCache.push({ ...((e as any).atlas || {}) });
-      }
-      function pointerMove(e: PointerEvent) {
-        for (let i = 0; i < eventCache.length; i++) {
-          if (e.pointerId == eventCache[i].pointerId) {
-            eventCache[i] = e;
-            atlasPointsCache[i] = { ...((e as any).atlas || {}) };
-            break;
-          }
-        }
-        if (eventCache.length == 2) {
-          const curDiff = Math.abs(eventCache[0].clientX - eventCache[1].clientX);
+      // function pointerDown(e: PointerEvent) {
+      //   eventCache.push(e);
+      //   atlasPointsCache.push({ ...((e as any).atlas || {}) });
+      // }
+      // function pointerMove(e: PointerEvent) {
+      //   for (let i = 0; i < eventCache.length; i++) {
+      //     if (e.pointerId == eventCache[i].pointerId) {
+      //       eventCache[i] = e;
+      //       atlasPointsCache[i] = { ...((e as any).atlas || {}) };
+      //       break;
+      //     }
+      //   }
+      //   if (eventCache.length == 2) {
+      //     const curDiff = Math.abs(eventCache[0].clientX - eventCache[1].clientX);
 
-          // - - 2 - - 6- - - - 10
-          const xDiff =
-            atlasPointsCache[0].x > atlasPointsCache[1].x
-              ? atlasPointsCache[0].x - atlasPointsCache[1].x
-              : atlasPointsCache[1].x - atlasPointsCache[0].x;
-          const yDiff =
-            atlasPointsCache[0].y > atlasPointsCache[1].y
-              ? atlasPointsCache[0].y - atlasPointsCache[1].y
-              : atlasPointsCache[1].y - atlasPointsCache[0].y;
+      //     // - - 2 - - 6- - - - 10
+      //     const xDiff =
+      //       atlasPointsCache[0].x > atlasPointsCache[1].x
+      //         ? atlasPointsCache[0].x - atlasPointsCache[1].x
+      //         : atlasPointsCache[1].x - atlasPointsCache[0].x;
+      //     const yDiff =
+      //       atlasPointsCache[0].y > atlasPointsCache[1].y
+      //         ? atlasPointsCache[0].y - atlasPointsCache[1].y
+      //         : atlasPointsCache[1].y - atlasPointsCache[0].y;
 
-          if (prevDiff > 0) {
-            if (curDiff > prevDiff) {
-              runtime.world.zoomTo(
-                // Generating a zoom from the wheel delta
-                0.95,
-                { x: xDiff / 2, y: yDiff / 2 },
-                true
-              );
-            }
-            if (curDiff < prevDiff) {
-              runtime.world.zoomTo(
-                // Generating a zoom from the wheel delta
-                1.05,
-                { x: xDiff / 2, y: yDiff / 2 },
-                true
-              );
-            }
-          }
+      //     if (prevDiff > 0) {
+      //       if (curDiff > prevDiff) {
+      //         runtime.world.zoomTo(
+      //           // Generating a zoom from the wheel delta
+      //           0.95,
+      //           { x: xDiff / 2, y: yDiff / 2 },
+      //           true
+      //         );
+      //       }
+      //       if (curDiff < prevDiff) {
+      //         runtime.world.zoomTo(
+      //           // Generating a zoom from the wheel delta
+      //           1.05,
+      //           { x: xDiff / 2, y: yDiff / 2 },
+      //           true
+      //         );
+      //       }
+      //     }
 
-          // Cache the distance for the next move event
-          prevDiff = curDiff;
-        }
-      }
+      //     // Cache the distance for the next move event
+      //     prevDiff = curDiff;
+      //   }
+      // }
 
-      function pointerUp(e: PointerEvent) {
-        // Remove this pointer from the cache and reset the target's
-        // background and border
-        removeFromEventCache(e);
-        // If the number of pointers down is less than two then reset diff tracker
-        if (eventCache.length < 2) {
-          prevDiff = -1;
-        }
-      }
+      // function pointerUp(e: PointerEvent) {
+      //   // Remove this pointer from the cache and reset the target's
+      //   // background and border
+      //   removeFromEventCache(e);
+      //   // If the number of pointers down is less than two then reset diff tracker
+      //   if (eventCache.length < 2) {
+      //     prevDiff = -1;
+      //   }
+      // }
 
       function resetState() {
         currentDistance = 0;
@@ -264,9 +264,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
-      function setDataAttribute(_intent?: string) {
+      function setDataAttribute(value?: string, dataAttribute = 'intent') {
         if (parentElement) {
-          parentElement.dataset.intent = _intent;
+          parentElement.dataset[dataAttribute] = value;
         }
       }
 
@@ -307,6 +307,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           // if we are ignoring a single finger touch, or it's a window-scroll, just 'return'
           if ((intent == '' && ignoreSingleFingerTouch == true) || intent == INTENT_SCROLL) {
             // have CanvasPanel do nothing... scroll the page
+            setDataAttribute('require-two-finger', 'notice');
             return;
           }
           const touch = e.touches[0];
@@ -379,6 +380,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       function onWheel(e: WheelEvent & { atlas: { x: number; y: number } }) {
         const normalized = normalizeWheel(e);
         const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;
+        if (requireMetaKeyForWheelZoom && e.metaKey == false) {
+          setDataAttribute('meta-required', 'notice');
+          return;
+        }
         runtime.world.zoomTo(
           // Generating a zoom from the wheel delta
           zoomFactor,
