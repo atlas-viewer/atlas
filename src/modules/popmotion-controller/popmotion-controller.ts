@@ -460,7 +460,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
         runtime.world.removeEventListener('mousemove', onMouseMove);
         if (parentElement) {
-          parentElement.removeEventListener('touchmove', onMouseMove);
+          (parentElement as any).removeEventListener('touchmove', onMouseMove);
         }
         if (enableClickToZoom) {
           runtime.world.removeEventListener('click', onClick);
