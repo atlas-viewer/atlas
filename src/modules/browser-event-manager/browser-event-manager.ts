@@ -71,6 +71,7 @@ export class BrowserEventManager {
       }
     });
 
+    // this is necessary for CavnasPanel to initialize the event listener
     this.activateEvents();
   }
 
@@ -81,7 +82,6 @@ export class BrowserEventManager {
 
   layoutSubscriber(type: string) {
     if (type === 'event-activation' && this.listening == false) {
-      console.log(`${this.listening} ${type}`);
       this.activateEvents();
     }
   }
@@ -93,7 +93,6 @@ export class BrowserEventManager {
   }
 
   activateEvents() {
-    console.log('activating events');
     this.listening = true;
     this.element.addEventListener('pointermove', this._realPointerMove);
     this.element.addEventListener('pointerup', this.onPointerUp);

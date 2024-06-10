@@ -271,6 +271,10 @@ export const mobileSize = () => {
         body {
           /* this background helps with identifying whether the window or the image is moving */
           background: repeating-linear-gradient( 45deg, #606dbc, #606dbc 10px,#465298 10px, #465298 20px);
+          [data-intent] { border: 1px solid transparent; }
+          [data-intent='pan'] { border: 1px solid red; }
+          [data-intent='gesture'] { border: 1px solid blue; }
+          [data-intent='scroll'] { border: 1px solid green; }
         }
       `}</style>
       <div className="my-atlas" style={{ height: '100vh', width: '100%', background: 'red' }}>

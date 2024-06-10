@@ -60,7 +60,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   ignoreSingleFingerTouch: true,
   enablePanOnWait: true,
   panOnWaitDelay: 40,
-  debug: true,
+  debug: false,
   onPanInSketchMode: () => {
     // no-op
   },
@@ -392,7 +392,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       // runtime.world.addEventListener('pointermove', pointerMove);
 
       runtime.world.addEventListener('mouseup', onMouseUp);
-      runtime.world.addEventListener('touchend', onMouseUp);
+      window.addEventListener('touchend', onMouseUp);
       runtime.world.addEventListener('touchstart', onTouchStart);
       runtime.world.addEventListener('mousedown', onMouseDown);
 
@@ -402,6 +402,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       window.addEventListener('mousemove', onMouseMove);
 
       if (parentElement) {
+        // if this is bound to the window, then the entire interaction model goes haywire
+        // unclear 100% why
         parentElement.addEventListener('touchmove', onTouchMove as any);
       }
 
@@ -450,7 +452,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.world.removeEventListener('touchstart', onTouchStart);
         runtime.world.removeEventListener('mousedown', onMouseDown);
 
-        runtime.world.removeEventListener('touchend', onWindowMouseUp);
+        window.removeEventListener('touchend', onWindowMouseUp);
         window.removeEventListener('mouseup', onWindowMouseUp);
 
         runtime.world.removeEventListener('mousemove', onMouseMove);
