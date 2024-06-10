@@ -392,11 +392,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       // runtime.world.addEventListener('pointermove', pointerMove);
 
       runtime.world.addEventListener('mouseup', onMouseUp);
-      window.addEventListener('touchend', onMouseUp);
+      runtime.world.addEventListener('touchend', onMouseUp);
       runtime.world.addEventListener('touchstart', onTouchStart);
       runtime.world.addEventListener('mousedown', onMouseDown);
 
-      runtime.world.addEventListener('touchend', onWindowMouseUp);
+      window.addEventListener('touchend', onWindowMouseUp);
       window.addEventListener('mouseup', onWindowMouseUp);
 
       window.addEventListener('mousemove', onMouseMove);
