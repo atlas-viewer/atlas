@@ -100,93 +100,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         'onMouseMove',
         'onTouchStart',
         'onTouchEnd',
-        'onTouchMove',
-        'onPointerUp',
-        'onPointerDown',
-        'onPointerMove'
+        'onTouchMove'
       );
-
-      //  el.onpointerdown = pointerdown_handler;
-      //  el.onpointermove = pointermove_handler;
-      //
-      //  // Use same handler for pointer{up,cancel,out,leave} events since
-      //  // the semantics for these events - in this app - are the same.
-      //  el.onpointerup = pointerup_handler;
-      //  el.onpointercancel = pointerup_handler;
-      //  el.onpointerout = pointerup_handler;
-      //  el.onpointerleave = pointerup_handler;
-      // const eventCache: PointerEvent[] = [];
-      // const atlasPointsCache: any[] = [];
-      // let prevDiff = -1;
-      // function removeFromEventCache(e: PointerEvent) {
-      //   // Remove this event from the target's cache
-      //   for (let i = 0; i < eventCache.length; i++) {
-      //     if (eventCache[i].pointerId == e.pointerId) {
-      //       eventCache.splice(i, 1);
-      //       atlasPointsCache.splice(i, 1);
-      //       break;
-      //     }
-      //   }
-      // }
-
-      // function pointerDown(e: PointerEvent) {
-      //   eventCache.push(e);
-      //   atlasPointsCache.push({ ...((e as any).atlas || {}) });
-      // }
-      // function pointerMove(e: PointerEvent) {
-      //   for (let i = 0; i < eventCache.length; i++) {
-      //     if (e.pointerId == eventCache[i].pointerId) {
-      //       eventCache[i] = e;
-      //       atlasPointsCache[i] = { ...((e as any).atlas || {}) };
-      //       break;
-      //     }
-      //   }
-      //   if (eventCache.length == 2) {
-      //     const curDiff = Math.abs(eventCache[0].clientX - eventCache[1].clientX);
-
-      //     // - - 2 - - 6- - - - 10
-      //     const xDiff =
-      //       atlasPointsCache[0].x > atlasPointsCache[1].x
-      //         ? atlasPointsCache[0].x - atlasPointsCache[1].x
-      //         : atlasPointsCache[1].x - atlasPointsCache[0].x;
-      //     const yDiff =
-      //       atlasPointsCache[0].y > atlasPointsCache[1].y
-      //         ? atlasPointsCache[0].y - atlasPointsCache[1].y
-      //         : atlasPointsCache[1].y - atlasPointsCache[0].y;
-
-      //     if (prevDiff > 0) {
-      //       if (curDiff > prevDiff) {
-      //         runtime.world.zoomTo(
-      //           // Generating a zoom from the wheel delta
-      //           0.95,
-      //           { x: xDiff / 2, y: yDiff / 2 },
-      //           true
-      //         );
-      //       }
-      //       if (curDiff < prevDiff) {
-      //         runtime.world.zoomTo(
-      //           // Generating a zoom from the wheel delta
-      //           1.05,
-      //           { x: xDiff / 2, y: yDiff / 2 },
-      //           true
-      //         );
-      //       }
-      //     }
-
-      //     // Cache the distance for the next move event
-      //     prevDiff = curDiff;
-      //   }
-      // }
-
-      // function pointerUp(e: PointerEvent) {
-      //   // Remove this pointer from the cache and reset the target's
-      //   // background and border
-      //   removeFromEventCache(e);
-      //   // If the number of pointers down is less than two then reset diff tracker
-      //   if (eventCache.length < 2) {
-      //     prevDiff = -1;
-      //   }
-      // }
 
       /**
        * Resets the event state after the gesture of behavior has finished
@@ -390,10 +305,6 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       function onWheel(e: WheelEvent & { atlas: { x: number; y: number } }) {
         const normalized = normalizeWheel(e);
         const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;
-        if (requireMetaKeyForWheelZoom && e.metaKey == false) {
-          setDataAttribute('meta-required', 'notice');
-          return;
-        }
         runtime.world.zoomTo(
           // Generating a zoom from the wheel delta
           zoomFactor,
@@ -402,9 +313,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         );
       }
 
-      // runtime.world.addEventListener('pointerup', pointerUp);
-      // runtime.world.addEventListener('pointerdown', pointerDown);
-      // runtime.world.addEventListener('pointermove', pointerMove);
+      function onWheelGuard(e: WheelEvent) {
+        if (requireMetaKeyForWheelZoom && e.metaKey == false) {
+          setDataAttribute('meta-required', 'notice');
+          e.stopPropagation();
+          return false;
+        }
+        return true;
+      }
 
       runtime.world.addEventListener('mouseup', onMouseUp);
       runtime.world.addEventListener('touchend', onMouseUp);
@@ -429,6 +345,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       if (enableWheel) {
         runtime.world.activatedEvents.push('onWheel');
+        if (requireMetaKeyForWheelZoom) {
+          // add an event listener above the world to guard the wheel event if the 'meta' key is pressed
+          parentElement?.addEventListener('wheel', onWheelGuard as any, { passive: true, capture: true });
+        }
         runtime.world.addEventListener('wheel', onWheel);
       }
 
@@ -473,6 +393,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.world.removeEventListener('mousemove', onMouseMove);
         if (parentElement) {
           (parentElement as any).removeEventListener('touchmove', onMouseMove);
+          (parentElement as any).removeEventListener('wheel', onWheelGuard, { passive: true, capture: true });
         }
         if (enableClickToZoom) {
           runtime.world.removeEventListener('click', onClick);
