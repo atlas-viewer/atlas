@@ -519,7 +519,7 @@ export const Atlas: React.FC<
         <style>{`.atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }`}</style>
       ) : (
         <style>{`
-        .atlas { position: relative; user-select: none; display: flex; background: var(--atlas-background, #000); z-index: var(--atlas-z-index, 10); touch-action: none; }
+        .atlas { position: relative; display: flex; background: var(--atlas-background, #000); z-index: var(--atlas-z-index, 10); -webkit-touch-callout: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
         .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }

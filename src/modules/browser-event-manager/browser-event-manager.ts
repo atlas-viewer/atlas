@@ -15,7 +15,7 @@ export class BrowserEventManager {
   activatedEvents: string[] = [];
   eventHandlers: [string, any][] = [];
   bounds: DOMRect;
-
+  listening: boolean;
   static eventPool = {
     atlas: { x: 0, y: 0 },
   };
@@ -50,6 +50,7 @@ export class BrowserEventManager {
     this.runtime = runtime;
     this.unsubscribe = runtime.world.addLayoutSubscriber(this.layoutSubscriber.bind(this));
     this.bounds = element.getBoundingClientRect();
+    this.listening = false;
     this.options = {
       simulationRate: 0,
       ...(options || {}),
@@ -70,7 +71,7 @@ export class BrowserEventManager {
       }
     });
 
-    // @todo temp.
+    // this is necessary for CavnasPanel to initialize the event listener
     this.activateEvents();
   }
 
@@ -80,7 +81,7 @@ export class BrowserEventManager {
   }
 
   layoutSubscriber(type: string) {
-    if (type === 'event-activation') {
+    if (type === 'event-activation' && this.listening == false) {
       this.activateEvents();
     }
   }
@@ -92,6 +93,7 @@ export class BrowserEventManager {
   }
 
   activateEvents() {
+    this.listening = true;
     this.element.addEventListener('pointermove', this._realPointerMove);
     this.element.addEventListener('pointerup', this.onPointerUp);
     this.element.addEventListener('pointerdown', this.onPointerDown);
@@ -292,6 +294,25 @@ export class BrowserEventManager {
   }
 
   stop() {
+    this.listening = false;
+    this.element.removeEventListener('pointermove', this._realPointerMove);
+    this.element.removeEventListener('pointerup', this.onPointerUp);
+    this.element.removeEventListener('pointerdown', this.onPointerDown);
+
+    // Normal events.
+    this.element.removeEventListener('mousedown', this.onPointerEvent);
+    this.element.removeEventListener('mouseup', this.onPointerEvent);
+    this.element.removeEventListener('pointercancel', this.onPointerEvent);
+
+    // Edge-cases
+    this.element.removeEventListener('wheel', this.onWheelEvent);
+
+    // Touch events.
+    this.element.removeEventListener('touchstart', this.onTouchEvent);
+    this.element.removeEventListener('touchcancel', this.onTouchEvent);
+    this.element.removeEventListener('touchend', this.onTouchEvent);
+    this.element.removeEventListener('touchmove', this.onTouchEvent);
+
     // Unbind all events.
     this.unsubscribe();
     for (const [event, handler] of this.eventHandlers) {
