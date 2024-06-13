@@ -7,6 +7,7 @@ export * from './objects/text';
 export * from './renderer/renderer';
 export * from './renderer/runtime';
 export * from './types';
+export * from './objects/geometry';
 export * from './modules/canvas-renderer/canvas-renderer';
 export * from './modules/composite-renderer/composite-renderer';
 export * from './modules/debug-renderer/debug-renderer';
