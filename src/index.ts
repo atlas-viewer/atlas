@@ -3,6 +3,7 @@ export * from './spacial-content/index';
 export * from './world';
 export * from './world-objects/index';
 export * from './objects/box';
+export * from './objects/geometry';
 export * from './objects/text';
 export * from './renderer/renderer';
 export * from './renderer/runtime';
