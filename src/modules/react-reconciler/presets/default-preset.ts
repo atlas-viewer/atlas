@@ -50,6 +50,7 @@ export function defaultPreset({
         minZoomFactor: 0.5,
         maxZoomFactor: 3,
         enableClickToZoom: false,
+        parentElement: canvasElement,
         ...(controllerConfig || {}),
       })
     : undefined;

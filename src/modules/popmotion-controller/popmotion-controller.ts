@@ -6,6 +6,10 @@ import { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
 import { toBox } from '../../utility/to-box';
 
+const INTENT_PAN = 'pan';
+const INTENT_SCROLL = 'scroll';
+const INTENT_GESTURE = 'gesture';
+
 export type PopmotionControllerConfig = {
   zoomOutFactor?: number;
   zoomInFactor?: number;
@@ -23,6 +27,11 @@ export type PopmotionControllerConfig = {
   devicePixelRatio?: number;
   enableWheel?: boolean;
   enableClickToZoom?: boolean;
+  ignoreSingleFingerTouch?: boolean;
+  enablePanOnWait?: boolean;
+  requireMetaKeyForWheelZoom?: boolean;
+  panOnWaitDelay?: number;
+  parentElement?: HTMLElement | null;
   onPanInSketchMode?: () => void;
 };
 
@@ -47,16 +56,30 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   devicePixelRatio: 1,
   // Flags
   enableWheel: true,
-  enableClickToZoom: false,
+  enableClickToZoom: true,
+  ignoreSingleFingerTouch: false,
+  enablePanOnWait: false,
+  requireMetaKeyForWheelZoom: false,
+  panOnWaitDelay: 40,
   onPanInSketchMode: () => {
     // no-op
   },
+  parentElement: null,
 };
 
 export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
   return {
     start: function (runtime) {
-      const { zoomWheelConstant, enableWheel, enableClickToZoom } = {
+      const {
+        zoomWheelConstant,
+        enableWheel,
+        enableClickToZoom,
+        ignoreSingleFingerTouch,
+        enablePanOnWait,
+        panOnWaitDelay,
+        parentElement,
+        requireMetaKeyForWheelZoom,
+      } = {
         ...defaultConfig,
         ...config,
       };
@@ -77,97 +100,23 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         'onMouseMove',
         'onTouchStart',
         'onTouchEnd',
-        'onTouchMove',
-        'onPointerUp',
-        'onPointerDown',
-        'onPointerMove'
+        'onTouchMove'
       );
 
-      //  el.onpointerdown = pointerdown_handler;
-      //  el.onpointermove = pointermove_handler;
-      //
-      //  // Use same handler for pointer{up,cancel,out,leave} events since
-      //  // the semantics for these events - in this app - are the same.
-      //  el.onpointerup = pointerup_handler;
-      //  el.onpointercancel = pointerup_handler;
-      //  el.onpointerout = pointerup_handler;
-      //  el.onpointerleave = pointerup_handler;
-      const eventCache: PointerEvent[] = [];
-      const atlasPointsCache: any[] = [];
-      let prevDiff = -1;
-      function removeFromEventCache(e: PointerEvent) {
-        // Remove this event from the target's cache
-        for (let i = 0; i < eventCache.length; i++) {
-          if (eventCache[i].pointerId == e.pointerId) {
-            eventCache.splice(i, 1);
-            atlasPointsCache.splice(i, 1);
-            break;
-          }
-        }
-      }
-
-      function pointerDown(e: PointerEvent) {
-        eventCache.push(e);
-        atlasPointsCache.push({ ...((e as any).atlas || {}) });
-      }
-      function pointerMove(e: PointerEvent) {
-        for (let i = 0; i < eventCache.length; i++) {
-          if (e.pointerId == eventCache[i].pointerId) {
-            eventCache[i] = e;
-            atlasPointsCache[i] = { ...((e as any).atlas || {}) };
-            break;
-          }
-        }
-        if (eventCache.length == 2) {
-          const curDiff = Math.abs(eventCache[0].clientX - eventCache[1].clientX);
-
-          // - - 2 - - 6- - - - 10
-          const xDiff =
-            atlasPointsCache[0].x > atlasPointsCache[1].x
-              ? atlasPointsCache[0].x - atlasPointsCache[1].x
-              : atlasPointsCache[1].x - atlasPointsCache[0].x;
-          const yDiff =
-            atlasPointsCache[0].y > atlasPointsCache[1].y
-              ? atlasPointsCache[0].y - atlasPointsCache[1].y
-              : atlasPointsCache[1].y - atlasPointsCache[0].y;
-
-          if (prevDiff > 0) {
-            if (curDiff > prevDiff) {
-              runtime.world.zoomTo(
-                // Generating a zoom from the wheel delta
-                0.95,
-                { x: xDiff / 2, y: yDiff / 2 },
-                true
-              );
-            }
-            if (curDiff < prevDiff) {
-              runtime.world.zoomTo(
-                // Generating a zoom from the wheel delta
-                1.05,
-                { x: xDiff / 2, y: yDiff / 2 },
-                true
-              );
-            }
-          }
-
-          // Cache the distance for the next move event
-          prevDiff = curDiff;
-        }
-      }
-
-      function pointerUp(e: PointerEvent) {
-        // Remove this pointer from the cache and reset the target's
-        // background and border
-        removeFromEventCache(e);
-        // If the number of pointers down is less than two then reset diff tracker
-        if (eventCache.length < 2) {
-          prevDiff = -1;
-        }
+      /**
+       * Resets the event state after the gesture of behavior has finished
+       */
+      function resetState() {
+        currentDistance = 0;
+        intent = '';
+        setDataAttribute();
+        setDataAttribute(undefined, 'notice');
+        touchStartTime = 0;
       }
 
       function onMouseUp() {
         runtime.world.constraintBounds();
-        currentDistance = 0;
+        resetState();
       }
 
       function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
@@ -187,6 +136,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onWindowMouseUp() {
+        resetState();
         if (state.isPressing) {
           if (runtime.mode === 'explore') {
             runtime.world.constraintBounds();
@@ -196,14 +146,23 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       let currentDistance = 0;
+      // the performance.now() time at 'touch-start'
+      let touchStartTime = 0;
+      // what the user's intent would be for the behavior
+      let intent = '';
       function onTouchStart(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
         if (runtime.mode === 'explore') {
           if (e.atlasTouches.length === 1) {
-            e.preventDefault();
+            touchStartTime = performance.now();
+            if (ignoreSingleFingerTouch == false) {
+              // this prevents the touch propagation to the window, and thus doesn't drag the page
+              e.preventDefault();
+            }
             state.pointerStart.x = e.atlasTouches[0].x;
             state.pointerStart.y = e.atlasTouches[0].y;
           }
           if (e.atlasTouches.length === 2) {
+            intent = INTENT_GESTURE;
             e.preventDefault();
             const x1 = e.atlasTouches[0].x;
             const x2 = e.atlasTouches[1].x;
@@ -224,12 +183,23 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
+      /**
+       * Sets a data attribute to expose the current intent/behavior/note to the user
+       *
+       * @param value {string} - the data-attribute value
+       * @param dataAttribute {string} - the data-attribute name
+       */
+      function setDataAttribute(value?: string, dataAttribute = 'intent') {
+        if (parentElement) {
+          parentElement.dataset[dataAttribute] = value;
+        }
+      }
+
       function onTouchMove(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
         let clientX = null;
         let clientY = null;
         let isMulti = false;
         let newDistance = 0;
-
         if (state.isPressing && e.touches.length === 2) {
           // We have 2?
           const x1 = e.touches[0].clientX;
@@ -245,7 +215,26 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           );
           isMulti = true;
         }
+        setDataAttribute(intent);
+
         if (state.isPressing && e.touches.length === 1) {
+          if (enablePanOnWait) {
+            // if there is a delay between the touch-start and the 1st touch-move of < xms, then treat that as a PAN, 
+            // anything faster is a window scroll
+            if (performance.now() - touchStartTime < panOnWaitDelay && intent == '') {
+              intent = INTENT_SCROLL;
+            }
+            if (intent == '') {
+              intent = INTENT_PAN;
+            }
+          }
+          setDataAttribute(intent);
+          // if we are ignoring a single finger touch, or it's a window-scroll, just 'return'
+          if ((intent == '' && ignoreSingleFingerTouch == true) || intent == INTENT_SCROLL) {
+            // have CanvasPanel do nothing... scroll the page
+            setDataAttribute('require-two-finger', 'notice');
+            return;
+          }
           const touch = e.touches[0];
           clientX = touch.clientX;
           clientY = touch.clientY;
@@ -276,6 +265,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             });
           }
           currentDistance = newDistance;
+        }
+
+        if (intent == INTENT_PAN) {
+          // if we're panning, prevent default
+          // this does the same thing as touchEvents: none; pointerEvents: none;
+          e.preventDefault();
         }
       }
 
@@ -318,9 +313,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         );
       }
 
-      // runtime.world.addEventListener('pointerup', pointerUp);
-      // runtime.world.addEventListener('pointerdown', pointerDown);
-      // runtime.world.addEventListener('pointermove', pointerMove);
+      function onWheelGuard(e: WheelEvent) {
+        if (requireMetaKeyForWheelZoom && e.metaKey == false) {
+          setDataAttribute('meta-required', 'notice');
+          e.stopPropagation();
+          return false;
+        }
+        return true;
+      }
 
       runtime.world.addEventListener('mouseup', onMouseUp);
       runtime.world.addEventListener('touchend', onMouseUp);
@@ -331,7 +331,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       window.addEventListener('mouseup', onWindowMouseUp);
 
       window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('touchmove', onTouchMove as any);
+
+      if (parentElement) {
+        // if this is bound to the window, then the entire interaction model goes haywire
+        // unclear 100% why
+        parentElement.addEventListener('touchmove', onTouchMove as any);
+      }
 
       if (enableClickToZoom) {
         runtime.world.activatedEvents.push('onClick');
@@ -340,6 +345,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       if (enableWheel) {
         runtime.world.activatedEvents.push('onWheel');
+        if (requireMetaKeyForWheelZoom) {
+          // add an event listener above the world to guard the wheel event if the 'meta' key is pressed
+          parentElement?.addEventListener('wheel', onWheelGuard as any, { passive: true, capture: true });
+        }
         runtime.world.addEventListener('wheel', onWheel);
       }
 
@@ -382,8 +391,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         window.removeEventListener('mouseup', onWindowMouseUp);
 
         runtime.world.removeEventListener('mousemove', onMouseMove);
-        runtime.world.removeEventListener('touchmove', onMouseMove);
-
+        if (parentElement) {
+          (parentElement as any).removeEventListener('touchmove', onMouseMove);
+          (parentElement as any).removeEventListener('wheel', onWheelGuard, { passive: true, capture: true });
+        }
         if (enableClickToZoom) {
           runtime.world.removeEventListener('click', onClick);
         }

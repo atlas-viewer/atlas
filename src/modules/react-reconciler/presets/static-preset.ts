@@ -34,6 +34,7 @@ export function staticPreset({
         minZoomFactor: 0.5,
         maxZoomFactor: 3,
         enableClickToZoom: false,
+        parentElement: containerElement,
         ...(controllerConfig || {}),
       })
     : undefined;
