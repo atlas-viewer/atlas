@@ -59,7 +59,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   enableClickToZoom: true,
   ignoreSingleFingerTouch: false,
   enablePanOnWait: false,
-  requireMetaKeyForWheelZoom: true,
+  requireMetaKeyForWheelZoom: false,
   panOnWaitDelay: 40,
   onPanInSketchMode: () => {
     // no-op
