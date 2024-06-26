@@ -20,7 +20,14 @@ const staticTiles = [
   //   id: 'https://dlcs.io/iiif-img/4/21/quilt/info.json',
   //   width: 13038,
   //   height: 12916,
-  // },
+  {
+    profile: 'http://library.stanford.edu/iiif/image-api/1.1/compliance.html#level2',
+    width: 8508,
+    height: 6205,
+    '@context': 'http://library.stanford.edu/iiif/image-api/1.1/context.json',
+    '@id': 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
+    id: 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
+  },
   {
     id: 'https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
     width: 5233,
@@ -89,7 +96,7 @@ export const SelectionDemo = () => {
       y: 900,
     },
   ]);
-  const [tileIndex, setTileIndex] = useState(1);
+  const [tileIndex, setTileIndex] = useState(0);
   const [isWebGL, setIsWebGL] = useState(false);
   const [size, setSize] = useState<any>({ width: undefined, height: undefined, idx: 0 });
   const [rotation, setRotation] = useState(0);
@@ -307,7 +314,7 @@ export const flexbox = () => {
           padding: 1em;
           display: flex;
           flex-direction: column;
-          
+
           --atlas-background: #f0f0f0;
           --atlas-focus: 5px solid green;
           --atlas-container-flex: 1 1 0px;
@@ -328,7 +335,7 @@ export const flexbox = () => {
 export const objectFitCover = () => {
   const options = [false, true, 'start', 'end'];
   const [i, setI] = useState(0);
-  const [cover, setCover] = useState<typeof options[number]>(true);
+  const [cover, setCover] = useState<(typeof options)[number]>(true);
   return (
     <>
       <style>{`
@@ -341,7 +348,7 @@ export const objectFitCover = () => {
           flex-direction: column;
           min-height: 0;
           max-height: 100%;
-          
+
           --atlas-background: #f0f0f0;
           --atlas-focus: 5px solid green;
           --atlas-container-flex: 1 1 0px;
@@ -409,7 +416,7 @@ export const viewerFilters = () => {
           padding: 1em;
           display: flex;
           flex-direction: column;
-          
+
           --atlas-background: #f0f0f0;
           --atlas-focus: 5px solid green;
           --atlas-container-flex: 1 1 0px;

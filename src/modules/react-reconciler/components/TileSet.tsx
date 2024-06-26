@@ -17,7 +17,6 @@ export const TileSet: React.FC<{
   renderOptions?: CompositeResourceProps;
 }> = (props) => {
   const scale = props.width / (props.crop?.width || props.tiles.width);
-  const tiles = props.tiles.imageService.tiles || [];
   const sizes = props.tiles.imageService.sizes || [];
   const enableThumbnail = props.enableThumbnail;
   const enableSizes = props.enableSizes;
@@ -28,6 +27,30 @@ export const TileSet: React.FC<{
     }
     return id;
   }, [props.tiles.imageService.id]);
+
+  const tiles = useMemo(() => {
+    const tiles = props.tiles.imageService.tiles || [];
+
+    if (!tiles.length) {
+      const width = props.width;
+      let scaleFactors = [1];
+      let last = 1;
+      while (Math.pow(2, last) < width) {
+        last = last * 2;
+        scaleFactors.push(last);
+      }
+
+      return [
+        {
+          width: 256,
+          height: 256,
+          scaleFactors: [1, 2, 4, 8],
+        },
+      ];
+    }
+
+    return tiles;
+  }, [props.tiles.imageService]);
 
   return (
     <world-object
