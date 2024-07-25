@@ -445,7 +445,11 @@ export const Atlas: React.FC<
 
   const { height: _, width: __, ...canvasProps } = restProps;
   const widthClassName = useClassname([restProps.width, restProps.height]);
-
+  let isInteractive = true;
+  if (renderPreset && Array.isArray(renderPreset) && renderPreset.length > 1 && (renderPreset[1] as any).interactive === false) {
+    isInteractive = false;
+  }
+  console.log(renderPreset, isInteractive);
   return (
     <Container
       ref={ref}
@@ -483,8 +487,8 @@ export const Atlas: React.FC<
           ref={refs.canvas as any}
         />
       )}
-      console.log(renderPreset);
-      <Container className={['atlas-overlay', (renderPreset[1] as any)?.interactive ?  'atlas-overlay--interactive' : null]
+      
+      <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : null]
         .filter(Boolean)
         .join(' ')
         .trim()} style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
