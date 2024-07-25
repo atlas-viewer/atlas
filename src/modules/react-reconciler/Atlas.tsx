@@ -483,7 +483,7 @@ export const Atlas: React.FC<
           ref={refs.canvas as any}
         />
       )}
-      
+      console.log(renderPreset);
       <Container className={['atlas-overlay', (renderPreset[1] as any)?.interactive ?  'atlas-overlay--interactive' : null]
         .filter(Boolean)
         .join(' ')
