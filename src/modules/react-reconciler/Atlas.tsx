@@ -483,7 +483,11 @@ export const Atlas: React.FC<
           ref={refs.canvas as any}
         />
       )}
-      <Container className="atlas-overlay" style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
+      
+      <Container className={['atlas-overlay', (renderPreset[1] as any)?.interactive ?  'atlas-overlay--interactive' : null]
+        .filter(Boolean)
+        .join(' ')
+        .trim()} style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
         {unstable_noReconciler ? (
           <Canvas>
             <BoundsContext.Provider value={bounds}>
@@ -526,7 +530,8 @@ export const Atlas: React.FC<
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }
         .atlas-static-preset { touch-action: inherit; }
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
-        .atlas-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
+        .atlas-overlay { position: absolute; top: 0; left: 0; none; overflow: hidden; }
+        .atlas-overlay--interactive { pointer-events: none; }
         .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
         .atlas-navigator { position: absolute; top: var(--atlas-navigator-top, 10px); right: var(--atlas-navigator-bottom, 10px); left: var(--atlas-navigator-left); bottom: var(--atlas-navigator-bottom); opacity: .8 }
         .atlas-navigator-canvas { width: 100%; }
