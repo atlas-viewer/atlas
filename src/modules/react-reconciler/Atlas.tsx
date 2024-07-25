@@ -446,10 +446,11 @@ export const Atlas: React.FC<
   const { height: _, width: __, ...canvasProps } = restProps;
   const widthClassName = useClassname([restProps.width, restProps.height]);
   let isInteractive = true;
+  // if we have a render preset and that render preset sets interactive to false, then... disable it
   if (renderPreset && Array.isArray(renderPreset) && renderPreset.length > 1 && (renderPreset[1] as any).interactive === false) {
     isInteractive = false;
   }
-  console.log(renderPreset, isInteractive);
+
   return (
     <Container
       ref={ref}
