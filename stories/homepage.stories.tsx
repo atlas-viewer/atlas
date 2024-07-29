@@ -160,7 +160,7 @@ export const StaticRendererPreset = () => {
         width={400}
         height={400}
         key={c ? 'a' : 'b'}
-        renderPreset={['static-preset', { canvasBox: c, interactive: false }]}
+        renderPreset={['static-preset', { canvasBox: c }]}
         onCreated={(rt) => rt.runtime?.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
       >
         {boxes}
