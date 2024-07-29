@@ -488,7 +488,7 @@ export const Atlas: React.FC<
         />
       )}
       
-      <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : null]
+      <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
         .filter(Boolean)
         .join(' ')
         .trim()} style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
