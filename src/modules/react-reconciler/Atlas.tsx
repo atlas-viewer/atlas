@@ -472,7 +472,6 @@ export const Atlas: React.FC<
       {presetName === 'static-preset' ? (
         <Container
           className="atlas-static-container"
-          style={preset && preset.controller ? undefined : { pointerEvents: 'none' }}
           ref={refs.container as any}
           tabIndex={0}
           {...containerProps}
@@ -538,7 +537,7 @@ export const Atlas: React.FC<
         .atlas-overlay { position: absolute; top: 0; left: 0; none; overflow: hidden; }
         /** setting the pointer events to none means that Atlas will own the touch and mousewheel events **/
         .atlas-overlay--interactive { pointer-events: none; }
-        .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
+        .atlas-static-image { position: absolute; user-select: none; transform-origin: 0px 0px; }
         .atlas-navigator { position: absolute; top: var(--atlas-navigator-top, 10px); right: var(--atlas-navigator-bottom, 10px); left: var(--atlas-navigator-left); bottom: var(--atlas-navigator-bottom); opacity: .8 }
         .atlas-navigator-canvas { width: 100%; }
       `}</style>

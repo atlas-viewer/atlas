@@ -66,8 +66,8 @@ export class OverlayRenderer implements Renderer {
         position: absolute;
         transform-origin: 0px 0px;
       `),
-      interactive: this.stylesheet.addStylesheet(`pointer-events: all`),
-      nonInteractive: this.stylesheet.addStylesheet(`pointer-events: none`),
+      interactive: this.stylesheet.addStylesheet(`pointer-events: none`),
+      nonInteractive: this.stylesheet.addStylesheet(`pointer-events: all`),
     };
     this.stylesheet.updateSheet();
   }
