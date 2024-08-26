@@ -447,6 +447,11 @@ export const Atlas: React.FC<
 
   const { height: _, width: __, ...canvasProps } = restProps;
   const widthClassName = useClassname([restProps.width, restProps.height]);
+  let isInteractive = true;
+  // if we have a render preset and that render preset sets interactive to false, then... disable it
+  if (renderPreset && Array.isArray(renderPreset) && renderPreset.length > 1 && (renderPreset[1] as any).interactive === false) {
+    isInteractive = false;
+  }
 
   return (
     <Container
@@ -469,7 +474,6 @@ export const Atlas: React.FC<
       {presetName === 'static-preset' ? (
         <Container
           className="atlas-static-container"
-          style={preset && preset.controller ? undefined : { pointerEvents: 'none' }}
           ref={refs.container as any}
           tabIndex={0}
           {...containerProps}
@@ -485,7 +489,11 @@ export const Atlas: React.FC<
           ref={refs.canvas as any}
         />
       )}
-      <Container className="atlas-overlay" style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
+      
+      <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
+        .filter(Boolean)
+        .join(' ')
+        .trim()} style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
         {unstable_noReconciler ? (
           <Canvas>
             <BoundsContext.Provider value={bounds}>
@@ -528,8 +536,10 @@ export const Atlas: React.FC<
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }
         .atlas-static-preset { touch-action: inherit; }
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
-        .atlas-overlay { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
-        .atlas-static-image { position: absolute; pointer-events: none; user-select: none; transform-origin: 0px 0px; }
+        .atlas-overlay { position: absolute; top: 0; left: 0; none; overflow: hidden; }
+        /** setting the pointer events to none means that Atlas will own the touch and mousewheel events **/
+        .atlas-overlay--interactive { pointer-events: none; }
+        .atlas-static-image { position: absolute; user-select: none; transform-origin: 0px 0px; }
         .atlas-navigator { position: absolute; top: var(--atlas-navigator-top, 10px); right: var(--atlas-navigator-bottom, 10px); left: var(--atlas-navigator-left); bottom: var(--atlas-navigator-bottom); opacity: .8 }
         .atlas-navigator-canvas { width: 100%; }
       `}</style>
