@@ -444,7 +444,7 @@ export const Atlas: React.FC<
       console.log('background: setting from background prop', background)
       setBackground(background)
     }
-  }, [background]);
+  }, [preset, background]);
 
   strictModeDoubleRender.current = true;
 
