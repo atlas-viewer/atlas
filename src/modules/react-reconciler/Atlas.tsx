@@ -432,12 +432,17 @@ export const Atlas: React.FC<
   }, [preset]);
 
   useIsomorphicLayoutEffect(() => {
+    console.log('background', background)
     if (outerContainerRef.current && !background) {
       const computed = getComputedStyle(outerContainerRef.current);
       const _background = computed.getPropertyValue('--atlas-background');
       if (_background) {
+        console.log('background: setting from css var --atlas-background', background, _background)
         setBackground(_background);
       }
+    } else {
+      console.log('background: setting from background prop', background)
+      setBackground(background)
     }
   }, [background]);
 
@@ -487,7 +492,7 @@ export const Atlas: React.FC<
           ref={refs.canvas as any}
         />
       )}
-      
+
       <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
         .filter(Boolean)
         .join(' ')
