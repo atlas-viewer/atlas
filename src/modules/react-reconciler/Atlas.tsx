@@ -432,19 +432,16 @@ export const Atlas: React.FC<
   }, [preset]);
 
   useIsomorphicLayoutEffect(() => {
-    console.log('background', background)
     if (outerContainerRef.current && !background) {
       const computed = getComputedStyle(outerContainerRef.current);
-      const _background = computed.getPropertyValue('--atlas-background');
-      if (_background) {
-        console.log('background: setting from css var --atlas-background', background, _background)
-        setBackground(_background);
+      const customProperty = computed.getPropertyValue('--atlas-background');
+      if (customProperty) {
+        setBackground(customProperty);
       }
-    } else {
-      console.log('background: setting from background prop', background)
-      setBackground(background)
+    } else if (_background && background != _background) {
+      setBackground(_background)
     }
-  }, [preset, background]);
+  }, [preset, background, _background]);
 
   strictModeDoubleRender.current = true;
 
