@@ -27,7 +27,6 @@ export type CanvasRendererOptions = {
   dpi?: number;
   box?: boolean;
   polygon?: boolean;
-  background?: string;
   lruCache?: boolean;
 };
 
@@ -314,7 +313,7 @@ export class CanvasRenderer implements Renderer {
     const canvas = this.getCanvasDims();
     // But we also need to clear the canvas.
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = this.options.background || 'rgb(0, 0, 0)';
+    this.ctx.fillStyle = this.canvas.dataset.background || 'rgb(0, 0, 0)';
     this.ctx.fillRect(0, 0, canvas.width, canvas.height);
     // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
     // this.ctx.rotate((-90 * Math.PI) / 180);
