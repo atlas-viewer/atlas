@@ -20,7 +20,6 @@ export type DefaultPresetOptions = {
   debug?: boolean;
   canvasBox?: boolean;
   polygon?: boolean;
-  background?: string;
 };
 
 export function defaultPreset({
@@ -36,7 +35,6 @@ export function defaultPreset({
   canvasBox = true,
   polygon = true,
   navigatorElement,
-  background,
   runtimeOptions,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
@@ -58,7 +56,7 @@ export function defaultPreset({
   const renderer = new CompositeRenderer([
     unstable_webglRenderer
       ? new WebGLRenderer(canvasElement, { dpi })
-      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, background }),
+      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon }),
     overlayElement
       ? new OverlayRenderer(overlayElement, {
           box: unstable_webglRenderer || !canvasBox,
