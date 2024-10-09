@@ -30,6 +30,7 @@ export type AtlasProps = {
   homeOnResize?: boolean;
   homePosition?: Projection;
   className?: string;
+  background?: string;
   enableNavigator?: boolean;
   htmlChildren?: ReactNode;
   children: ReactNode;
@@ -74,6 +75,7 @@ export const Atlas: React.FC<
   homePosition,
   homeOnResize,
   homeCover,
+  background,
   runtimeOptions,
   debug,
   filters,
@@ -440,8 +442,8 @@ export const Atlas: React.FC<
     isInteractive = false;
   }
 
-  // calculate the background color from css custom property for canvas renderer
-  let background = "#000";
+  // use css custom prop if set, otherwise background prop, or default
+  background = background ?? "#000";
   if (outerContainerRef.current){
     const computed = getComputedStyle(outerContainerRef.current);
     background = computed.getPropertyValue('--atlas-background') || background;
