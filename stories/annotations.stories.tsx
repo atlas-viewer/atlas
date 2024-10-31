@@ -1,12 +1,12 @@
 import * as React from 'react';
 import { useMemo, useRef, useState } from 'react';
 import '../src/modules/react-reconciler/types';
+import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { DrawBox } from '../src/modules/react-reconciler/components/BoxDraw';
+import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 import { RegionHighlight } from '../src/modules/react-reconciler/components/RegionHighlight';
 import { useControlledAnnotationList } from '../src/modules/react-reconciler/hooks/use-controlled-annotation-list';
-import { AtlasAuto } from '../src/modules/react-reconciler/components/AtlasAuto';
 import { Runtime } from '../src/renderer/runtime';
-import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 
 export default { title: 'Annotations' };
 
@@ -52,6 +52,16 @@ const sizes = [
   { width: 1000, height: 600 },
 ];
 
+const bgColours: string[] = [
+  '#000',
+  '#f00',
+  '#0f0',
+  '#00f',
+  '#ff0',
+  '#f0f',
+  '#0ff',
+];
+
 export const SelectionDemo = () => {
   const runtime = useRef<Runtime>();
 
@@ -94,7 +104,14 @@ export const SelectionDemo = () => {
   const [size, setSize] = useState<any>({ width: undefined, height: undefined, idx: 0 });
   const [rotation, setRotation] = useState(0);
   const [scale, setScale] = useState(100);
+  const [background, _setBackground] = useState(bgColours[0]);
 
+  const nextBackground = () => {
+    const idx = bgColours.indexOf(background);
+    _setBackground(bgColours[(idx + 1) % bgColours.length]);
+  };
+  
+  
   const [renderPreset, setRenderPreset] = useState<any>(['default-preset', { runtimeOptions: { maxOverZoom: 5 } }]);
 
   const goTo = (data: any) => {
@@ -162,6 +179,9 @@ export const SelectionDemo = () => {
           <button onClick={() => setTileIndex((i) => (i + 1) % staticTiles.length)}>Change image</button>|
           <button onClick={() => setRenderPreset(['default-preset', { canvasBox: true }])}>Default preset</button>
           <button onClick={() => setRenderPreset(['static-preset', {}])}>Static preset</button>
+          
+          <button onClick={nextBackground}>Change background</button>
+          
           <input
             type="range"
             min={0}
@@ -193,6 +213,7 @@ export const SelectionDemo = () => {
                 width={size.width}
                 height={size.height}
                 enableNavigator
+                background={background}
               >
                 <world onClick={onDeselect}>
                   <ImageService key={`tile-${tileIndex}`} {...staticTiles[tileIndex]} rotation={rotation} />
@@ -307,7 +328,7 @@ export const flexbox = () => {
           padding: 1em;
           display: flex;
           flex-direction: column;
-          
+
           --atlas-background: #f0f0f0;
           --atlas-focus: 5px solid green;
           --atlas-container-flex: 1 1 0px;
@@ -341,7 +362,7 @@ export const objectFitCover = () => {
           flex-direction: column;
           min-height: 0;
           max-height: 100%;
-          
+
           --atlas-background: #f0f0f0;
           --atlas-focus: 5px solid green;
           --atlas-container-flex: 1 1 0px;
@@ -409,7 +430,7 @@ export const viewerFilters = () => {
           padding: 1em;
           display: flex;
           flex-direction: column;
-          
+
           --atlas-background: #f0f0f0;
           --atlas-focus: 5px solid green;
           --atlas-container-flex: 1 1 0px;
