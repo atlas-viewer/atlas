@@ -34,9 +34,9 @@ const staticTiles = [
     height: 4100,
   },
   {
-    id: 'https://media.getty.edu/iiif/image/b1cfdeaa-3013-4db1-9513-1c4c250802d7',
-    width: 5012,
-    height: 3912,
+    id: 'https://media.getty.edu/iiif/image/6c3b8e93-f3c6-4782-b670-16d065d26643',
+    width: 3414,
+    height: 4097,
   },
   {
     id: 'https://iiif.bodleian.ox.ac.uk/iiif/image/5009dea1-d1ae-435d-a43d-453e3bad283f/info.json',
