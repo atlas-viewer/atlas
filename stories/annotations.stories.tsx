@@ -29,9 +29,14 @@ const staticTiles = [
     id: 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
   },
   {
-    id: 'https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
-    width: 5233,
-    height: 7200,
+    id: 'https://media.getty.edu/iiif/image/97460b7d-78ed-4d43-96a3-14c81052d82f',
+    width: 5012,
+    height: 4100,
+  },
+  {
+    id: 'https://media.getty.edu/iiif/image/b1cfdeaa-3013-4db1-9513-1c4c250802d7',
+    width: 5012,
+    height: 3912,
   },
   {
     id: 'https://iiif.bodleian.ox.ac.uk/iiif/image/5009dea1-d1ae-435d-a43d-453e3bad283f/info.json',
