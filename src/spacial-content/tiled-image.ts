@@ -117,13 +117,14 @@ export class TiledImage extends BaseObject implements SpacialContent {
     tile: { width: number; height?: number },
     scaleFactor: number,
     service?: ImageService,
-    format?: string
+    format?: string,
+    useFloorCalc?: boolean
   ): TiledImage {
     // Always set a height.
     tile.height = tile.height ? tile.height : tile.width;
     // Dimensions of full image (scaled).
-    const fullWidth = Math.ceil(canvas.width / scaleFactor);
-    const fullHeight = Math.ceil(canvas.height / scaleFactor);
+    const fullWidth = useFloorCalc ? Math.floor(canvas.width / scaleFactor) : Math.ceil(canvas.width / scaleFactor);
+    const fullHeight = useFloorCalc ? Math.floor(canvas.height / scaleFactor) : Math.ceil(canvas.height / scaleFactor);
     // number of points in the x direction.
     const mWidth = Math.ceil(fullWidth / tile.width);
     // number of points in the y direction
