@@ -7,11 +7,20 @@ export function bestResourceAtRatio<T extends SpacialContent>(ratio: number, res
   }
 
   let best = resources[0];
+  let bestDistance = Infinity;
   for (let i = 0; i < len; i++) {
     if (!resources[i] || !resources[i].display) {
       break;
     }
-    best = Math.abs(resources[i].display.scale - ratio) < Math.abs(best.display.scale - ratio) ? resources[i] : best;
+    const distanceScale = distance1D(
+      resources[i].display.scale,
+      ratio
+    );
+
+    if (distanceScale < bestDistance) {
+      bestDistance = distanceScale;
+      best = resources[i];
+    }
   }
   return best;
 }
@@ -27,15 +36,22 @@ export function bestResourceIndexAtRatio<T extends SpacialContent>(
   }
 
   let best = 0;
+  let bestDistance = Infinity;
   for (let i = 0; i < len; i++) {
     if (!resources[i] || !resources[i].display) {
       break;
     }
-    best =
-      Math.abs(resources[i].display.scale - ratio) * quality < Math.abs(resources[best].display.scale - ratio)
-        ? i
-        : best;
+    const distanceScale = distance1D(
+      resources[i].display.scale,
+      ratio / (quality || 1)
+    );
+
+    if (distanceScale < bestDistance) {
+      bestDistance = distanceScale;
+      best = i;
+    }
   }
+
   return best;
 }
 

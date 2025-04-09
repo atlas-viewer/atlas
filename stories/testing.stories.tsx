@@ -41,6 +41,22 @@ export const OneEventPerClick = () => {
   );
 };
 
+export const SmallViewerLoading = () => {
+  return (
+    <React.StrictMode>
+      <Atlas width={250} height={500}>
+        <world-object width={4421} height={6812}>
+          <ImageService
+            id="https://media.getty.edu/iiif/image/60a98920-e396-475a-83d4-707012dddd82/info.json"
+            width={4421}
+            height={6812}
+          />
+        </world-object>
+      </Atlas>
+    </React.StrictMode>
+  );
+};
+
 // Needs to be done manually until: https://github.com/pmndrs/react-use-measure/issues/9
 export const EnsureMouseEventsAreAccurateWhenBoxChanges = () => {
   const ref = useRef<Runtime>(null);
@@ -152,7 +168,7 @@ export const zoomDebug = () => {
         setZoom(rt.getScaleFactor());
       });
     }
-    return () => {};
+    return () => { };
   }, [rt]);
 
   const goHome = () => {
