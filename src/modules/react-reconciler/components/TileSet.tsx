@@ -41,11 +41,11 @@ export const TileSet: React.FC<{
       }
 
       return [
-        {
-          width: 256,
-          height: 256,
-          scaleFactors: [1, 2, 4, 8],
-        },
+        // {
+        //   width: 256,
+        //   height: 256,
+        //   scaleFactors: [1, 2, 4, 8],
+        // },
       ];
     }
 

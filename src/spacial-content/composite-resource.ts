@@ -19,8 +19,7 @@ export type CompositeResourceProps = RenderOptions;
 
 export class CompositeResource
   extends AbstractContent
-  implements SpacialContent, AtlasObjectModel<CompositeResourceProps, SpacialContent>
-{
+  implements SpacialContent, AtlasObjectModel<CompositeResourceProps, SpacialContent> {
   readonly id: string;
   readonly display: DisplayData;
   points: Strand;
@@ -59,10 +58,10 @@ export class CompositeResource
     };
     this.renderOptions = {
       renderSmallestFallback: true,
-      renderLayers: 2,
+      renderLayers: 3,
       minSize: 255,
-      maxImageSize: 1024,
-      quality: 1.75,
+      maxImageSize: 2048,
+      quality: 1.5,
       ...(data.renderOptions || {}),
     };
 

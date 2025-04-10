@@ -41,6 +41,23 @@ export const OneEventPerClick = () => {
   );
 };
 
+// https://images.is.ed.ac.uk/luna/servlet/iiif/UoE~3~3~318~206599/info.json
+export const SmallViewerScroll = () => {
+  return (
+    <React.StrictMode>
+      <Atlas width={200} height={200}>
+        <world-object width={3816} height={49069}>
+          <ImageService
+            id="https://images.is.ed.ac.uk/luna/servlet/iiif/UoE~3~3~318~206599/info.json"
+            width={3816}
+            height={49069}
+          />
+        </world-object>
+      </Atlas>
+    </React.StrictMode>
+  );
+};
+
 export const SmallViewerLoading = () => {
   return (
     <React.StrictMode>
