@@ -318,6 +318,10 @@ export class Runtime {
   resize(fromWidth: number, toWidth: number, fromHeight: number, toHeight: number) {
     // Step 1. Do we need to calculate a new focal point?
 
+    if (this.transitionManager.hasPending()) {
+      this.transitionManager.stopTransition();
+    }
+
     // @todo figure out if there is some focal point that we can trim, given the resize request.
     //      for example if it expand beyond the world, we can crop the focal point.
     this.updateFocalPosition(fromWidth - toWidth, fromHeight - toHeight);
@@ -341,6 +345,8 @@ export class Runtime {
     this.goHome({ position: this.focalPosition });
     this.renderer.resize(toWidth, toHeight);
     this.pendingUpdate = true;
+
+    this.transitionManager.resumeTransition();
   }
 
   updateFocalPosition(widthDiff?: number, heightDiff?: number) {
