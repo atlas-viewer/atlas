@@ -92,11 +92,6 @@ export class TransitionManager {
   } | null = null;
 
   resumeTransition() {
-    console.log('resume', {
-      lastZoom: this.lastZoomTo,
-      isConstraining: this.isConstraining,
-      lastGoToRegion: this.lastGoToRegion,
-    })
     if (this.lastZoomTo) {
       this.zoomTo(this.lastZoomTo.factor, this.lastZoomTo.options);
     }
