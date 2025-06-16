@@ -31,6 +31,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
   service?: ImageService;
   format = 'jpg';
   crop2?: Strand;
+  version3?: boolean;
 
   tileUrl: string;
   constructor(data: {
@@ -43,12 +44,14 @@ export class TiledImage extends BaseObject implements SpacialContent {
     height: number;
     format?: string;
     id?: string;
+    version3?: boolean;
   }) {
     super();
     this.tileUrl = stripInfoJson(data.url);
     this.id = data.id || `${this.tileUrl}--${data.scaleFactor}`;
     this.points = data.displayPoints ? data.displayPoints : transform(data.points, scale(data.scaleFactor));
     this.tileWidth = data.tileWidth;
+    this.version3 = data.version3;
     this.display = {
       x: 0,
       y: 0,
@@ -120,7 +123,8 @@ export class TiledImage extends BaseObject implements SpacialContent {
     scaleFactor: number,
     service?: ImageService,
     format?: string,
-    useFloorCalc?: boolean
+    useFloorCalc?: boolean,
+    version3?: boolean
   ): TiledImage {
     // Always set a height.
     tile.height = tile.height ? tile.height : tile.width;
@@ -134,6 +138,13 @@ export class TiledImage extends BaseObject implements SpacialContent {
 
     const pointsFactory = DnaFactory.grid(mWidth, mHeight);
     const displayPoints = DnaFactory.grid(mWidth, mHeight);
+
+    const ctx = service ? service['@context']
+          ? Array.isArray(service['@context'])
+            ? service['@context']
+            : [service['@context']]
+          : [] : [];
+    const isV3 = typeof version3 !== 'undefined' ? version3 : ctx.indexOf('http://iiif.io/api/image/3/context.json') !== -1;
 
     // Create matrix
     for (let y = 0; y < mHeight; y++) {
@@ -166,6 +177,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
       height: canvas.height,
       tileWidth: tile.width,
       format,
+      version3: isV3,
     });
 
     tiledImage.applyProps({
@@ -184,8 +196,15 @@ export class TiledImage extends BaseObject implements SpacialContent {
     const x2 = im[3] - im[1];
     const y2 = im[4] - im[2];
     const w = Math.ceil(x2 / this.display.scale);
+    const h = Math.ceil(y2 / this.display.scale);
 
-    return `${this.tileUrl}/${im[1]},${im[2]},${x2},${y2}/${w > this.tileWidth ? this.tileWidth : w},/0/default.${this.format || 'jpg'
+    let widthString = `${w > this.tileWidth ? this.tileWidth : w},`;
+
+    if (this.version3) {
+      widthString += `${h > this.tileWidth ? this.tileWidth : h}`;
+    }
+
+    return `${this.tileUrl}/${im[1]},${im[2]},${x2},${y2}/${widthString}/0/default.${this.format || 'jpg'
       }`;
   }
 

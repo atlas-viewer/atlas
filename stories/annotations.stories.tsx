@@ -21,6 +21,11 @@ const staticTiles = [
   //   width: 13038,
   //   height: 12916,
   {
+    id: "https://uol-library.github.io/floorplans.library.leeds.ac.uk/assets/iiif/brotherton-m1/info.json",
+    "width": 5077,
+    "height": 5988
+  },
+  {
     profile: 'http://library.stanford.edu/iiif/image-api/1.1/compliance.html#level2',
     width: 8508,
     height: 6205,

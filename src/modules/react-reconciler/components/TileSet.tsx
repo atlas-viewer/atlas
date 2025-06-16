@@ -52,6 +52,16 @@ export const TileSet: React.FC<{
     return tiles;
   }, [props.tiles.imageService]);
 
+  const isVersion3 = useMemo(() => {
+    const service = props.tiles.imageService;
+    const ctx = service ? service['@context']
+          ? Array.isArray(service['@context'])
+            ? service['@context']
+            : [service['@context']]
+          : [] : [];
+    return ctx.indexOf('http://iiif.io/api/image/3/context.json') !== -1;
+  }, [props.tiles.imageService.id]);
+
   return (
     <world-object
       rotation={props.rotation}
@@ -100,6 +110,7 @@ export const TileSet: React.FC<{
                 tile={tile}
                 scaleFactor={size}
                 crop={props.crop}
+                version3={isVersion3}
               />
             );
           })

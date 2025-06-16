@@ -83,6 +83,7 @@ declare global {
         tile: { width: number; height?: number };
         scaleFactor: number;
         crop: any;
+        version3?: boolean;
       } & AllEvents;
       box: BaseElement & {
         interactive?: boolean;
