@@ -78,6 +78,10 @@ export class TiledImage extends BaseObject implements SpacialContent {
       this.format = 'jpg';
     }
 
+    if (typeof props.version3 !== 'undefined') {
+      this.version3 = props.version3;
+    }
+
     if (props.crop) {
       this.cropData = props.crop;
 
