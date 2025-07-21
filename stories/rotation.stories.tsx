@@ -46,12 +46,13 @@ function Slider({ control, label, ...props }: any) {
   );
 }
 
-const preset = ['default-preset', { canvasBox: true }] as Presets;
+const preset = ['default-preset', { canvasBox: true, rotateFromWorldCenter: true }] as Presets;
 
 export const CropRotateStaticImageInteractive = () => {
   const rotation = useState(5);
   const x = useState(120);
   const tx = useState(123);
+  const ty = useState(123);
   const utx = useState(0);
   const y = useState(0);
   const scale = useState(100);
@@ -61,15 +62,16 @@ export const CropRotateStaticImageInteractive = () => {
   const [key, setKey] = useState(0);
 
   const scaleFactor = scale[0] / 100;
-
   return (
     <>
       <Slider control={rotation} label="rotation" />
       <Slider control={x} label="x" />
       <Slider control={scale} label="scale" />
       <Slider control={tx} label="tx" />
+      <Slider control={ty} label="ty" />
       <Slider control={utx} label="Unsupported translation" />
       <Slider control={y} label="y" />
+
       <button
         onClick={() => {
           setKey((i) => i + 1);
@@ -88,7 +90,7 @@ export const CropRotateStaticImageInteractive = () => {
           }}
         >
           <world>
-            <world-object key={key} scale={scaleFactor} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
+          <world-object key={key} scale={scaleFactor} height={450} width={300} x={tx[0]} y={ty[0]} rotation={rotation[0]}>
               <world-image
                 uri={img}
                 target={{ width: 600, height: 900, x: utx[0], y: 0 }}

@@ -897,11 +897,26 @@ export class Runtime {
       // @todo add option in renderer to omit this transform, instead passing it as a param.
       const position = transformation ? transform(point, transformation, this.transformBuffer) : point;
       // Another hook before painting a layer.
+
+      console.log({world: {
+        scale: this.world.scale, height: this.world.height, width: this.world.width, 
+        objects: {
+          scale: this.world.getObjects()[0]?.scale,
+          height: this.world.getObjects()[0]?.height,
+          width: this.world.getObjects()[0]?.width,
+        },
+        }
+      }, this.world, this.height, this.width, this._lastGoodScale, this.getScaleFactor());
+
+      const cx = this.height / 2;
+      const cy = this.width / 2;
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
           ? transform(paint.__parent.crop || paint.__parent.points, transformation)
-          : position
+          : position,
+        cx,cy
+          // this.focalPosition[1],this.focalPosition[2]
       );
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
       // This could be a single point, where len is one.

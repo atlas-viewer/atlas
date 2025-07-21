@@ -23,6 +23,31 @@ function rotate(cx: number, cy: number, x: number, y: number, angle: number) {
   return [nx, ny];
 }
 
+/**
+ * Borrowing logic for rotating a point around the center axis: https://danceswithcode.net/engineeringnotes/rotations_in_2d/rotations_in_2d.html
+ * @param x 
+ * @param y 
+ * @param cx 
+ * @param cy 
+ * @param angleDegree 
+ * @returns 
+ */
+export function rotatePoint(
+  x: number,     //X coords to rotate - replaced on return
+  y: number,     //Y coords to rotate - replaced on return
+  cx: number,      //X coordinate of center of rotation
+  cy:number,      //Y coordinate of center of rotation
+  angleDegree: number)   //Angle of rotation (radians, counterclockwise)
+{
+  const radians = (Math.PI * angleDegree)/ 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const nX = ((x-cx)*cos - (y-cy)*sin) + cx;  
+  const nY = ((x - cx) * sin + (y - cy) * cos) + cy;
+  
+  return [nX, nY];
+}
+
 type WorldObjectProps = {
   id: string;
   width: number;
