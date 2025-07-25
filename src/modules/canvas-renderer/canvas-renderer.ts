@@ -29,7 +29,6 @@ export type CanvasRendererOptions = {
   polygon?: boolean;
   background?: string;
   lruCache?: boolean;
-  rotateFromWorldCenter?: boolean;
 };
 
 export type ImageBuffer = {
@@ -364,26 +363,30 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number,cx: number, cy:number) {
+  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number, cx: number, cy:number) {
     const owner = paint.__owner.value;
     if (owner && owner.rotation) {
       this.ctx.save();
       // x,y are the top left point of the box, not the center of the viewport
-      if (!this.options.rotateFromWorldCenter) {
-        const moveX = x + width / 2;
-        const moveY = y + height / 2;
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+      const angle = (owner.rotation * Math.PI) / 180;
+      // cx/cy only sent in if there's a unique rotation point
+      if (cy == undefined || cy == undefined) {
+        const moveX = x + halfWidth;
+        const moveY = y + halfHeight;
         this.ctx.translate(moveX, moveY);
-        this.ctx.rotate((owner.rotation * Math.PI) / 180);
+        this.ctx.rotate(angle);
         this.ctx.translate(-moveX, -moveY);
       } else  {
-        const moveX = cx - width /2;
-        const moveY = cy - height / 2;
+        const moveX = cx - halfWidth;
+        const moveY = cy - halfHeight;
         this.ctx.translate(cx, cy);
-        this.ctx.rotate((owner.rotation * Math.PI) / 180);
+        this.ctx.rotate(angle);
         const target: number[] = rotatePoint(moveX, moveY, x, y, owner.rotation);
-        let nMoveX = target[0]+ width / 2;
-        let nMoveY = target[1] + height / 2;
-        console.log({moveX, nMoveX, moveY, nMoveY, rotation: owner.rotation})
+        let nMoveX = target[0]+ halfWidth;
+        let nMoveY = target[1] + halfHeight;
+
         this.ctx.translate(-nMoveX, -nMoveY);
       }
       this.lastPaintedObject = owner;

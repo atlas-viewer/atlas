@@ -36,6 +36,7 @@ export type AtlasProps = {
   children: ReactNode;
   runtimeOptions?: Partial<RuntimeOptions>;
   filters?: Partial<ViewerFilters>;
+  rotateFromWorldCenter?: boolean;
 };
 
 const filterProperties = [
@@ -53,6 +54,7 @@ export const Atlas: React.FC<
   AtlasProps & {
     width: number;
     height: number;
+    rotateFromWorldCenter: boolean;
   }
 > = ({
   htmlChildren,
@@ -79,6 +81,7 @@ export const Atlas: React.FC<
   runtimeOptions,
   debug,
   filters,
+  rotateFromWorldCenter,
   ...restProps
 }) => {
   const [background, setBackground] = useState(_background);
@@ -179,6 +182,14 @@ export const Atlas: React.FC<
       viewport.current.didUpdate = true;
     }
   }, [preset, restProps.width, restProps.height]);
+
+  useEffect(() => {
+    if (preset) {
+      const rt: Runtime = preset.runtime;
+
+      rt.rotateFromWorldCenter = rotateFromWorldCenter;
+    }
+  }, [preset, rotateFromWorldCenter])
 
   useEffect(() => {
     if (filters && preset) {

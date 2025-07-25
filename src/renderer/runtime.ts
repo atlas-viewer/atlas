@@ -54,6 +54,8 @@ export type RuntimeOptions = {
 export class Runtime {
   id = nanoid();
   ready = false;
+
+  _rotateFromWorldCenter: boolean = false;
   // Helper getters.
   get x(): number {
     return this.target[1];
@@ -102,6 +104,17 @@ export class Runtime {
   set height(height: number) {
     this.target[4] = this.target[2] = height;
   }
+
+
+  get rotateFromWorldCenter(): boolean {
+    return this._rotateFromWorldCenter;
+  }
+
+  set rotateFromWorldCenter(rotateFromWorldCenter: boolean) {
+    console.log('setRotateFromWorldCenter', rotateFromWorldCenter)
+    this._rotateFromWorldCenter = rotateFromWorldCenter;
+  }
+
 
   renderer: Renderer;
   world: World;
@@ -190,6 +203,7 @@ export class Runtime {
     this.render(this.lastTime);
     this.startControllers();
   }
+
 
   setHomePosition(position?: Projection) {
     this.homePosition.set(DnaFactory.projection(position ? position : this.world));
@@ -703,9 +717,12 @@ export class Runtime {
    */
   viewerToWorld(x: number, y: number) {
     const scaleFactor = this.getScaleFactor();
-    this._viewerToWorld.x = this.target[1] + x / scaleFactor;
-    this._viewerToWorld.y = this.target[2] + y / scaleFactor;
-    return this._viewerToWorld;
+    const xo = this.target[1] + x / scaleFactor;
+    const yo = this.target[2] + y / scaleFactor;
+
+    this._viewerToWorld.x = xo;
+    this._viewerToWorld.y = yo;
+    return { x: xo, y: yo };
   }
 
   /**
@@ -898,26 +915,16 @@ export class Runtime {
       const position = transformation ? transform(point, transformation, this.transformBuffer) : point;
       // Another hook before painting a layer.
 
-      console.log({world: {
-        scale: this.world.scale, height: this.world.height, width: this.world.width, 
-        objects: {
-          scale: this.world.getObjects()[0]?.scale,
-          height: this.world.getObjects()[0]?.height,
-          width: this.world.getObjects()[0]?.width,
-        },
-        }
-      }, this.world, this.height, this.width, this._lastGoodScale, this.getScaleFactor());
+      const center = this.viewerToWorld(this.width / 2, this.height /2);
 
-      const cx = this.height / 2;
-      const cy = this.width / 2;
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
           ? transform(paint.__parent.crop || paint.__parent.points, transformation)
           : position,
-        cx,cy
-          // this.focalPosition[1],this.focalPosition[2]
+          this.rotateFromWorldCenter? center.x :undefined, this.rotateFromWorldCenter?center.y : undefined
       );
+
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
       // This could be a single point, where len is one.
       const totalTiles = position.length / 5;
