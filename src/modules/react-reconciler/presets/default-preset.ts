@@ -21,7 +21,6 @@ export type DefaultPresetOptions = {
   canvasBox?: boolean;
   polygon?: boolean;
   background?: string;
-  rotateFromWorldCenter?: boolean;
 };
 
 export function defaultPreset({
@@ -39,7 +38,6 @@ export function defaultPreset({
   navigatorElement,
   background,
   runtimeOptions,
-  rotateFromWorldCenter = false
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -60,7 +58,7 @@ export function defaultPreset({
   const renderer = new CompositeRenderer([
     unstable_webglRenderer
       ? new WebGLRenderer(canvasElement, { dpi })
-      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, background, rotateFromWorldCenter: rotateFromWorldCenter }),
+      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, background }),
     overlayElement
       ? new OverlayRenderer(overlayElement, {
           box: unstable_webglRenderer || !canvasBox,
