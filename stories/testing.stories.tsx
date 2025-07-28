@@ -41,6 +41,39 @@ export const OneEventPerClick = () => {
   );
 };
 
+// https://images.is.ed.ac.uk/luna/servlet/iiif/UoE~3~3~318~206599/info.json
+export const SmallViewerScroll = () => {
+  return (
+    <React.StrictMode>
+      <Atlas width={200} height={200}>
+        <world-object width={3816} height={49069}>
+          <ImageService
+            id="https://images.is.ed.ac.uk/luna/servlet/iiif/UoE~3~3~318~206599/info.json"
+            width={3816}
+            height={49069}
+          />
+        </world-object>
+      </Atlas>
+    </React.StrictMode>
+  );
+};
+
+export const SmallViewerLoading = () => {
+  return (
+    <React.StrictMode>
+      <Atlas width={250} height={500}>
+        <world-object width={4421} height={6812}>
+          <ImageService
+            id="https://media.getty.edu/iiif/image/60a98920-e396-475a-83d4-707012dddd82/info.json"
+            width={4421}
+            height={6812}
+          />
+        </world-object>
+      </Atlas>
+    </React.StrictMode>
+  );
+};
+
 // Needs to be done manually until: https://github.com/pmndrs/react-use-measure/issues/9
 export const EnsureMouseEventsAreAccurateWhenBoxChanges = () => {
   const ref = useRef<Runtime>(null);
@@ -152,7 +185,7 @@ export const zoomDebug = () => {
         setZoom(rt.getScaleFactor());
       });
     }
-    return () => {};
+    return () => { };
   }, [rt]);
 
   const goHome = () => {

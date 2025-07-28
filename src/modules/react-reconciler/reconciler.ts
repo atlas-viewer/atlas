@@ -145,7 +145,7 @@ function createInstance(
       break;
     case 'tiledImage':
     case 'tiled-image':
-      instance = TiledImage.fromTile(props.uri, props.display, props.tile, props.scaleFactor, undefined, props.format);
+      instance = TiledImage.fromTile(props.uri, props.display, props.tile, props.scaleFactor, undefined, props.format, props.useFloorCalc, props.version3);
       break;
     case 'paragraph':
       instance = new Text();

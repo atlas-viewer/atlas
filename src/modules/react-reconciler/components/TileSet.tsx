@@ -17,7 +17,6 @@ export const TileSet: React.FC<{
   renderOptions?: CompositeResourceProps;
 }> = (props) => {
   const scale = props.width / (props.crop?.width || props.tiles.width);
-  const tiles = props.tiles.imageService.tiles || [];
   const sizes = props.tiles.imageService.sizes || [];
   const enableThumbnail = props.enableThumbnail;
   const enableSizes = props.enableSizes;
@@ -27,6 +26,40 @@ export const TileSet: React.FC<{
       return id.slice(0, -1 * '/info.json'.length);
     }
     return id;
+  }, [props.tiles.imageService.id]);
+
+  const tiles = useMemo(() => {
+    const tiles = props.tiles.imageService.tiles || [];
+
+    if (!tiles.length) {
+      const width = props.width;
+      let scaleFactors = [1];
+      let last = 1;
+      while (Math.pow(2, last) < width) {
+        last = last * 2;
+        scaleFactors.push(last);
+      }
+
+      return [
+        // {
+        //   width: 256,
+        //   height: 256,
+        //   scaleFactors: [1, 2, 4, 8],
+        // },
+      ];
+    }
+
+    return tiles;
+  }, [props.tiles.imageService]);
+
+  const isVersion3 = useMemo(() => {
+    const service = props.tiles.imageService;
+    const ctx = service ? service['@context']
+          ? Array.isArray(service['@context'])
+            ? service['@context']
+            : [service['@context']]
+          : [] : [];
+    return ctx.indexOf('http://iiif.io/api/image/3/context.json') !== -1;
   }, [props.tiles.imageService.id]);
 
   return (
@@ -77,6 +110,7 @@ export const TileSet: React.FC<{
                 tile={tile}
                 scaleFactor={size}
                 crop={props.crop}
+                version3={isVersion3}
               />
             );
           })

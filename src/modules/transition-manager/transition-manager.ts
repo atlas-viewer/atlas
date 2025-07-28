@@ -11,6 +11,7 @@ export type PendingTransition = {
   timingFunction: EasingFunction;
   done: boolean;
   constrain: boolean;
+  callback?: () => void;
 };
 
 export class TransitionManager {
@@ -70,6 +71,7 @@ export class TransitionManager {
       this.pendingTransition.elapsed_time += delta;
       if (this.pendingTransition.elapsed_time >= this.pendingTransition.total_time) {
         this.pendingTransition.done = true;
+        this.pendingTransition.callback?.();
 
         if (this.pendingTransition.constrain) {
           // @todo make this configurable per transition?
@@ -84,13 +86,26 @@ export class TransitionManager {
     }
   }
 
+  lastZoomTo: {
+    factor: number;
+    options: any;
+  } | null = null;
+
+  resumeTransition() {
+    if (this.lastZoomTo) {
+      this.zoomTo(this.lastZoomTo.factor, this.lastZoomTo.options);
+    }
+    if (this.isConstraining) {
+      this.constrainBounds();
+    }
+    if (this.lastGoToRegion) {
+      this.goToRegion(this.lastGoToRegion.target, this.lastGoToRegion.options);
+    }
+  }
+
   zoomTo(
     factor: number,
-    {
-      origin,
-      stream = false,
-      transition,
-    }: {
+    options: {
       origin?: Position;
       stream?: boolean;
       minZoomFactor?: number;
@@ -100,6 +115,14 @@ export class TransitionManager {
       };
     } = {}
   ) {
+    const {
+      origin,
+      stream = false,
+      transition,
+    } = options;
+
+    this.lastZoomTo = { factor, options };
+
     const newPoints = this.runtime.getZoomedPosition(factor, { origin });
 
     const dist = Math.abs(1 - factor);
@@ -111,10 +134,15 @@ export class TransitionManager {
         duration: 2000 * dist,
         easing: easingFunctions.easeOutExpo,
         constrain: true,
+        callback: () => {
+          this.lastZoomTo = null;
+        }
       },
       { stream: false }
     );
   }
+
+  isConstraining = false;
 
   constrainBounds({
     transition,
@@ -126,6 +154,7 @@ export class TransitionManager {
       easing?: EasingFunction;
     };
   } = {}) {
+    this.isConstraining = true;
     const [isConstrained, constrained] = this.runtime.constrainBounds(this.runtime.target, { panPadding });
 
     if (isConstrained) {
@@ -133,6 +162,9 @@ export class TransitionManager {
         duration: 500,
         easing: easingFunctions.easeOutQuart,
         constrain: false,
+        callback: () => {
+          this.isConstraining = false;
+        }
       });
       this.runtime.updateNextFrame();
     }
@@ -145,6 +177,7 @@ export class TransitionManager {
       duration: number;
       easing: EasingFunction;
       constrain?: boolean;
+      callback?: () => void;
     },
     {
       stream,
@@ -173,6 +206,8 @@ export class TransitionManager {
     this.pendingTransition.timingFunction = transition?.easing || defaults?.easing || easingFunctions.easeInOutSine;
   }
 
+  lastGoToRegion: null | { target: any;  options: any } = null;
+
   goToRegion(
     target: {
       x: number;
@@ -190,6 +225,7 @@ export class TransitionManager {
       };
     } = {}
   ) {
+    this.lastGoToRegion = { target, options: { transition } };
     const clampedRegion = this.runtime.clampRegion(target);
     this.applyTransition(
       DnaFactory.singleBox(clampedRegion.width, clampedRegion.height, clampedRegion.x, clampedRegion.y),
@@ -198,6 +234,9 @@ export class TransitionManager {
         duration: 1000,
         easing: easingFunctions.easeOutExpo,
         constrain: true,
+        callback: () => {
+          this.lastGoToRegion = null;
+        }
       }
     );
     this.runtime.updateNextFrame();

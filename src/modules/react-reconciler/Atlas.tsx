@@ -77,14 +77,13 @@ export const Atlas: React.FC<
   homePosition,
   homeOnResize,
   homeCover,
-  background: _background,
+  background,
   runtimeOptions,
   debug,
   filters,
   rotateFromWorldCenter,
   ...restProps
 }) => {
-  const [background, setBackground] = useState(_background);
   const [mode, setMode] = useState(_mode);
   // Reference to the current HTML Canvas element
   // Set by React by passing <canvas ref={...} />
@@ -96,14 +95,14 @@ export const Atlas: React.FC<
     if (typeof _renderPreset === 'string') {
       _renderPreset = [_renderPreset, {}] as Presets;
     }
-    if (background || debug) {
+    if (debug) {
       if (_renderPreset) {
-        return [_renderPreset[0], { debug, background, ...(_renderPreset[1] || {}) }];
+        return [_renderPreset[0], { debug, ...(_renderPreset[1] || {}) }];
       }
-      return ['default-preset', { background, debug }];
+      return ['default-preset', { debug }];
     }
     return _renderPreset || 'default-preset';
-  }, [_renderPreset, background, debug]);
+  }, [_renderPreset, debug]);
 
   // This is an HTML element that sits above the Canvas element that is passed to the controller.
   // Additional non-canvas drawn elements can be placed here and positioned. CSS is applied to this
@@ -442,16 +441,6 @@ export const Atlas: React.FC<
     };
   }, [preset]);
 
-  useIsomorphicLayoutEffect(() => {
-    if (outerContainerRef.current && !background) {
-      const computed = getComputedStyle(outerContainerRef.current);
-      const _background = computed.getPropertyValue('--atlas-background');
-      if (_background) {
-        setBackground(_background);
-      }
-    }
-  }, [background]);
-
   strictModeDoubleRender.current = true;
 
   const { height: _, width: __, ...canvasProps } = restProps;
@@ -460,6 +449,13 @@ export const Atlas: React.FC<
   // if we have a render preset and that render preset sets interactive to false, then... disable it
   if (renderPreset && Array.isArray(renderPreset) && renderPreset.length > 1 && (renderPreset[1] as any).interactive === false) {
     isInteractive = false;
+  }
+
+  // use css custom prop if set, otherwise background prop, or default
+  background = background ?? "#000";
+  if (outerContainerRef.current){
+    const computed = getComputedStyle(outerContainerRef.current);
+    background = computed.getPropertyValue('--atlas-background') || background;
   }
 
   return (
@@ -496,9 +492,10 @@ export const Atlas: React.FC<
           {...canvasProps}
           {...containerProps}
           ref={refs.canvas as any}
+          data-background={background}
         />
       )}
-      
+
       <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
         .filter(Boolean)
         .join(' ')
@@ -538,7 +535,7 @@ export const Atlas: React.FC<
         <style>{`.atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }`}</style>
       ) : (
         <style>{`
-        .atlas { position: relative; display: flex; background: var(--atlas-background, #000); z-index: var(--atlas-z-index, 10); -webkit-touch-callout: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+        .atlas { position: relative; display: flex; background: ${background}; z-index: var(--atlas-z-index, 10); -webkit-touch-callout: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
         .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
