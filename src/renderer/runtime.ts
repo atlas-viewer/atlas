@@ -723,6 +723,7 @@ export class Runtime {
    */
   viewerToWorld(x: number, y: number) {
     const scaleFactor = this.getScaleFactor();
+    // is this right?
     const xo = this.target[1] + x / scaleFactor;
     const yo = this.target[2] + y / scaleFactor;
 
@@ -922,7 +923,11 @@ export class Runtime {
       // Another hook before painting a layer.
 
       const center = this.viewerToWorld(this.width / 2, this.height /2);
-      console.log('prepareLayer', {rotateFromWorldCenter: this.rotateFromWorldCenter, center, width: this.width, height: this.height})
+      console.log('prepareLayer', {
+        rotateFromWorldCenter: this.rotateFromWorldCenter, center, width: this.width, height: this.height, world: {
+          width: this.world.width,
+          height: this.world.height
+      }})
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
