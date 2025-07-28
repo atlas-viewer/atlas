@@ -916,13 +916,13 @@ export class Runtime {
       // Another hook before painting a layer.
 
       const center = this.viewerToWorld(this.width / 2, this.height /2);
-
+      console.log('prepareLayer', {rotateFromWorldCenter: this.rotateFromWorldCenter, center, width: this.width, height: this.height})
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
           ? transform(paint.__parent.crop || paint.__parent.points, transformation)
           : position,
-          this.rotateFromWorldCenter? center.x :undefined, this.rotateFromWorldCenter?center.y : undefined
+          this.rotateFromWorldCenter? center.x :undefined, this.rotateFromWorldCenter? center.y : undefined
       );
 
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
