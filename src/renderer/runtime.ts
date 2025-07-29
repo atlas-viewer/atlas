@@ -922,12 +922,15 @@ export class Runtime {
       const position = transformation ? transform(point, transformation, this.transformBuffer) : point;
       // Another hook before painting a layer.
 
-      const center = this.viewerToWorld(this.width / 2, this.height /2);
+
+      const viewport = this.renderer.getRendererScreenPosition();
+
+      const center = this.viewerToWorld((viewport?.width || 0) /2, (viewport?.height || 0) /2 );
       console.log('prepareLayer', {
         rotateFromWorldCenter: this.rotateFromWorldCenter, center, width: this.width, height: this.height, world: {
           width: this.world.width,
           height: this.world.height
-      }})
+      }, viewport })
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
