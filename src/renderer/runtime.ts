@@ -64,6 +64,7 @@ export class Runtime {
   }
 
   set x(x: number) {
+    console.log('set x', x);
     this.target[1] = x;
   }
 
@@ -72,6 +73,7 @@ export class Runtime {
   }
 
   set y(y: number) {
+    console.log('set y', y);
     this.target[2] = y;
   }
 
@@ -80,6 +82,7 @@ export class Runtime {
   }
 
   set x2(x2: number) {
+    console.log('set x2', x2);
     this.target[3] = x2;
   }
 
@@ -88,6 +91,7 @@ export class Runtime {
   }
 
   set y2(y2: number) {
+    console.log('set y2', y2);
     this.target[4] = y2;
   }
 
@@ -182,7 +186,7 @@ export class Runtime {
       ...(options || {}),
     };
     this.target = DnaFactory.projection(target);
-    console.log('set target', target, this.target);
+    console.log('set target', target, [...this.target]);
     this.manualHomePosition = false;
     this.pendingUpdate = true;
     this.homePosition = DnaFactory.projection(this.world);
@@ -321,7 +325,7 @@ export class Runtime {
       this.target[3] = Math.round(target.x + target.width);
       this.target[4] = Math.round(target.y + fullHeight - space);
     }
-
+    console.log('gohome', [...this.target]);
     this.constrainBounds(this.target);
 
     this.updateControllerPosition();
