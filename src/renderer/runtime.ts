@@ -56,6 +56,8 @@ export class Runtime {
   ready = false;
 
   _rotateFromWorldCenter: boolean = false;
+  viewportCenterPoint: { x: number; y: number; };
+  viewport: { x: number; y: number; width: number; height: number; top: number; left: number; } | undefined;
   // Helper getters.
   get x(): number {
     return this.target[1];
@@ -162,6 +164,7 @@ export class Runtime {
     },
   };
 
+
   constructor(
     renderer: Renderer,
     world: World,
@@ -202,6 +205,10 @@ export class Runtime {
     this.controllers = controllers;
     this.render(this.lastTime);
     this.startControllers();
+    this.viewport = this.renderer.getRendererScreenPosition();
+
+    this.viewportCenterPoint = this.viewerToWorld((this.viewport?.width || 0) /2, (this.viewport?.height || 0) /2 );
+
   }
 
 
@@ -922,21 +929,19 @@ export class Runtime {
       const position = transformation ? transform(point, transformation, this.transformBuffer) : point;
       // Another hook before painting a layer.
 
+      
 
-      const viewport = this.renderer.getRendererScreenPosition();
-
-      const center = this.viewerToWorld((viewport?.width || 0) /2, (viewport?.height || 0) /2 );
       console.log('prepareLayer', {
-        rotateFromWorldCenter: this.rotateFromWorldCenter, center, width: this.width, height: this.height, world: {
+        rotateFromWorldCenter: this.rotateFromWorldCenter, viewportCenterPoint: this.viewportCenterPoint, width: this.width, height: this.height, world: {
           width: this.world.width,
           height: this.world.height
-      }, viewport })
+      }, viewport: this.viewport })
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
           ? transform(paint.__parent.crop || paint.__parent.points, transformation)
           : position,
-          this.rotateFromWorldCenter? center.x :undefined, this.rotateFromWorldCenter? center.y : undefined
+          this.rotateFromWorldCenter? this.viewportCenterPoint.x :undefined, this.rotateFromWorldCenter? this.viewportCenterPoint.y : undefined
       );
 
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
