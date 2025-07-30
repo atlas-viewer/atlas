@@ -918,6 +918,16 @@ export class Runtime {
     // Get the points to render based on this scale factor and the current x,y,w,h in the target buffer.
     const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor);
     const pointsLen = points.length;
+
+    console.log('prepareLayer', {
+      rotateFromWorldCenter: this.rotateFromWorldCenter, viewportCenterPoint: this.viewportCenterPoint, width: this.width, height: this.height, world: {
+        width: this.world.width,
+        height: this.world.height
+      }, viewport: this.viewport,
+      target: this.target
+    }
+    );
+
     for (let p = 0; p < pointsLen; p++) {
       // each point is an array of [SpacialContent, Strand, Strand]
       // The first is used to get real rendering data, like Image URLs etc.
@@ -938,14 +948,6 @@ export class Runtime {
 
       
 
-      console.log('prepareLayer', {
-        rotateFromWorldCenter: this.rotateFromWorldCenter, viewportCenterPoint: this.viewportCenterPoint, width: this.width, height: this.height, world: {
-          width: this.world.width,
-          height: this.world.height
-        }, viewport: this.viewport,
-        target: {x: this.target[1], y:this.target[2]}
-      },
-      )
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
