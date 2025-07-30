@@ -208,7 +208,7 @@ export class Runtime {
     this.viewport = this.renderer.getRendererScreenPosition();
 
     this.viewportCenterPoint = this.viewerToWorld((this.viewport?.width || 0) /2, (this.viewport?.height || 0) /2 );
-
+    console.log({x: this.target[1], y:this.target[2]})
   }
 
 
@@ -935,7 +935,10 @@ export class Runtime {
         rotateFromWorldCenter: this.rotateFromWorldCenter, viewportCenterPoint: this.viewportCenterPoint, width: this.width, height: this.height, world: {
           width: this.world.width,
           height: this.world.height
-      }, viewport: this.viewport })
+        }, viewport: this.viewport,
+        target: {x: this.target[1], y:this.target[2]}
+      },
+      )
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
