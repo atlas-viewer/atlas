@@ -96,6 +96,7 @@ export class Runtime {
   }
 
   set width(width: number) {
+    console.log('set width', width);
     this.target[3] = this.target[1] + width;
   }
 
@@ -181,6 +182,7 @@ export class Runtime {
       ...(options || {}),
     };
     this.target = DnaFactory.projection(target);
+    console.log('set target', target, this.target);
     this.manualHomePosition = false;
     this.pendingUpdate = true;
     this.homePosition = DnaFactory.projection(this.world);
@@ -205,7 +207,7 @@ export class Runtime {
     this.controllers = controllers;
     this.render(this.lastTime);
     this.startControllers();
-    this.viewport = this.renderer.getRendererScreenPosition();
+    this.viewport = this.getRendererScreenPosition();
 
     this.viewportCenterPoint = this.viewerToWorld((this.viewport?.width || 0) /2, (this.viewport?.height || 0) /2 );
     console.log({x: this.target[1], y:this.target[2]})
@@ -794,6 +796,7 @@ export class Runtime {
    */
   syncTo(runtime: Runtime) {
     const oldTarget = this.target;
+    console.log('sync to', this.target, runtime.target);
     this.target = runtime.target;
     this.pendingUpdate = true;
 
