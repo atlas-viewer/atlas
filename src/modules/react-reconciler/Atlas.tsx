@@ -413,7 +413,11 @@ export const Atlas: React.FC<
 
     const keydownSpace = (e: KeyboardEvent) => {
       if (e.code === 'Space' && preset && preset.runtime.mode === 'sketch') {
-        if (e.target && (e.target as any).tagName && (e.target as any).tagName.toLowerCase() === 'input') return;
+        const tagName = (e.target as any)?.tagName?.toLowerCase();
+        if (tagName === 'input' || tagName === 'textarea') return;
+        // Check if content-editable
+        if ((e.target as any)?.isContentEditable) return;
+        
         e.preventDefault();
         setMode('explore');
         setContainerClassName('mode-explore');
