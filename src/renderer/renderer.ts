@@ -10,7 +10,7 @@ export interface Renderer {
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void;
   afterFrame(world: World, delta: number, target: Strand, options: HookOptions): void;
   getScale(width: number, height: number, dpi?: boolean): number;
-  prepareLayer(paint: SpacialContent, point: Strand): void;
+  prepareLayer(paint: SpacialContent, point: Strand, cx?: number, cy?:number): void;
   finishLayer(paint: SpacialContent, point: Strand): void;
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void;
   pendingUpdate(): boolean;

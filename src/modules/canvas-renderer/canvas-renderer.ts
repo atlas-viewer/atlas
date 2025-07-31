@@ -1,5 +1,5 @@
 import { Strand } from '@atlas-viewer/dna';
-import { Paint, Paintable, WorldObject } from '../../world-objects';
+import { Paint, Paintable, WorldObject, rotatePoint } from '../../world-objects';
 import { PositionPair } from '../../types';
 import { distance } from '../../utils';
 import { Text } from '../../objects/text';
@@ -362,16 +362,32 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number) {
+  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number, cx: number, cy:number) {
     const owner = paint.__owner.value;
     if (owner && owner.rotation) {
       this.ctx.save();
-      const moveX = x + width / 2;
-      const moveY = y + height / 2;
+      // x,y are the top left point of the box, not the center of the viewport
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+      const angle = (owner.rotation * Math.PI) / 180;
+      // cx/cy only sent in if there's a unique rotation point
+      if (cy == undefined || cy == undefined) {
+        const moveX = x + halfWidth;
+        const moveY = y + halfHeight;
+        this.ctx.translate(moveX, moveY);
+        this.ctx.rotate(angle);
+        this.ctx.translate(-moveX, -moveY);
+      } else  {
+        const moveX = cx - halfWidth;
+        const moveY = cy - halfHeight;
+        this.ctx.translate(cx, cy);
+        this.ctx.rotate(angle);
+        const target: number[] = rotatePoint(moveX, moveY, x, y, owner.rotation);
+        let nMoveX = target[0]+ halfWidth;
+        let nMoveY = target[1] + halfHeight;
 
-      this.ctx.translate(moveX, moveY);
-      this.ctx.rotate((owner.rotation * Math.PI) / 180);
-      this.ctx.translate(-moveX, -moveY);
+        this.ctx.translate(-nMoveX, -nMoveY);
+      }
       this.lastPaintedObject = owner;
     }
   }
@@ -398,6 +414,7 @@ export class CanvasRenderer implements Renderer {
           moveX -= paint.crop[index * 5 + 1];
           moveY -= paint.crop[index * 5 + 2];
         }
+        console.log('paint!', paint.display.rotation);
         this.ctx.translate(moveX, moveY);
         this.ctx.rotate((paint.display.rotation * Math.PI) / 180);
         this.ctx.translate(-moveX, -moveY);
@@ -737,11 +754,11 @@ export class CanvasRenderer implements Renderer {
     // No-op
   }
 
-  prepareLayer(paint: SpacialContent, points: Strand): void {
+  prepareLayer(paint: SpacialContent, points: Strand,cx:number, cy:number): void {
     if (paint.__owner.value) {
-      if (paint.cropData) {
-        const scale = this.lastKnownScale * (1 / paint.display.scale);
-        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+      // if (paint.cropData) {
+      //   // const scale = this.lastKnownScale * (1 / paint.display.scale);
+      //   this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
         // this.applyTransform(
         //   paint,
         //   points[1] - paint.cropData.x * scale + paint.points[1] * scale,
@@ -749,9 +766,9 @@ export class CanvasRenderer implements Renderer {
         //   paint.cropData.width * this.lastKnownScale,
         //   paint.cropData.height * this.lastKnownScale
         // );
-      } else {
-        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
-      }
+      // } else {
+        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2],cx,cy);
+      // }
     }
 
     if (!paint.__host || !paint.__host.canvas) {

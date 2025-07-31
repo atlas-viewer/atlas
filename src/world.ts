@@ -18,7 +18,6 @@ import { ZoneInterface } from './world-objects/zone';
 import { BaseObject } from './objects/base-object';
 import { SpacialContent } from './spacial-content/spacial-content';
 import { SupportedEvents } from './events';
-import { Geometry } from './objects/geometry';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
@@ -325,7 +324,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       }
       this.needsRecalculate = false;
     }
-
+    console.log('recalculate world size', didChange, this._height, this._width);
     return didChange;
   }
 
@@ -396,6 +395,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   resize(width: number, height: number) {
+    console.log('resize world', { width, height }, {oldWidth: this._width, oldHeight: this._height});
     this._width = width;
     this._height = height;
 
