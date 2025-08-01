@@ -28,6 +28,7 @@ export const supportedEventAttributes = [
   'onDragExit',
   'onDrag',
   'onDragOver',
+  'onContextMenu',
 ] as const;
 
 export function createDefaultEventMap(): SupportedEventMap {
@@ -72,6 +73,7 @@ export type SupportedEvents = {
   onDragExit(e: any): void;
   onDrag(e: any): void;
   onDragOver(e: any): void;
+  onContextMenu(e: any): void;
 };
 
 export type SupportedEventNames =
@@ -102,7 +104,8 @@ export type SupportedEventNames =
   | 'dragenter'
   | 'dragexit'
   | 'drag'
-  | 'dragover';
+  | 'dragover'
+  | 'contextmenu';
 
 export type SupportedEventMap = {
   [Name in keyof SupportedEvents]: Array<SupportedEvents[Name]>;

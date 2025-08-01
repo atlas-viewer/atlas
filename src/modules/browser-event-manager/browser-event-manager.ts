@@ -105,6 +105,7 @@ export class BrowserEventManager {
 
     // Edge-cases
     this.element.addEventListener('wheel', this.onWheelEvent);
+    this.element.addEventListener('contextmenu', this.onContextMenu);
 
     // Touch events.
     this.element.addEventListener('touchstart', this.onTouchEvent);
@@ -121,6 +122,16 @@ export class BrowserEventManager {
     e.preventDefault();
 
     this.onPointerEvent(e);
+  };
+  
+  onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    const ev = 'onContextMenu';
+    if (this.runtime.world.activatedEvents.indexOf(ev) !== -1) {
+      const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
+      this.assignToEvent(e, x, y);
+      this.runtime.world.propagatePointerEvent(ev as any, e, x, y);
+    }
   };
 
   onTouchEvent = (e: TouchEvent) => {
@@ -155,6 +166,9 @@ export class BrowserEventManager {
   };
 
   onPointerEvent = (e: PointerEvent | MouseEvent) => {
+    if(e.button === 2){
+        return;
+    }
     const ev = (supportedEventMap as any)[e.type as any];
     if (ev && this.runtime.world.activatedEvents.indexOf(ev) !== -1) {
       const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
@@ -164,6 +178,9 @@ export class BrowserEventManager {
   };
 
   onPointerDown = (e: PointerEvent | MouseEvent) => {
+    if(e.button === 2){
+        return;
+    }
     this.pointerEventState.isPressed = true;
     this.pointerEventState.isClicking = true;
     this.pointerEventState.mouseDownStart.x = e.clientX;
@@ -194,6 +211,9 @@ export class BrowserEventManager {
   };
 
   onPointerUp = (e: PointerEvent | MouseEvent) => {
+    if(e.button === 2){
+        return;
+    }
     if (this.pointerEventState.isClicking) {
       const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
 

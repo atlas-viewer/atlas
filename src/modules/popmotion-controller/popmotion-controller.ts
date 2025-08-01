@@ -100,7 +100,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         'onMouseMove',
         'onTouchStart',
         'onTouchEnd',
-        'onTouchMove'
+        'onTouchMove',
+        'onContextMenu'
       );
 
       /**

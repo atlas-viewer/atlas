@@ -34,7 +34,8 @@ export type SupportedEventNames =
   | 'scroll'
   | 'wheel'
   | 'click'
-  | 'update';
+  | 'update'
+  | 'contextmenu';
 
 export type SupportedEventFunctionNames =
   | 'onMouseDown'
@@ -65,7 +66,8 @@ export type SupportedEventFunctionNames =
   | 'onScroll'
   | 'onWheel'
   | 'onClick'
-  | 'onUpdate';
+  | 'onUpdate'
+  | 'onContextMenu';
 
 export type SupportedEventTypeMapping = {
   mousedown: 'onMouseDown';
@@ -97,6 +99,7 @@ export type SupportedEventTypeMapping = {
   wheel: 'onWheel';
   click: 'onClick';
   update: 'onUpdate';
+  contextmenu: 'onContextMenu';
 };
 
 export type AtlasEvent<BaseEvent extends Event> = BaseEvent & { atlas: { x: number; y: number }; cancelled?: boolean };
@@ -143,6 +146,7 @@ export type SupportedEventFunctions = {
 
   // Other
   onClick(e: AtlasEvent<MouseEvent>): void;
+  onContextMenu(e: AtlasEvent<MouseEvent>): void;
 
   // Lifecycle events.
   onUpdate(e: { props: any }): void;
@@ -184,6 +188,7 @@ export const supportedEventAttributes: Array<SupportedEventFunctionNames> = [
   'onScroll',
   'onWheel',
   'onClick',
+  'onContextMenu',
   // Lifecycle.
   'onUpdate',
 ];
