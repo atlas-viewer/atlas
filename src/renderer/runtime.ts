@@ -54,12 +54,17 @@ export type RuntimeOptions = {
 export class Runtime {
   id = nanoid();
   ready = false;
+
+  _rotateFromWorldCenter: boolean = false;
+  viewportCenterPoint: { x: number; y: number; };
+  viewport: { x: number; y: number; width: number; height: number; top: number; left: number; } | undefined;
   // Helper getters.
   get x(): number {
     return this.target[1];
   }
 
   set x(x: number) {
+    console.log('set x', x);
     this.target[1] = x;
   }
 
@@ -68,6 +73,7 @@ export class Runtime {
   }
 
   set y(y: number) {
+    console.log('set y', y);
     this.target[2] = y;
   }
 
@@ -76,6 +82,7 @@ export class Runtime {
   }
 
   set x2(x2: number) {
+    console.log('set x2', x2);
     this.target[3] = x2;
   }
 
@@ -84,6 +91,7 @@ export class Runtime {
   }
 
   set y2(y2: number) {
+    console.log('set y2', y2);
     this.target[4] = y2;
   }
 
@@ -92,6 +100,7 @@ export class Runtime {
   }
 
   set width(width: number) {
+    console.log('set width', width);
     this.target[3] = this.target[1] + width;
   }
 
@@ -102,6 +111,17 @@ export class Runtime {
   set height(height: number) {
     this.target[4] = this.target[2] = height;
   }
+
+
+  get rotateFromWorldCenter(): boolean {
+    return this._rotateFromWorldCenter;
+  }
+
+  set rotateFromWorldCenter(rotateFromWorldCenter: boolean) {
+    console.log('setRotateFromWorldCenter', rotateFromWorldCenter)
+    this._rotateFromWorldCenter = rotateFromWorldCenter;
+  }
+
 
   renderer: Renderer;
   world: World;
@@ -149,6 +169,7 @@ export class Runtime {
     },
   };
 
+
   constructor(
     renderer: Renderer,
     world: World,
@@ -165,6 +186,7 @@ export class Runtime {
       ...(options || {}),
     };
     this.target = DnaFactory.projection(target);
+    console.log('set target', target, [...this.target]);
     this.manualHomePosition = false;
     this.pendingUpdate = true;
     this.homePosition = DnaFactory.projection(this.world);
@@ -189,7 +211,12 @@ export class Runtime {
     this.controllers = controllers;
     this.render(this.lastTime);
     this.startControllers();
+    this.viewport = this.getRendererScreenPosition();
+
+    this.viewportCenterPoint = this.viewerToWorld((this.viewport?.width || 0) /2, (this.viewport?.height || 0) /2 );
+    console.log({x: this.target[1], y:this.target[2]})
   }
+
 
   setHomePosition(position?: Projection) {
     this.homePosition.set(DnaFactory.projection(position ? position : this.world));
@@ -298,7 +325,7 @@ export class Runtime {
       this.target[3] = Math.round(target.x + target.width);
       this.target[4] = Math.round(target.y + fullHeight - space);
     }
-
+    console.log('gohome', [...this.target]);
     this.constrainBounds(this.target);
 
     this.updateControllerPosition();
@@ -709,9 +736,13 @@ export class Runtime {
    */
   viewerToWorld(x: number, y: number) {
     const scaleFactor = this.getScaleFactor();
-    this._viewerToWorld.x = this.target[1] + x / scaleFactor;
-    this._viewerToWorld.y = this.target[2] + y / scaleFactor;
-    return this._viewerToWorld;
+    // is this right?
+    const xo = this.target[1] + x / scaleFactor;
+    const yo = this.target[2] + y / scaleFactor;
+
+    this._viewerToWorld.x = xo;
+    this._viewerToWorld.y = yo;
+    return { x: xo, y: yo };
   }
 
   /**
@@ -769,6 +800,7 @@ export class Runtime {
    */
   syncTo(runtime: Runtime) {
     const oldTarget = this.target;
+    console.log('sync to', this.target, runtime.target);
     this.target = runtime.target;
     this.pendingUpdate = true;
 
@@ -886,6 +918,16 @@ export class Runtime {
     // Get the points to render based on this scale factor and the current x,y,w,h in the target buffer.
     const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor);
     const pointsLen = points.length;
+
+    console.log('prepareLayer', {
+      rotateFromWorldCenter: this.rotateFromWorldCenter, viewportCenterPoint: this.viewportCenterPoint, width: this.width, height: this.height, world: {
+        width: this.world.width,
+        height: this.world.height
+      }, viewport: this.viewport,
+      target: this.target
+    }
+    );
+
     for (let p = 0; p < pointsLen; p++) {
       // each point is an array of [SpacialContent, Strand, Strand]
       // The first is used to get real rendering data, like Image URLs etc.
@@ -903,12 +945,17 @@ export class Runtime {
       // @todo add option in renderer to omit this transform, instead passing it as a param.
       const position = transformation ? transform(point, transformation, this.transformBuffer) : point;
       // Another hook before painting a layer.
+
+      
+
       this.renderer.prepareLayer(
         paint,
         paint.__parent && transformation
           ? transform(paint.__parent.crop || paint.__parent.points, transformation)
-          : position
+          : position,
+          this.rotateFromWorldCenter? this.viewportCenterPoint.x :undefined, this.rotateFromWorldCenter? this.viewportCenterPoint.y : undefined
       );
+
       // For loop helps keep this fast, looping through all of the tiles that make up an image.
       // This could be a single point, where len is one.
       const totalTiles = position.length / 5;
