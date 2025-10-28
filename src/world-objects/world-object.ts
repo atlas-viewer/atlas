@@ -64,6 +64,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   constructor(props?: AbstractObject, position?: { x: number; y: number }) {
     super();
     const { x = 0, y = 0 } = position || {};
+
     if (!props) {
       this.id = '';
       this.scale = 1;
@@ -76,6 +77,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       this.id = props.id || '';
       this.scale = 1;
       this.layers = props.layers;
+
       this.points = dna([1, x, y, x + props.width, y + props.height]);
       this.worldPoints = dna([1, x, y, x + props.width, y + props.height]);
       this.filteredPointsBuffer = dna(props.layers.length * 5);

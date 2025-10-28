@@ -431,8 +431,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
+
     const len = this.objects.length;
     this._updatedList = [];
+
+
     for (let index = 0; index < len; index++) {
       if (filteredPoints[index * 5] !== 0) {
         if (!this.objects[index]) continue;

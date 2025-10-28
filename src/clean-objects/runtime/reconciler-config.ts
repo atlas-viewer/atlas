@@ -58,6 +58,7 @@ export const reconcilerConfig: HostConfig<
   createInstance(type, props) {
     const objectCreator = objectTypes[type] as ObjectDefinition<any, any>;
     const instance = objectCreator.create();
+
     objectCreator.applyProps(instance, props);
     return instance;
   },

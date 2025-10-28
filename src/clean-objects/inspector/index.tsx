@@ -5,7 +5,6 @@ import { addEventListener, isEvented } from '../traits/evented';
 import { hasStyles } from '../traits/has-styles';
 
 export function Inpsector(props: { container: GenericObject<ContainerDefinition> }) {
-  console.log(props.container);
   return (
     <div>
       <div style={{ position: 'relative', width: 500, height: 500 }}>

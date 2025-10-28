@@ -1,4 +1,5 @@
-import Reconciler, { OpaqueHandle } from 'react-reconciler';
+import Reconciler, { type OpaqueHandle, type HostConfig } from 'react-reconciler';
+import { ContinuousEventPriority, DiscreteEventPriority, DefaultEventPriority } from 'react-reconciler/constants'
 import { now } from './utility/now';
 import { Runtime } from '../../renderer/runtime';
 import { SingleImage } from '../../spacial-content/single-image';
@@ -12,9 +13,8 @@ import { Text } from '../../objects/text';
 import { Box } from '../../objects/box';
 import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
-import { version } from 'react';
+import React, { version } from 'react';
 import { Geometry } from '../../objects/geometry';
-const DefaultEventPriority = 0b0000000000000000000000000010000;
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
@@ -172,6 +172,10 @@ function appendChildToContainer(runtime: Runtime, world: any) {
   }
 }
 
+const NoEventPriority = 0;
+
+let currentUpdatePriority = NoEventPriority;
+
 const reconciler = Reconciler<
   any,
   any,
@@ -218,8 +222,8 @@ const reconciler = Reconciler<
   },
   commitUpdate(
     instance: any,
-    updatePayload: any,
     type: any,
+    updatePayload: any,
     prevProps: any,
     nextProps: any,
     internalHandle: OpaqueHandle
@@ -302,24 +306,20 @@ const reconciler = Reconciler<
   },
 
   getCurrentEventPriority() {
-    console.log('getCurrentEventPriority');
     // If in the browser, check `window.event` and maybe do something different.
     return DefaultEventPriority;
   },
 
   getInstanceFromNode(node) {
-    console.log('getInstanceFromNode', node);
     throw new Error('Not implemented');
   },
 
   getInstanceFromScope(scopeInstance) {
-    console.log('getInstanceFromScope', scopeInstance);
     throw new Error('Not implemented');
     // return nodeToInstanceMap.get(scopeInstance) || null;
   },
 
   prepareScopeUpdate(scopeInstance, instance) {
-    console.log('prepareScopeUpdate', scopeInstance, instance);
     throw new Error('Not implemented');
     // nodeToInstanceMap.set(scopeInstance, instance);
   },
@@ -331,13 +331,57 @@ const reconciler = Reconciler<
   requestPostPaintCallback() {
     // noop
   },
+
+  rendererPackageName: '@atlas-viewer/atlas',
+  rendererVersion: version,
+
+
+  // React 19.
+  shouldAttemptEagerTransition: () => false,
+  trackSchedulerEvent: () => { },
+  resolveEventType: () => null,
+  resolveEventTimeStamp: () => -1.1,
+  maySuspendCommit: () => false,
+  preloadInstance: () => true, // true indicates already loaded
+  startSuspendingCommit() { },
+  suspendInstance() { },
+  waitForCommitToBeReady: () => null,
+  NotPendingTransition: null,
+  setCurrentUpdatePriority(newPriority: number) {
+    currentUpdatePriority = newPriority
+  },
+  getCurrentUpdatePriority() {
+    return currentUpdatePriority
+  },
+  resolveUpdatePriority() {
+    if (currentUpdatePriority !== NoEventPriority) return currentUpdatePriority
+
+    switch (typeof window !== 'undefined' && window.event?.type) {
+      case 'click':
+      case 'contextmenu':
+      case 'dblclick':
+      case 'pointercancel':
+      case 'pointerdown':
+      case 'pointerup':
+        return DiscreteEventPriority
+      case 'pointermove':
+      case 'pointerout':
+      case 'pointerover':
+      case 'pointerenter':
+      case 'pointerleave':
+      case 'wheel':
+        return ContinuousEventPriority
+      default:
+        return DefaultEventPriority
+    }
+  },
+  resetFormInstance() { },
 });
 
-reconciler.injectIntoDevTools({
-  bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
-  version: version,
-  rendererPackageName: '@atlas-viewer/atlas',
-});
+
+// @ts-ignore DefinitelyTyped is not up to date
+reconciler.injectIntoDevTools()
+
 
 export function unmountComponentAtNode(runtime: Runtime, callback?: (runtime: any) => void) {
   const root = roots.get(runtime);

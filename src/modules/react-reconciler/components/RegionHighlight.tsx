@@ -56,9 +56,8 @@ export function RegionHighlight({
     >
       <box
         interactive={interactive}
-        onContextMenu={e => {
+        onContextMenu={(e) => {
           e.preventDefault();
-          console.log('menu!')
         }}
         onClick={(e) => {
           e.preventDefault();

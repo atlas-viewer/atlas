@@ -1,7 +1,7 @@
 import { MutableRefObject, version } from 'react';
 
 export async function renderReactDom(html: HTMLElement, toRender: any, root: MutableRefObject<any>) {
-  if (version.startsWith('18.')) {
+  if (version.startsWith('18.') || version.startsWith('19.')) {
     // @ts-ignore
     const module = await import('react-dom/client');
     const createRoot = module.default ? module.default.createRoot : module.createRoot;
