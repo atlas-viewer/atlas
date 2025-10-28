@@ -20,23 +20,33 @@ const staticTiles = [
   //   id: 'https://dlcs.io/iiif-img/4/21/quilt/info.json',
   //   width: 13038,
   //   height: 12916,
+  // {
+  //   id: "https://uol-library.github.io/floorplans.library.leeds.ac.uk/assets/iiif/brotherton-m1/info.json",
+  //   "width": 5077,
+  //   "height": 5988
+  // },
+  // {
+  //   profile: 'http://library.stanford.edu/iiif/image-api/1.1/compliance.html#level2',
+  //   width: 8508,
+  //   height: 6205,
+  //   '@context': 'http://library.stanford.edu/iiif/image-api/1.1/context.json',
+  //   '@id': 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
+  //   id: 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
+  // },
   {
-    id: "https://uol-library.github.io/floorplans.library.leeds.ac.uk/assets/iiif/brotherton-m1/info.json",
-    "width": 5077,
-    "height": 5988
-  },
-  {
-    profile: 'http://library.stanford.edu/iiif/image-api/1.1/compliance.html#level2',
-    width: 8508,
-    height: 6205,
-    '@context': 'http://library.stanford.edu/iiif/image-api/1.1/context.json',
-    '@id': 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
-    id: 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
+    id: 'https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
+    width: 5233,
+    height: 7200,
   },
   {
     id: 'https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
     width: 5233,
     height: 7200,
+  },
+  {
+    id: 'https://glenrobson.github.io/iiif_stuff/rounding_issue/odd/info.json',
+    width: 3073,
+    height: 3073,
   },
   {
     id: 'https://iiif.bodleian.ox.ac.uk/iiif/image/5009dea1-d1ae-435d-a43d-453e3bad283f/info.json',

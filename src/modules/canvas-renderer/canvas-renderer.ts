@@ -356,7 +356,9 @@ export class CanvasRenderer implements Renderer {
         filter += `blur(${options.filters.blur}px) `;
       }
 
-      this.ctx.filter = filter;
+      if (this.ctx.filter !== filter) {
+        this.ctx.filter = filter;
+      }
     } else {
       this.ctx.filter = 'none';
     }

@@ -175,6 +175,7 @@ export class CompositeResource
       // Workaround for bad filtering.
       this.images = [...this.allImages];
     }
+
     this.scaleFactors = this.images.map((singleImage) => singleImage.display.scale);
     this.maxScaleFactor = Math.max(...this.scaleFactors);
   };
