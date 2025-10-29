@@ -1,5 +1,5 @@
-import Reconciler, { type OpaqueHandle, type HostConfig } from 'react-reconciler';
-import { ContinuousEventPriority, DiscreteEventPriority, DefaultEventPriority } from 'react-reconciler/constants'
+import Reconciler from 'react-reconciler';
+import type { OpaqueHandle } from 'react-reconciler';
 import { now } from './utility/now';
 import { Runtime } from '../../renderer/runtime';
 import { SingleImage } from '../../spacial-content/single-image';
@@ -15,6 +15,17 @@ import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import React, { version } from 'react';
 import { Geometry } from '../../objects/geometry';
+
+
+// From react-reconciler/constants;
+// import { ContinuousEventPriority, DiscreteEventPriority, DefaultEventPriority } from 'react-reconciler/constants'
+const ConcurrentRoot = 1;
+const ContinuousEventPriority = 8;
+const DefaultEventPriority = 32;
+const DiscreteEventPriority = 2;
+const IdleEventPriority = 268435456;
+const LegacyRoot = 0;
+const NoEventPriority = 0;
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
   if (parent && parent.appendChild && child) {
@@ -172,8 +183,6 @@ function appendChildToContainer(runtime: Runtime, world: any) {
   }
 }
 
-const NoEventPriority = 0;
-
 let currentUpdatePriority = NoEventPriority;
 
 const reconciler = Reconciler<
@@ -222,12 +231,20 @@ const reconciler = Reconciler<
   },
   commitUpdate(
     instance: any,
-    type: any,
-    updatePayload: any,
+    type_: any,
+    updatePayload_: any,
     prevProps: any,
     nextProps: any,
     internalHandle: OpaqueHandle
   ) {
+    let type = type_, updatePayload = updatePayload_;
+    if (typeof updatePayload === 'string') {
+      // react <= 18
+      type = updatePayload_;
+      updatePayload = updatePayload_;
+    }
+
+
     if (instance.applyProps && updatePayload) {
       applyProps(instance, prevProps, updatePayload);
     }
