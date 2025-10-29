@@ -44,8 +44,6 @@
     "@iiif/presentation-3": ">=2",
     "@iiif/helpers": "^1.1.0",
     "@iiif/parser": "^2.1.0",
-    "lru-cache": "^7.17.0",
-    "normalize-wheel": "^1.0.1",
     "react-reconciler": "^0.33.0",
     "react-use-measure": "^2.1.7",
     "scheduler": "^0.27.0"
@@ -57,6 +55,8 @@
   "sideEffects": false,
   "devDependencies": {
     "nanoid": "^5.0.7",
+    "lru-cache": "^7.17.0",
+    "normalize-wheel": "^1.0.1",
     "@storylite/storylite": "^0.15.1",
     "@storylite/vite-plugin": "^0.15.0",
     "@iiif/presentation-3-normalized": "^0.9.7",

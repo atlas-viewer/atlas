@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Runtime, RuntimeOptions, ViewerFilters, ViewerMode } from '../../renderer/runtime';
 import { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import { ModeContext } from './hooks/use-mode';
@@ -12,6 +12,7 @@ import { Projection } from '@atlas-viewer/dna';
 import { useClassname } from './hooks/use-classname';
 import { Container } from './components/Container';
 import { useIsomorphicLayoutEffect } from './utility/react';
+import { useDiffProps } from './hooks/use-diff-props';
 
 export type AtlasProps = {
   debug?: boolean;
@@ -54,33 +55,37 @@ export const Atlas: React.FC<
     width: number;
     height: number;
   }
-> = ({
-  htmlChildren,
-  renderPreset: _renderPreset,
-  onCreated,
-  mode: _mode = 'explore',
-  resetWorldOnChange = true,
-  // eslint-disable-next-line
-  unstable_webglRenderer = false,
-  // eslint-disable-next-line
-  unstable_noReconciler = false,
-  hideInlineStyle = false,
-  controllerConfig,
-  children,
-  overlayStyle,
-  containerStyle,
-  enableNavigator,
-  className,
-  containerProps = {},
-  homePosition,
-  homeOnResize,
-  homeCover,
-  background,
-  runtimeOptions,
-  debug,
-  filters,
-  ...restProps
-}) => {
+> = memo(function Atlas(props) {
+  let {
+    htmlChildren,
+    renderPreset: _renderPreset,
+    onCreated,
+    mode: _mode = 'explore',
+    resetWorldOnChange = true,
+    // eslint-disable-next-line
+    unstable_webglRenderer = false,
+    // eslint-disable-next-line
+    unstable_noReconciler = false,
+    hideInlineStyle = false,
+    controllerConfig,
+    children,
+    overlayStyle,
+    containerStyle,
+    enableNavigator,
+    className,
+    containerProps = {},
+    homePosition,
+    homeOnResize,
+    homeCover,
+    background,
+    runtimeOptions,
+    debug,
+    filters,
+    ...restProps
+  } = props;
+
+  useDiffProps(props, 'Atlas.tsx', props.debug);
+
   const [mode, setMode] = useState(_mode);
   // Reference to the current HTML Canvas element
   // Set by React by passing <canvas ref={...} />
@@ -177,7 +182,7 @@ export const Atlas: React.FC<
       rt.updateNextFrame();
       viewport.current.didUpdate = true;
     }
-  }, [preset, restProps.width, restProps.height]);
+  }, [preset, restProps.width, restProps.height, viewport]);
 
   useEffect(() => {
     if (filters && preset) {
@@ -212,9 +217,7 @@ export const Atlas: React.FC<
     }
   }, [preset, filters]);
 
-  // When the bounds of the container change, we need to reflect those changes in the overlay.
-  // @todo move to canvas.
-  useIsomorphicLayoutEffect(() => {
+  function recalculateHomeCover() {
     if (preset) {
       if (preset.overlay) {
         preset.overlay.style.width = `${bounds.width}px`;
@@ -246,12 +249,15 @@ export const Atlas: React.FC<
           if (homeCover === 'end') {
             x = w - h / viewportRatio;
           }
-          preset.runtime.setHomePosition({
+
+          const newHomePosition = {
             x,
             y: 0,
             width: h / viewportRatio,
             height: h,
-          });
+          };
+
+          preset.runtime.setHomePosition(newHomePosition);
         } else {
           let y = (h - w / viewportRatio) / 2;
           if (homeCover === 'start') {
@@ -260,21 +266,31 @@ export const Atlas: React.FC<
           if (homeCover === 'end') {
             y = h - w / viewportRatio;
           }
+
           // Viewport too wide. Need to make the home position cover the entire width.
           preset.runtime.manualHomePosition = true;
-          preset.runtime.setHomePosition({
+
+          const newHomePosition = {
             x: 0,
             y,
             width: w,
             height: w / viewportRatio,
-          });
+          };
+
+          preset.runtime.setHomePosition(newHomePosition);
         }
         if (homeOnResize) {
           preset.runtime.goHome({});
         }
       }
     }
-  }, [preset, bounds.height, bounds.width, homeCover]);
+  }
+
+  // When the bounds of the container change, we need to reflect those changes in the overlay.
+  // @todo move to canvas.
+  useIsomorphicLayoutEffect(() => {
+    recalculateHomeCover();
+  }, [preset, props.runtimeOptions?.maxOverZoom, bounds.height, bounds.width, homeCover]);
 
   // When the window resizes we need to recalculate the width.
   // @todo possibly move to controller.
@@ -324,6 +340,7 @@ export const Atlas: React.FC<
       return rt.world.addLayoutSubscriber((type) => {
         if (type === 'recalculate-world-size') {
           recalculateNavigatorDimensions();
+          recalculateHomeCover();
           rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
         }
       });
@@ -417,7 +434,7 @@ export const Atlas: React.FC<
         if (tagName === 'input' || tagName === 'textarea') return;
         // Check if content-editable
         if ((e.target as any)?.isContentEditable) return;
-        
+
         e.preventDefault();
         setMode('explore');
         setContainerClassName('mode-explore');
@@ -440,13 +457,18 @@ export const Atlas: React.FC<
   const widthClassName = useClassname([restProps.width, restProps.height]);
   let isInteractive = true;
   // if we have a render preset and that render preset sets interactive to false, then... disable it
-  if (renderPreset && Array.isArray(renderPreset) && renderPreset.length > 1 && (renderPreset[1] as any).interactive === false) {
+  if (
+    renderPreset &&
+    Array.isArray(renderPreset) &&
+    renderPreset.length > 1 &&
+    (renderPreset[1] as any).interactive === false
+  ) {
     isInteractive = false;
   }
 
   // use css custom prop if set, otherwise background prop, or default
-  background = background ?? "#000";
-  if (outerContainerRef.current){
+  background = background ?? '#000';
+  if (outerContainerRef.current) {
     const computed = getComputedStyle(outerContainerRef.current);
     background = computed.getPropertyValue('--atlas-background') || background;
   }
@@ -470,12 +492,7 @@ export const Atlas: React.FC<
       }}
     >
       {presetName === 'static-preset' ? (
-        <Container
-          className="atlas-static-container"
-          ref={refs.container as any}
-          tabIndex={0}
-          {...containerProps}
-        />
+        <Container className="atlas-static-container" ref={refs.container as any} tabIndex={0} {...containerProps} />
       ) : (
         <canvas
           className="atlas-canvas"
@@ -489,10 +506,14 @@ export const Atlas: React.FC<
         />
       )}
 
-      <Container className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
-        .filter(Boolean)
-        .join(' ')
-        .trim()} style={{ ...(overlayStyle || {}) }} ref={refs.overlay as any}>
+      <Container
+        className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
+          .filter(Boolean)
+          .join(' ')
+          .trim()}
+        style={{ ...(overlayStyle || {}) }}
+        ref={refs.overlay as any}
+      >
         {unstable_noReconciler ? (
           <Canvas>
             <BoundsContext.Provider value={bounds}>
@@ -546,4 +567,4 @@ export const Atlas: React.FC<
       {htmlChildren}
     </Container>
   );
-};
+});

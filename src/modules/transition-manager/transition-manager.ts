@@ -195,18 +195,18 @@ export class TransitionManager {
       typeof transition?.duration !== 'undefined'
         ? transition.duration
         : typeof defaults?.duration !== 'undefined'
-        ? defaults.duration
-        : 1000;
+          ? defaults.duration
+          : 1000;
     this.pendingTransition.constrain =
       typeof transition?.constrain !== 'undefined'
         ? transition.constrain
         : typeof defaults?.constrain !== 'undefined'
-        ? defaults.constrain
-        : false;
+          ? defaults.constrain
+          : false;
     this.pendingTransition.timingFunction = transition?.easing || defaults?.easing || easingFunctions.easeInOutSine;
   }
 
-  lastGoToRegion: null | { target: any;  options: any } = null;
+  lastGoToRegion: null | { target: any; options: any } = null;
 
   goToRegion(
     target: {

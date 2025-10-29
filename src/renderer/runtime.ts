@@ -181,6 +181,8 @@ export class Runtime {
         if (!this.manualHomePosition) {
           this.setHomePosition();
           this.goHome();
+        } else {
+          // recalculate world size?
         }
         this.updateFocalPosition();
       }
@@ -262,17 +264,17 @@ export class Runtime {
 
     const target = options.position
       ? {
-          x: options.position[1],
-          y: options.position[2],
-          width: options.position[3] - options.position[1],
-          height: options.position[4] - options.position[2],
-        }
+        x: options.position[1],
+        y: options.position[2],
+        width: options.position[3] - options.position[1],
+        height: options.position[4] - options.position[2],
+      }
       : {
-          x: this.homePosition[1],
-          y: this.homePosition[2],
-          width: this.homePosition[3] - this.homePosition[1],
-          height: this.homePosition[4] - this.homePosition[2],
-        };
+        x: this.homePosition[1],
+        y: this.homePosition[2],
+        width: this.homePosition[3] - this.homePosition[1],
+        height: this.homePosition[4] - this.homePosition[2],
+      };
 
     const width = this.width * scaleFactor;
     const height = this.height * scaleFactor;
