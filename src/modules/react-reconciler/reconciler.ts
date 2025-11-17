@@ -156,7 +156,16 @@ function createInstance(
       break;
     case 'tiledImage':
     case 'tiled-image':
-      instance = TiledImage.fromTile(props.uri, props.display, props.tile, props.scaleFactor, undefined, props.format, props.useFloorCalc, props.version3);
+      instance = TiledImage.fromTile(
+        props.uri,
+        props.display,
+        props.tile,
+        props.scaleFactor,
+        undefined,
+        props.format,
+        props.useFloorCalc,
+        props.version3
+      );
       break;
     case 'paragraph':
       instance = new Text();
@@ -229,19 +238,14 @@ const reconciler = Reconciler<
     activateEvents(runtime.world, newProps);
     return newProps;
   },
-  commitUpdate(
-    instance: any,
-    type_: any,
-    updatePayload_: any,
-    prevProps: any,
-    nextProps: any,
-    internalHandle: OpaqueHandle
-  ) {
-    let type = type_, updatePayload = updatePayload_;
+  commitUpdate(instance: any, type_: any, prevProps_: any, updatePayload_: any, internalHandle: OpaqueHandle) {
+    let type = type_,
+      updatePayload = updatePayload_;
+    let prevProps = prevProps_;
     if (typeof updatePayload === 'string') {
       // react <= 18
       type = updatePayload_;
-      updatePayload = updatePayload_;
+      updatePayload = prevProps_;
     }
 
 
@@ -352,26 +356,25 @@ const reconciler = Reconciler<
   rendererPackageName: '@atlas-viewer/atlas',
   rendererVersion: version,
 
-
   // React 19.
   shouldAttemptEagerTransition: () => false,
-  trackSchedulerEvent: () => { },
+  trackSchedulerEvent: () => {},
   resolveEventType: () => null,
   resolveEventTimeStamp: () => -1.1,
   maySuspendCommit: () => false,
   preloadInstance: () => true, // true indicates already loaded
-  startSuspendingCommit() { },
-  suspendInstance() { },
+  startSuspendingCommit() {},
+  suspendInstance() {},
   waitForCommitToBeReady: () => null,
   NotPendingTransition: null,
   setCurrentUpdatePriority(newPriority: number) {
-    currentUpdatePriority = newPriority
+    currentUpdatePriority = newPriority;
   },
   getCurrentUpdatePriority() {
-    return currentUpdatePriority
+    return currentUpdatePriority;
   },
   resolveUpdatePriority() {
-    if (currentUpdatePriority !== NoEventPriority) return currentUpdatePriority
+    if (currentUpdatePriority !== NoEventPriority) return currentUpdatePriority;
 
     switch (typeof window !== 'undefined' && window.event?.type) {
       case 'click':
@@ -380,25 +383,23 @@ const reconciler = Reconciler<
       case 'pointercancel':
       case 'pointerdown':
       case 'pointerup':
-        return DiscreteEventPriority
+        return DiscreteEventPriority;
       case 'pointermove':
       case 'pointerout':
       case 'pointerover':
       case 'pointerenter':
       case 'pointerleave':
       case 'wheel':
-        return ContinuousEventPriority
+        return ContinuousEventPriority;
       default:
-        return DefaultEventPriority
+        return DefaultEventPriority;
     }
   },
-  resetFormInstance() { },
+  resetFormInstance() {},
 });
 
-
 // @ts-ignore DefinitelyTyped is not up to date
-reconciler.injectIntoDevTools()
-
+reconciler.injectIntoDevTools();
 
 export function unmountComponentAtNode(runtime: Runtime, callback?: (runtime: any) => void) {
   const root = roots.get(runtime);

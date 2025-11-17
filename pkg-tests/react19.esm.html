@@ -13,12 +13,14 @@
 
     <script type="module">
       import { AtlasAuto, HTMLPortal } from '../src';
-      import { createElement as h, version } from 'react';
+      import { createElement as h, version, useState } from 'react';
       import { createRoot } from 'react-dom/client';
 
       console.log('React version', version);
 
       function Component() {
+        const [width, setWidth] = useState(100);
+
         return h(
           AtlasAuto,
           { unstable_webglRenderer: false },
@@ -47,6 +49,11 @@
                   ['Non interactive']
                 )
               ),
+              h('box', {
+                target: { x: 220, y: 320, width: width, height: 100 },
+                style: { background: 'pink' },
+                onClick: () => setWidth(w => w === 100 ? 200 : 100),
+              }, []),
               h(
                 HTMLPortal,
                 {

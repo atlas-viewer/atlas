@@ -4,13 +4,13 @@
   "bugs": "https://github.com/atlas-viewer/atlas/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/atlas-viewer/atlas"
+    "url": "git+https://github.com/atlas-viewer/atlas"
   },
   "type": "module",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "web": "dist/index.global.js",
-  "types": "dist/index.d.ts",
+  "types": "./dist/index.d.cts",
   "author": "Stephen Fraser <stephen.fraser@digirati.com>",
   "license": "MIT",
   "files": [
@@ -18,20 +18,16 @@
   ],
   "exports": {
     ".": {
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      },
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "prepack": "tsup",
+    "build": "tsdown",
+    "build-umd": "tsdown --config ./tsdown.umd.ts",
+    "dev": "tsdown --watch",
+    "prepack": "tsdown",
     "lint": "publint",
     "storybook": "vite",
     "test": "vitest",
@@ -44,13 +40,13 @@
     "@iiif/presentation-3": ">=2",
     "@iiif/helpers": "^1.1.0",
     "@iiif/parser": "^2.1.0",
-    "react-reconciler": "^0.33.0",
     "react-use-measure": "^2.1.7",
     "scheduler": "^0.27.0"
   },
   "peerDependencies": {
     "react": ">=17.0",
-    "react-dom": ">=17.0"
+    "react-dom": ">=17.0",
+    "react-reconciler": ">=0.29.0"
   },
   "sideEffects": false,
   "devDependencies": {
@@ -70,6 +66,7 @@
     "happy-dom": "^6.0.3",
     "prettier": "^2.4.1",
     "react": "^19.2.0",
+    "react-reconciler": "^0.33.0",
     "react-16": "npm:react@16",
     "react-17": "npm:react@17",
     "react-18": "npm:react@18",
@@ -85,7 +82,7 @@
     "vite": "^7.1.12",
     "vitest": "^4.0.4",
     "publint": "^0.3.15",
-    "tsup": "^8.0.2"
+    "tsdown": "^0.16.5"
   },
   "peerDependenciesMeta": {
     "react-dom": {

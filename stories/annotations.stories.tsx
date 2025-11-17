@@ -146,7 +146,6 @@ export const SelectionDemo = () => {
   return (
     <>
       <div style={{ height: '200vh' }}>
-        <div style={{ display: 'block', height: 400 }}></div>
         <div style={{ background: '#eee', borderRadius: 3, padding: 20 }} id="fs-viewer">
           <h3>Viewer</h3>
           <p>isEditing: {isEditing ? 'true' : 'false'}</p>
