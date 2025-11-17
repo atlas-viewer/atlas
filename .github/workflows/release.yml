@@ -13,7 +13,7 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v2
         with:
-          node-version: "18.x"
+          node-version: "22.x"
 
       - uses: pnpm/action-setup@v2
         name: Install pnpm
@@ -30,9 +30,9 @@ jobs:
         name: Setup pnpm cache
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-18-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-22-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-18-pnpm-store-
+            ${{ runner.os }}-22-pnpm-store-
 
       - run: pnpm i --frozen-lockfile
       - run: pnpm run build
@@ -47,7 +47,7 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v2
         with:
-          node-version: "18.x"
+          node-version: "22.x"
 
       - name: Set tag
         id: tagName
@@ -68,9 +68,9 @@ jobs:
         name: Setup pnpm cache
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-18-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-22-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-18-pnpm-store-
+            ${{ runner.os }}-22-pnpm-store-
 
       - run: pnpm i --frozen-lockfile
 
