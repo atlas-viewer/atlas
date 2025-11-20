@@ -95,7 +95,7 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     if (len) {
       for (let x = 0; x < len; x++) {
         try {
-          listeners[x](e);
+          listeners[x]?.(e);
           didFire = true;
         } catch (e) {
           console.error(name, e);
