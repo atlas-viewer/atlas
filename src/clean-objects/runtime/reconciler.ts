@@ -6,7 +6,7 @@ import { RenderRoot } from './render';
 
 const roots = new Map<Element, RenderRoot>();
 const { loop, advance, invalidate } = createLoop(roots);
-const reconciler = createReconciler(reconcilerConfig);
+const reconciler = createReconciler ? createReconciler(reconcilerConfig) : null;
 
 // Root configuration would require a full re-render
 type RootConfiguration = {
@@ -112,8 +112,10 @@ function render() {
   //
 }
 
-reconciler.injectIntoDevTools({
-  bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
-  rendererPackageName: '@react-three/fiber',
-  version: React.version,
-});
+if (reconciler) {
+  reconciler.injectIntoDevTools({
+    bundleType: process.env.NODE_ENV === 'production' ? 0 : 1,
+    rendererPackageName: '@react-three/fiber',
+    version: React.version,
+  });
+}

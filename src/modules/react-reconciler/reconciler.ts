@@ -16,7 +16,6 @@ import { ImageTexture } from '../../spacial-content/image-texture';
 import React, { version } from 'react';
 import { Geometry } from '../../objects/geometry';
 
-
 // From react-reconciler/constants;
 // import { ContinuousEventPriority, DiscreteEventPriority, DefaultEventPriority } from 'react-reconciler/constants'
 const ConcurrentRoot = 1;
@@ -66,6 +65,7 @@ export function applyProps(instance: any, oldProps: any, newProps: any) {
   if (instance.applyProps) {
     instance.applyProps(newProps);
   }
+
   if (instance instanceof BaseObject) {
     for (const ev of supportedEventAttributes) {
       const event = ev.slice(2).toLowerCase();
@@ -247,7 +247,6 @@ const reconciler = Reconciler<
       type = updatePayload_;
       updatePayload = prevProps_;
     }
-
 
     if (instance.applyProps && updatePayload) {
       applyProps(instance, prevProps, updatePayload);
