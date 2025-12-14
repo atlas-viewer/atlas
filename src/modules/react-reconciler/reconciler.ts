@@ -1,4 +1,4 @@
-import Reconciler from 'react-reconciler';
+import Reconciler_ from 'react-reconciler';
 import type { OpaqueHandle } from 'react-reconciler';
 import { now } from './utility/now';
 import { Runtime } from '../../renderer/runtime';
@@ -15,6 +15,8 @@ import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import React, { version } from 'react';
 import { Geometry } from '../../objects/geometry';
+
+const Reconciler = typeof Reconciler_ === 'function' ? Reconciler_ : null;
 
 // From react-reconciler/constants;
 // import { ContinuousEventPriority, DiscreteEventPriority, DefaultEventPriority } from 'react-reconciler/constants'
@@ -105,10 +107,10 @@ function createInstance(
   { args = [], ...props }: any,
   runtime: Runtime,
   hostContext?: any,
-  internalInstanceHandle?: Reconciler.Fiber
+  internalInstanceHandle?: Reconciler_.Fiber
 ) {
   if (!(runtime instanceof Runtime) && internalInstanceHandle) {
-    const fn = (node: Reconciler.Fiber): Runtime => {
+    const fn = (node: Reconciler_.Fiber): Runtime => {
       if (!node.return) return node.stateNode && node.stateNode.containerInfo;
       else return fn(node.return);
     };
@@ -194,215 +196,220 @@ function appendChildToContainer(runtime: Runtime, world: any) {
 
 let currentUpdatePriority = NoEventPriority;
 
-const reconciler = Reconciler<
-  any,
-  any,
-  Runtime,
-  unknown, // Instance,
-  unknown, // TextInstance,
-  unknown, // SuspenseInstance,
-  unknown, // HydratableInstance,
-  unknown, // PublicInstance,
-  unknown, // HostContext,
-  unknown, // UpdatePayload,
-  unknown, // _ChildSet,
-  unknown, // TimeoutHandle,
-  unknown // NoTimeout
->({
-  // @ts-ignore
-  unstable_now: now,
-  // @ts-ignore
-  now,
-  createInstance,
-  removeChild,
-  appendChild,
-  appendInitialChild: appendChild,
-  insertBefore: insertBefore,
-  warnsIfNotActing: true,
-  supportsMutation: true,
-  isPrimaryRenderer: false,
-  // @ts-ignore
-  scheduleTimeout: typeof setTimeout !== 'undefined' ? setTimeout : undefined,
-  // @ts-ignore
-  cancelTimeout: typeof clearTimeout !== 'undefined' ? clearTimeout : undefined,
-  setTimeout: typeof setTimeout !== 'undefined' ? setTimeout : undefined,
-  clearTimeout: typeof clearTimeout !== 'undefined' ? clearTimeout : undefined,
-  noTimeout: -1,
-  appendChildToContainer,
-  removeChildFromContainer: removeChildFromContainer,
-  createTextInstance() {
-    // no-op
-  },
-  insertInContainerBefore: insertInContainerBefore,
-  prepareUpdate(instance: any, type: any, oldProps: any, newProps: any, runtime: Runtime) {
-    activateEvents(runtime.world, newProps);
-    return newProps;
-  },
-  commitUpdate(instance: any, type_: any, prevProps_: any, updatePayload_: any, internalHandle: OpaqueHandle) {
-    let type = type_,
-      updatePayload = updatePayload_;
-    let prevProps = prevProps_;
-    if (typeof updatePayload === 'string') {
-      // react <= 18
-      type = updatePayload_;
-      updatePayload = prevProps_;
-    }
+const reconciler = Reconciler
+  ? Reconciler<
+      any,
+      any,
+      Runtime,
+      unknown, // Instance,
+      unknown, // TextInstance,
+      unknown, // SuspenseInstance,
+      unknown, // HydratableInstance,
+      unknown, // PublicInstance,
+      unknown, // HostContext,
+      unknown, // UpdatePayload,
+      unknown, // _ChildSet,
+      unknown, // TimeoutHandle,
+      unknown // NoTimeout
+    >({
+      // @ts-ignore
+      unstable_now: now,
+      // @ts-ignore
+      now,
+      createInstance,
+      removeChild,
+      appendChild,
+      appendInitialChild: appendChild,
+      insertBefore: insertBefore,
+      warnsIfNotActing: true,
+      supportsMutation: true,
+      isPrimaryRenderer: false,
+      // @ts-ignore
+      scheduleTimeout: typeof setTimeout !== 'undefined' ? setTimeout : undefined,
+      // @ts-ignore
+      cancelTimeout: typeof clearTimeout !== 'undefined' ? clearTimeout : undefined,
+      setTimeout: typeof setTimeout !== 'undefined' ? setTimeout : undefined,
+      clearTimeout: typeof clearTimeout !== 'undefined' ? clearTimeout : undefined,
+      noTimeout: -1,
+      appendChildToContainer,
+      removeChildFromContainer: removeChildFromContainer,
+      createTextInstance() {
+        // no-op
+      },
+      insertInContainerBefore: insertInContainerBefore,
+      prepareUpdate(instance: any, type: any, oldProps: any, newProps: any, runtime: Runtime) {
+        activateEvents(runtime.world, newProps);
+        return newProps;
+      },
+      commitUpdate(instance: any, type_: any, prevProps_: any, updatePayload_: any, internalHandle: OpaqueHandle) {
+        let type = type_,
+          updatePayload = updatePayload_;
+        let prevProps = prevProps_;
+        if (typeof updatePayload === 'string') {
+          // react <= 18
+          type = updatePayload_;
+          updatePayload = prevProps_;
+        }
 
-    if (instance.applyProps && updatePayload) {
-      applyProps(instance, prevProps, updatePayload);
-    }
-  },
+        if (instance.applyProps && updatePayload) {
+          applyProps(instance, prevProps, updatePayload);
+        }
+      },
 
-  finalizeInitialChildren(instance: any) {
-    // https://github.com/facebook/react/issues/20271
-    // Returning true will trigger commitMount
-    return instance?.__handlers;
-  },
-  getChildHostContext() {
-    return emptyObject;
-  },
-  getRootHostContext() {
-    return emptyObject;
-  },
-  prepareForCommit(runtime) {
-    runtime.isCommitting = true;
-    return null;
-  },
-  preparePortalMount() {
-    // no-op
-  },
-  hideInstance(instance: BaseObject) {
-    if (instance && instance.points) {
-      instance.points[0] = 0;
-    }
-    // @todo these are called when a component is suspended
-  },
-  unhideInstance(instance: BaseObject, props: any) {
-    if (instance && instance.points) {
-      instance.points[0] = 1;
-    }
-    // @todo these are called when a component is suspended
-  },
-  getPublicInstance(instance: BaseObject) {
-    return instance;
-  },
-  hideTextInstance() {
-    throw new Error(
-      'Text is not allowed in the react-three-fibre tree. You may have extraneous whitespace between components.'
-    );
-  },
-  resetAfterCommit(runtime) {
-    runtime.isCommitting = false;
-    runtime.pendingUpdate = true;
-    if (runtime.world) {
-      if (runtime.world.needsRecalculate) {
-        runtime.world.recalculateWorldSize();
-        runtime.world.triggerRepaint();
-      }
-    }
-  },
-  shouldSetTextContent() {
-    return false;
-  },
-  clearContainer() {
-    return false;
-  },
+      finalizeInitialChildren(instance: any) {
+        // https://github.com/facebook/react/issues/20271
+        // Returning true will trigger commitMount
+        return instance?.__handlers;
+      },
+      getChildHostContext() {
+        return emptyObject;
+      },
+      getRootHostContext() {
+        return emptyObject;
+      },
+      prepareForCommit(runtime) {
+        runtime.isCommitting = true;
+        return null;
+      },
+      preparePortalMount() {
+        // no-op
+      },
+      hideInstance(instance: BaseObject) {
+        if (instance && instance.points) {
+          instance.points[0] = 0;
+        }
+        // @todo these are called when a component is suspended
+      },
+      unhideInstance(instance: BaseObject, props: any) {
+        if (instance && instance.points) {
+          instance.points[0] = 1;
+        }
+        // @todo these are called when a component is suspended
+      },
+      getPublicInstance(instance: BaseObject) {
+        return instance;
+      },
+      hideTextInstance() {
+        throw new Error(
+          'Text is not allowed in the react-three-fibre tree. You may have extraneous whitespace between components.'
+        );
+      },
+      resetAfterCommit(runtime) {
+        runtime.isCommitting = false;
+        runtime.pendingUpdate = true;
+        if (runtime.world) {
+          if (runtime.world.needsRecalculate) {
+            runtime.world.recalculateWorldSize();
+            runtime.world.triggerRepaint();
+          }
+        }
+      },
+      shouldSetTextContent() {
+        return false;
+      },
+      clearContainer() {
+        return false;
+      },
 
-  // 0.29.0 and later
-  supportsHydration: false,
-  supportsPersistence: false,
+      // 0.29.0 and later
+      supportsHydration: false,
+      supportsPersistence: false,
 
-  detachDeletedInstance(node) {
-    // no-op?
-    // console.log('detachDeletedInstance', node);
-  },
+      detachDeletedInstance(node) {
+        // no-op?
+        // console.log('detachDeletedInstance', node);
+      },
 
-  afterActiveInstanceBlur() {
-    // no-op
-  },
+      afterActiveInstanceBlur() {
+        // no-op
+      },
 
-  beforeActiveInstanceBlur() {
-    // no-op
-  },
+      beforeActiveInstanceBlur() {
+        // no-op
+      },
 
-  getCurrentEventPriority() {
-    // If in the browser, check `window.event` and maybe do something different.
-    return DefaultEventPriority;
-  },
-
-  getInstanceFromNode(node) {
-    throw new Error('Not implemented');
-  },
-
-  getInstanceFromScope(scopeInstance) {
-    throw new Error('Not implemented');
-    // return nodeToInstanceMap.get(scopeInstance) || null;
-  },
-
-  prepareScopeUpdate(scopeInstance, instance) {
-    throw new Error('Not implemented');
-    // nodeToInstanceMap.set(scopeInstance, instance);
-  },
-
-  logRecoverableError() {
-    // noop
-  },
-
-  requestPostPaintCallback() {
-    // noop
-  },
-
-  rendererPackageName: '@atlas-viewer/atlas',
-  rendererVersion: version,
-
-  // React 19.
-  shouldAttemptEagerTransition: () => false,
-  trackSchedulerEvent: () => {},
-  resolveEventType: () => null,
-  resolveEventTimeStamp: () => -1.1,
-  maySuspendCommit: () => false,
-  preloadInstance: () => true, // true indicates already loaded
-  startSuspendingCommit() {},
-  suspendInstance() {},
-  waitForCommitToBeReady: () => null,
-  NotPendingTransition: null,
-  setCurrentUpdatePriority(newPriority: number) {
-    currentUpdatePriority = newPriority;
-  },
-  getCurrentUpdatePriority() {
-    return currentUpdatePriority;
-  },
-  resolveUpdatePriority() {
-    if (currentUpdatePriority !== NoEventPriority) return currentUpdatePriority;
-
-    switch (typeof window !== 'undefined' && window.event?.type) {
-      case 'click':
-      case 'contextmenu':
-      case 'dblclick':
-      case 'pointercancel':
-      case 'pointerdown':
-      case 'pointerup':
-        return DiscreteEventPriority;
-      case 'pointermove':
-      case 'pointerout':
-      case 'pointerover':
-      case 'pointerenter':
-      case 'pointerleave':
-      case 'wheel':
-        return ContinuousEventPriority;
-      default:
+      getCurrentEventPriority() {
+        // If in the browser, check `window.event` and maybe do something different.
         return DefaultEventPriority;
-    }
-  },
-  resetFormInstance() {},
-});
+      },
 
-// @ts-ignore DefinitelyTyped is not up to date
-reconciler.injectIntoDevTools();
+      getInstanceFromNode(node) {
+        throw new Error('Not implemented');
+      },
+
+      getInstanceFromScope(scopeInstance) {
+        throw new Error('Not implemented');
+        // return nodeToInstanceMap.get(scopeInstance) || null;
+      },
+
+      prepareScopeUpdate(scopeInstance, instance) {
+        throw new Error('Not implemented');
+        // nodeToInstanceMap.set(scopeInstance, instance);
+      },
+
+      logRecoverableError() {
+        // noop
+      },
+
+      requestPostPaintCallback() {
+        // noop
+      },
+
+      rendererPackageName: '@atlas-viewer/atlas',
+      rendererVersion: version,
+
+      // React 19.
+      shouldAttemptEagerTransition: () => false,
+      trackSchedulerEvent: () => {},
+      resolveEventType: () => null,
+      resolveEventTimeStamp: () => -1.1,
+      maySuspendCommit: () => false,
+      preloadInstance: () => true, // true indicates already loaded
+      startSuspendingCommit() {},
+      suspendInstance() {},
+      waitForCommitToBeReady: () => null,
+      NotPendingTransition: null,
+      setCurrentUpdatePriority(newPriority: number) {
+        currentUpdatePriority = newPriority;
+      },
+      getCurrentUpdatePriority() {
+        return currentUpdatePriority;
+      },
+      resolveUpdatePriority() {
+        if (currentUpdatePriority !== NoEventPriority) return currentUpdatePriority;
+
+        switch (typeof window !== 'undefined' && window.event?.type) {
+          case 'click':
+          case 'contextmenu':
+          case 'dblclick':
+          case 'pointercancel':
+          case 'pointerdown':
+          case 'pointerup':
+            return DiscreteEventPriority;
+          case 'pointermove':
+          case 'pointerout':
+          case 'pointerover':
+          case 'pointerenter':
+          case 'pointerleave':
+          case 'wheel':
+            return ContinuousEventPriority;
+          default:
+            return DefaultEventPriority;
+        }
+      },
+      resetFormInstance() {},
+    })
+  : null;
+
+if (reconciler) {
+  // @ts-ignore DefinitelyTyped is not up to date
+  reconciler.injectIntoDevTools();
+}
 
 export function unmountComponentAtNode(runtime: Runtime, callback?: (runtime: any) => void) {
   const root = roots.get(runtime);
   if (root) {
+    if (!reconciler) return;
     reconciler.updateContainer(null, root, null, () => {
       roots.delete(runtime);
       if (callback) callback(runtime);
@@ -413,6 +420,8 @@ export function unmountComponentAtNode(runtime: Runtime, callback?: (runtime: an
 export const ReactAtlas = {
   render(whatToRender: any, runtime: any) {
     const root = roots.get(runtime);
+
+    if (!reconciler) return;
 
     if (root) {
       reconciler.updateContainer(whatToRender, root, null);
