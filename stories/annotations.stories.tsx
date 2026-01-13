@@ -346,6 +346,54 @@ export const flexbox = () => {
   );
 };
 
+export const transparent = () => {
+  return (
+    <>
+      <style>{`
+        .storylite-story-canvas {
+          padding: 0;
+        }
+        .atlas-flex {
+          height: 100vh;
+          box-sizing: border-box;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          min-width: 0;
+
+          --atlas-background: transparent;
+          --atlas-focus: 5px solid green;
+          --atlas-container-flex: 1 1 0px;
+        }
+        .image {
+          filter: blur(30px) saturate(120%);
+          position: absolute;
+          inset: -10%;
+        }
+        .image img {
+          width: 120%;
+          height: 120%;
+          object-fit: cover;
+        }
+      `}</style>
+      <div className="atlas-flex">
+        <AtlasAuto
+          background="transparent"
+          renderPreset={['default-preset', { canvasBox: true }]}>
+          <world>
+            <ImageService key="wunder" {...staticTiles[1]} />
+          </world>
+        </AtlasAuto>
+        <div className="image">
+          <img src="https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/full/654,/0/default.jpg" />
+        </div>
+      </div>
+      <style>{`body[style]{padding: 0 !important}`}</style>
+    </>
+  );
+};
+
 export const objectFitCover = () => {
   const options = [false, true, 'start', 'end'];
   const [i, setI] = useState(0);

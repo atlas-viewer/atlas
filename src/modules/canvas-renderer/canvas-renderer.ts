@@ -120,25 +120,25 @@ export class CanvasRenderer implements Renderer {
 
     this.hostCache = options?.lruCache
       ? new LRUCache<string, HTMLCanvasElement>({
-        maxSize: 1024 * 512 * 512, // 250MB total.
-        dispose: (value, key, reason) => {
-          this.invalidated.push(key);
-          value.width = 0;
-          value.height = 0;
-        },
-        sizeCalculation: (value, key) => {
-          return value.width * value.height;
-        },
-      })
+          maxSize: 1024 * 512 * 512, // 250MB total.
+          dispose: (value, key, reason) => {
+            this.invalidated.push(key);
+            value.width = 0;
+            value.height = 0;
+          },
+          sizeCalculation: (value, key) => {
+            return value.width * value.height;
+          },
+        })
       : ({
-        store: {},
-        get(id: string) {
-          return this.store[id];
-        },
-        set(id: string, value: any) {
-          this.store[id] = value;
-        },
-      } as any);
+          store: {},
+          get(id: string) {
+            return this.store[id];
+          },
+          set(id: string, value: any) {
+            this.store[id] = value;
+          },
+        } as any);
 
     // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
     //   import('stats.js')
@@ -313,8 +313,12 @@ export class CanvasRenderer implements Renderer {
     const canvas = this.getCanvasDims();
     // But we also need to clear the canvas.
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = this.canvas.dataset.background ?? 'rgb(0, 0, 0)';
-    this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (this.canvas.dataset.background === 'transparent') {
+      this.ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } else {
+      this.ctx.fillStyle = this.canvas.dataset.background ?? 'rgb(0, 0, 0)';
+      this.ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
