@@ -110,6 +110,9 @@ export class Runtime {
   manualHomePosition: boolean;
   manualFocalPosition: boolean;
   focalPosition: Strand;
+  // Home padding in CSS pixels to apply when goHome() is used if no padding supplied.
+  // Can be a symmetric number or a per-side object { left?, right?, top?, bottom? } (CSS pixels).
+  homePaddingPx: number | { left?: number; right?: number; top?: number; bottom?: number } | undefined;
   transitionManager: TransitionManager;
   aggregate: Strand;
   transformBuffer = dna(500);
@@ -128,6 +131,9 @@ export class Runtime {
   maxScaleFactor = 1;
   _viewerToWorld = { x: 0, y: 0 };
   _lastGoodScale = 1;
+  // Track actual canvas dimensions (in CSS pixels) to avoid using target dimensions
+  _canvasWidth = 0;
+  _canvasHeight = 0;
   hooks: RuntimeHooks = {
     useFrame: [],
     useBeforeFrame: [],
@@ -191,11 +197,38 @@ export class Runtime {
     this.controllers = controllers;
     this.render(this.lastTime);
     this.startControllers();
+
+    // default home padding in CSS pixels
+    this.homePaddingPx = undefined;
+    // Initialize canvas dimensions (will be updated by triggerResize)
+    const initialPos = this.getRendererScreenPosition();
+    this._canvasWidth = initialPos?.width || 0;
+    this._canvasHeight = initialPos?.height || 0;
   }
 
   setHomePosition(position?: Projection) {
     this.homePosition.set(DnaFactory.projection(position ? position : this.world));
     this.pendingUpdate = true;
+  }
+
+  /**
+   * Set the default home padding in CSS pixels. When `goHome()` is invoked without a paddingPx
+   * this value will be used and converted to world units internally.
+   */
+  setHomePaddingPx(px?: number | { left?: number; right?: number; top?: number; bottom?: number }) {
+    if (typeof px === 'undefined' || px === null) {
+      this.homePaddingPx = undefined;
+    } else {
+      this.homePaddingPx = px;
+    }
+    this.pendingUpdate = true;
+  }
+
+  /**
+   * Get the current default home padding in CSS pixels (as set via `setHomePaddingPx`).
+   */
+  getHomePaddingPx(): number | { left?: number; right?: number; top?: number; bottom?: number } | undefined {
+    return this.homePaddingPx;
   }
 
   startControllers() {
@@ -229,6 +262,12 @@ export class Runtime {
     if (this.renderer.triggerResize) {
       this.renderer.triggerResize();
     }
+    // Update cached canvas dimensions when resize is triggered
+    const pos = this.getRendererScreenPosition();
+    if (pos) {
+      this._canvasWidth = pos.width;
+      this._canvasHeight = pos.height;
+    }
     this.pendingUpdate = true;
   }
 
@@ -257,51 +296,110 @@ export class Runtime {
     this.options = { ...this.options, ...options };
   }
 
-  goHome(options: { cover?: boolean; position?: Strand } = {}) {
-    if (this.world.width <= 0 || this.world.height <= 0) return;
+  getHomeTarget(options: {
+    cover?: boolean;
+    position?: Strand;
+    paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
+  } = {}) {
+    const rendererPosition = this.getRendererScreenPosition();
+    const canvasWidth = rendererPosition?.width || this._canvasWidth || this.width;
+    const canvasHeight = rendererPosition?.height || this._canvasHeight || this.height;
 
-    const scaleFactor = this.getScaleFactor();
+    if (rendererPosition) {
+      this._canvasWidth = rendererPosition.width;
+      this._canvasHeight = rendererPosition.height;
+    }
+
+    const paddingPx = typeof options.paddingPx !== 'undefined' ? options.paddingPx : this.homePaddingPx;
+    const padding = {
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+    } as { left: number; right: number; top: number; bottom: number };
+
+    if (typeof paddingPx === 'number') {
+      padding.left = padding.right = padding.top = padding.bottom = paddingPx;
+    } else if (paddingPx) {
+      padding.left = paddingPx.left || 0;
+      padding.right = paddingPx.right || 0;
+      padding.top = paddingPx.top || 0;
+      padding.bottom = paddingPx.bottom || 0;
+    }
+
+    const availableWidth = Math.max(1, canvasWidth - padding.left - padding.right);
+    const availableHeight = Math.max(1, canvasHeight - padding.top - padding.bottom);
+    const viewAspect = availableWidth / availableHeight;
 
     const target = options.position
       ? {
-        x: options.position[1],
-        y: options.position[2],
-        width: options.position[3] - options.position[1],
-        height: options.position[4] - options.position[2],
-      }
+          x: options.position[1],
+          y: options.position[2],
+          width: options.position[3] - options.position[1],
+          height: options.position[4] - options.position[2],
+        }
       : {
-        x: this.homePosition[1],
-        y: this.homePosition[2],
-        width: this.homePosition[3] - this.homePosition[1],
-        height: this.homePosition[4] - this.homePosition[2],
-      };
+          x: this.homePosition[1],
+          y: this.homePosition[2],
+          width: this.homePosition[3] - this.homePosition[1],
+          height: this.homePosition[4] - this.homePosition[2],
+        };
 
-    const width = this.width * scaleFactor;
-    const height = this.height * scaleFactor;
+    const targetAspect = target.width / target.height;
+    const useWidth = options.cover ? targetAspect < viewAspect : targetAspect > viewAspect;
 
-    const widthScale = target.width / width;
-    const heightScale = target.height / height;
-    const ar = width / height;
+    let viewWidth = target.width;
+    let viewHeight = target.height;
+    let viewX = target.x;
+    let viewY = target.y;
 
-    if (options.cover ? widthScale > heightScale : widthScale < heightScale) {
-      const fullWidth = ar * target.height;
-      const space = (fullWidth - target.width) / 2;
-
-      this.target[1] = Math.round(-space + target.x);
-      this.target[2] = Math.round(target.y);
-      this.target[3] = Math.round(fullWidth - space + target.x);
-      this.target[4] = Math.round(target.height + target.y);
+    if (useWidth) {
+      viewWidth = target.width;
+      viewHeight = target.width / viewAspect;
+      viewX = target.x;
+      viewY = target.y - (viewHeight - target.height) / 2;
     } else {
-      const fullHeight = target.width / ar;
-      const space = (fullHeight - target.height) / 2;
-
-      this.target[1] = Math.round(target.x);
-      this.target[2] = Math.round(target.y - space);
-      this.target[3] = Math.round(target.x + target.width);
-      this.target[4] = Math.round(target.y + fullHeight - space);
+      viewHeight = target.height;
+      viewWidth = target.height * viewAspect;
+      viewX = target.x - (viewWidth - target.width) / 2;
+      viewY = target.y;
     }
 
-    this.constrainBounds(this.target);
+    const worldPerPixel = viewWidth / availableWidth;
+    const padLeft = padding.left * worldPerPixel;
+    const padRight = padding.right * worldPerPixel;
+    const padTop = padding.top * worldPerPixel;
+    const padBottom = padding.bottom * worldPerPixel;
+
+    return {
+      x: viewX - padLeft,
+      y: viewY - padTop,
+      width: viewWidth + padLeft + padRight,
+      height: viewHeight + padTop + padBottom,
+    };
+  }
+
+  getHomeTargetStrand(options: {
+    cover?: boolean;
+    position?: Strand;
+    paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
+  } = {}) {
+    const target = this.getHomeTarget(options);
+    return DnaFactory.singleBox(target.width, target.height, target.x, target.y);
+  }
+
+  goHome(options: { cover?: boolean; position?: Strand; paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number } } = {}) {
+    if (this.world.width <= 0 || this.world.height <= 0) return;
+
+    const target = this.getHomeTarget(options);
+    this.target[1] = Math.round(target.x);
+    this.target[2] = Math.round(target.y);
+    this.target[3] = Math.round(target.x + target.width);
+    this.target[4] = Math.round(target.y + target.height);
+
+    const paddingPx = typeof options.paddingPx !== 'undefined' ? options.paddingPx : this.homePaddingPx;
+    const constrainOptions = paddingPx ? { ref: true, homePaddingPx: paddingPx } : { ref: true };
+    this.constrainBounds(this.target, constrainOptions);
 
     this.updateControllerPosition();
   }
@@ -453,8 +551,19 @@ export class Runtime {
     this.pendingUpdate = true;
   };
 
-  constrainBounds(target: Strand, { panPadding = 0, ref = false }: { ref?: boolean; panPadding?: number } = {}) {
-    const { minX, maxX, minY, maxY } = this.getBounds({ target, padding: panPadding });
+  constrainBounds(
+    target: Strand,
+    {
+      panPadding = 0,
+      ref = false,
+      homePaddingPx,
+    }: {
+      ref?: boolean;
+      panPadding?: number;
+      homePaddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
+    } = {}
+  ) {
+    const { minX, maxX, minY, maxY } = this.getBounds({ target, padding: panPadding, homePaddingPx });
 
     let isConstrained = false;
     const constrained = ref ? target : dna(target);
@@ -492,11 +601,35 @@ export class Runtime {
    * more of an issue. It has to take into account the current layout. There also needs to be a new method for creating
    * a "home" view  that will fit the content to the view.
    */
-  getBounds(options: { padding: number; target?: Strand }) {
+  getBounds(options: {
+    padding: number;
+    target?: Strand;
+    homePaddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
+  }) {
     const target = options.target || this.target;
     const padding = options.padding;
     const visRatio = this.options.visibilityRatio;
     const hiddenRatio = Math.abs(1 - visRatio);
+
+    // If homePaddingPx is provided, we need to account for it when calculating bounds.
+    // The padding reduces the effective viewport size, so we need to allow a larger target.
+    let effectivePaddingLeft = 0;
+    let effectivePaddingRight = 0;
+    let effectivePaddingTop = 0;
+    let effectivePaddingBottom = 0;
+
+    if (options.homePaddingPx) {
+      const cssScale = this.getScaleFactor(false);
+      if (typeof options.homePaddingPx === 'number') {
+        const p = options.homePaddingPx / cssScale;
+        effectivePaddingLeft = effectivePaddingRight = effectivePaddingTop = effectivePaddingBottom = p;
+      } else {
+        effectivePaddingLeft = options.homePaddingPx.left ? options.homePaddingPx.left / cssScale : 0;
+        effectivePaddingRight = options.homePaddingPx.right ? options.homePaddingPx.right / cssScale : 0;
+        effectivePaddingTop = options.homePaddingPx.top ? options.homePaddingPx.top / cssScale : 0;
+        effectivePaddingBottom = options.homePaddingPx.bottom ? options.homePaddingPx.bottom / cssScale : 0;
+      }
+    }
 
     if (this.world.hasActiveZone()) {
       const zone = this.world.getActiveZone();
@@ -524,11 +657,15 @@ export class Runtime {
     const wt = target[3] - target[1];
     const ww = this.world.width;
 
+    // When we have home padding, the effective world dimensions that need to fit in the viewport
+    // are reduced by the padding amount. This allows the viewport to be larger to compensate.
+    const effectiveWorldWidth = ww + effectivePaddingLeft + effectivePaddingRight;
+
     // const addConstraintPaddingX = ww / visRatio < wt;
 
     // Add constrain padding = false (zoomed in)
-    const xB = -wt * hiddenRatio;
-    const xD = ww - wt - xB;
+    const xB = -wt * hiddenRatio - effectivePaddingLeft;
+    const xD = effectiveWorldWidth - wt - xB;
 
     // ADd constrain padding = true (zoomed out)
     // const xA = ww * visRatio - wt;
@@ -544,9 +681,13 @@ export class Runtime {
     const ht = target[4] - target[2];
     const hw = this.world.height;
 
+    // When we have home padding, the effective world dimensions that need to fit in the viewport
+    // are reduced by the padding amount. This allows the viewport to be larger to compensate.
+    const effectiveWorldHeight = hw + effectivePaddingTop + effectivePaddingBottom;
+
     // Add constrain padding = false (zoomed in)
-    const yB = -ht * hiddenRatio;
-    const yD = hw - ht - yB;
+    const yB = -ht * hiddenRatio - effectivePaddingTop;
+    const yD = effectiveWorldHeight - ht - yB;
 
     // Add constrain padding = true (zoomed out)
     // const yA = hw * visRatio - ht;

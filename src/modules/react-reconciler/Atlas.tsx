@@ -30,6 +30,11 @@ export type AtlasProps = {
   homeCover?: true | false | 'start' | 'end';
   homeOnResize?: boolean;
   homePosition?: Projection;
+  /**
+   * Home padding in CSS pixels. Can be a number (symmetric) or an object with any of
+   * `left`, `right`, `top`, `bottom` for per-side CSS pixel margins.
+   */
+  homePaddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
   className?: string;
   background?: string;
   enableNavigator?: boolean;
@@ -81,6 +86,7 @@ export const Atlas: React.FC<
     runtimeOptions,
     debug,
     filters,
+    homePaddingPx,
     ...restProps
   } = props;
 
@@ -168,6 +174,13 @@ export const Atlas: React.FC<
       }
     }
   }, [preset, homeCover, homePosition]);
+
+  // Home padding: apply to runtime when preset or prop changes.
+  useEffect(() => {
+    if (preset) {
+      preset.runtime.setHomePaddingPx(homePaddingPx as any);
+    }
+  }, [preset, homePaddingPx]);
 
   // When the width and height change this will resize the viewer and then reset the view to fit the element.
   // @todo improve or make configurable.

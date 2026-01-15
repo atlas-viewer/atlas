@@ -528,16 +528,21 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     y: number;
     height: number;
     width: number;
+    // padding in world units (symmetric)
     padding?: number;
+    // optional CSS-pixel padding which will be converted to world units by runtime before applying.
+    // Can be a number (symmetric) or an object with any of `left`, `right`, `top`, `bottom` in CSS pixels.
+    paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
     nudge?: boolean;
     immediate?: boolean;
   }) {
     this.trigger('goto-region', data);
   }
 
-  goHome(immediate = false) {
+  goHome(immediate = false, paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number }) {
     this.trigger('go-home', {
       immediate,
+      paddingPx,
     });
   }
 

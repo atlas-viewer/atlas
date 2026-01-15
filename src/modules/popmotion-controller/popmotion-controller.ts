@@ -367,13 +367,45 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             stream: data.stream,
           });
         }
-        if (type === 'go-home') {
-          const transition = data.immediate ? { duration: 0 } : undefined;
-          runtime.transitionManager.goToRegion(toBox(runtime.homePosition), { transition });
-        }
+          if (type === 'go-home') {
+            const transition = data.immediate ? { duration: 0 } : undefined;
+            const paddingPx = typeof data?.paddingPx !== 'undefined' ? data.paddingPx : (runtime as any).homePaddingPx;
+            const target = runtime.getHomeTargetStrand({ paddingPx });
+            runtime.transitionManager.applyTransition(
+              target,
+              transition,
+              {
+                duration: 1000,
+                easing: easingFunctions.easeOutExpo,
+                constrain: true,
+              },
+              { stream: false }
+            );
+            runtime.updateNextFrame();
+          }
         if (type === 'goto-region' && data) {
           const transition = data.immediate ? { duration: 0 } : {};
-          runtime.transitionManager.goToRegion(data, { transition });
+          // If paddingPx is supplied, convert CSS pixels to world units. If it's a number we can pass
+          // symmetric padding into goToRegion via the padding parameter. If it's a per-side object, expand
+          // the region by the per-side amounts (converted to world units) and pass the expanded region.
+          if (typeof data.paddingPx !== 'undefined') {
+            const cssScale = runtime.getScaleFactor(false);
+            if (typeof data.paddingPx === 'number') {
+              const padding = data.paddingPx / cssScale;
+              const region = { x: data.x, y: data.y, width: data.width, height: data.height, padding };
+              runtime.transitionManager.goToRegion(region, { transition });
+            } else {
+              // object with left/right/top/bottom
+              const left = data.paddingPx.left ? data.paddingPx.left / cssScale : 0;
+              const right = data.paddingPx.right ? data.paddingPx.right / cssScale : 0;
+              const top = data.paddingPx.top ? data.paddingPx.top / cssScale : 0;
+              const bottom = data.paddingPx.bottom ? data.paddingPx.bottom / cssScale : 0;
+              const expanded = { x: data.x - left, y: data.y - top, width: data.width + left + right, height: data.height + top + bottom };
+              runtime.transitionManager.goToRegion(expanded, { transition });
+            }
+          } else {
+            runtime.transitionManager.goToRegion(data, { transition });
+          }
         }
         if (type === 'constrain-bounds') {
           runtime.transitionManager.constrainBounds({
