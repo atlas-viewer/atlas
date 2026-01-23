@@ -648,7 +648,7 @@ export const GoToRegionWithPadding = () => {
               {region.label}
             </button>
           ))}
-          <button onClick={() => preset?.runtime.goHome()} style={{ padding: '6px 10px', cursor: 'pointer' }}>
+          <button onClick={() => preset?.runtime.world.goHome()} style={{ padding: '6px 10px', cursor: 'pointer' }}>
             Go Home
           </button>
         </div>
