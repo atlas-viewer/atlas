@@ -178,7 +178,7 @@ export const Atlas: React.FC<
   // Home padding: apply to runtime when preset or prop changes.
   useEffect(() => {
     if (preset) {
-      preset.runtime.setHomePaddingPx(homePaddingPx as any);
+      preset.runtime.setHomePaddingPx(homePaddingPx);
     }
   }, [preset, homePaddingPx]);
 

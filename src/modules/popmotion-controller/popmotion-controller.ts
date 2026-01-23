@@ -1,7 +1,7 @@
 /** @ts-ignore */
 import normalizeWheel from 'normalize-wheel';
 import { distance } from '../../utils';
-import { compose, dna, scale, scaleAtOrigin, transform, translate } from '@atlas-viewer/dna';
+import { compose, dna, scale, scaleAtOrigin, transform, translate, DnaFactory } from '@atlas-viewer/dna';
 import { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
 import { toBox } from '../../utility/to-box';
@@ -220,7 +220,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
         if (state.isPressing && e.touches.length === 1) {
           if (enablePanOnWait) {
-            // if there is a delay between the touch-start and the 1st touch-move of < xms, then treat that as a PAN, 
+            // if there is a delay between the touch-start and the 1st touch-move of < xms, then treat that as a PAN,
             // anything faster is a window scroll
             if (performance.now() - touchStartTime < panOnWaitDelay && intent == '') {
               intent = INTENT_SCROLL;
@@ -367,42 +367,22 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             stream: data.stream,
           });
         }
-          if (type === 'go-home') {
-            const transition = data.immediate ? { duration: 0 } : undefined;
-            const paddingPx = typeof data?.paddingPx !== 'undefined' ? data.paddingPx : (runtime as any).homePaddingPx;
-            const target = runtime.getHomeTargetStrand({ paddingPx });
-            runtime.transitionManager.applyTransition(
-              target,
-              transition,
-              {
-                duration: 1000,
-                easing: easingFunctions.easeOutExpo,
-                constrain: true,
-              },
-              { stream: false }
-            );
-            runtime.updateNextFrame();
-          }
+        if (type === 'go-home') {
+          const transition = data.immediate ? { duration: 0 } : undefined;
+          // Use getHomeTarget to calculate the padded home position
+          const paddingPx = data?.paddingPx;
+          const homeTarget = runtime.getHomeTarget({ paddingPx });
+          runtime.transitionManager.goToRegion(homeTarget, { transition });
+        }
         if (type === 'goto-region' && data) {
           const transition = data.immediate ? { duration: 0 } : {};
-          // If paddingPx is supplied, convert CSS pixels to world units. If it's a number we can pass
-          // symmetric padding into goToRegion via the padding parameter. If it's a per-side object, expand
-          // the region by the per-side amounts (converted to world units) and pass the expanded region.
-          if (typeof data.paddingPx !== 'undefined') {
-            const cssScale = runtime.getScaleFactor(false);
-            if (typeof data.paddingPx === 'number') {
-              const padding = data.paddingPx / cssScale;
-              const region = { x: data.x, y: data.y, width: data.width, height: data.height, padding };
-              runtime.transitionManager.goToRegion(region, { transition });
-            } else {
-              // object with left/right/top/bottom
-              const left = data.paddingPx.left ? data.paddingPx.left / cssScale : 0;
-              const right = data.paddingPx.right ? data.paddingPx.right / cssScale : 0;
-              const top = data.paddingPx.top ? data.paddingPx.top / cssScale : 0;
-              const bottom = data.paddingPx.bottom ? data.paddingPx.bottom / cssScale : 0;
-              const expanded = { x: data.x - left, y: data.y - top, width: data.width + left + right, height: data.height + top + bottom };
-              runtime.transitionManager.goToRegion(expanded, { transition });
-            }
+          // If paddingPx is provided, use getHomeTarget to calculate the padded region
+          if (data.paddingPx !== undefined) {
+            const targetRegion = runtime.getHomeTarget({
+              position: DnaFactory.singleBox(data.width, data.height, data.x, data.y),
+              paddingPx: data.paddingPx,
+            });
+            runtime.transitionManager.goToRegion(targetRegion, { transition });
           } else {
             runtime.transitionManager.goToRegion(data, { transition });
           }

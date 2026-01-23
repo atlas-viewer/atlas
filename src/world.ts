@@ -435,7 +435,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const len = this.objects.length;
     this._updatedList = [];
 
-
     for (let index = 0; index < len; index++) {
       if (filteredPoints[index * 5] !== 0) {
         if (!this.objects[index]) continue;
@@ -528,10 +527,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     y: number;
     height: number;
     width: number;
-    // padding in world units (symmetric)
     padding?: number;
-    // optional CSS-pixel padding which will be converted to world units by runtime before applying.
-    // Can be a number (symmetric) or an object with any of `left`, `right`, `top`, `bottom` in CSS pixels.
     paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
     nudge?: boolean;
     immediate?: boolean;
