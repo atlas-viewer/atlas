@@ -14,6 +14,7 @@ export * from './modules/debug-renderer/debug-renderer';
 export * from './modules/grid-builder/grid-builder';
 export * from './modules/popmotion-controller/popmotion-controller';
 export * from './modules/react-reconciler';
+export * from './modules/react-reconciler/components/DevTools';
 export * from './modules/iiif';
 export * from './modules/overlay-renderer/overlay-renderer';
 export * from './modules/browser-event-manager/browser-event-manager';

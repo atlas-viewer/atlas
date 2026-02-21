@@ -15,6 +15,7 @@ import { Renderer } from './renderer';
 import { Paint } from '../world-objects/paint';
 import { TransitionManager } from '../modules/transition-manager/transition-manager';
 import { nanoid } from 'nanoid';
+import type { RuntimeDebugEvent } from '../modules/react-reconciler/devtools/types';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -129,6 +130,8 @@ export class Runtime {
   maxScaleFactor = 1;
   _viewerToWorld = { x: 0, y: 0 };
   _lastGoodScale = 1;
+  debugFrame = 0;
+  debugSubscribers = new Set<(event: RuntimeDebugEvent) => void>();
   hooks: RuntimeHooks = {
     useFrame: [],
     useBeforeFrame: [],
@@ -991,6 +994,7 @@ export class Runtime {
 
     const pendingUpdate = this.pendingUpdate;
     const rendererPendingUpdate = this.renderer.pendingUpdate();
+    const debugEnabled = this.hasDebugSubscribers();
 
     if (this.transitionManager.hasPending()) {
       this.transitionManager.runTransition(this.target, delta);
@@ -1018,6 +1022,22 @@ export class Runtime {
 
     // Group.
     // console.groupCollapsed(`Previous frame took ${delta} ${delta > 17 ? '<-' : ''} ${delta > 40 ? '<--' : ''}`);
+    const frame = ++this.debugFrame;
+    let paintCount = 0;
+
+    if (debugEnabled) {
+      this.emitDebug({
+        type: 'frame-start',
+        at: t,
+        runtimeId: this.id,
+        frame,
+        delta,
+        mode: this.mode,
+        pendingUpdate,
+        rendererPendingUpdate,
+        target: [this.target[1], this.target[2], this.target[3], this.target[4]],
+      });
+    }
 
     this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
@@ -1072,6 +1092,34 @@ export class Runtime {
           position[key + 3] - position[key + 1],
           position[key + 4] - position[key + 2]
         );
+        paintCount++;
+        if (debugEnabled) {
+          let imageUrl: string | undefined;
+          if ((paint as any).getImageUrl) {
+            try {
+              imageUrl = (paint as any).getImageUrl(i);
+            } catch (err) {
+              imageUrl = undefined;
+            }
+          }
+          this.emitDebug({
+            type: 'paint',
+            at: t,
+            runtimeId: this.id,
+            frame,
+            layerIndex: p,
+            tileIndex: i,
+            x: position[key + 1],
+            y: position[key + 2],
+            width: position[key + 3] - position[key + 1],
+            height: position[key + 4] - position[key + 2],
+            paintId: (paint as any).id || `${p}:${i}`,
+            paintType: paint?.constructor?.name || paint.type || 'UnknownPaint',
+            ownerId: (paint as any).__owner?.value?.id,
+            compositeId: (paint as any).__parent?.id,
+            imageUrl,
+          });
+        }
         this.hook('useAfterPaint', paint);
       }
 
@@ -1094,6 +1142,23 @@ export class Runtime {
       this.ready = true;
       this.world.trigger('ready');
     }
+
+    if (debugEnabled) {
+      this.emitDebug({
+        type: 'frame-end',
+        at: t,
+        runtimeId: this.id,
+        frame,
+        delta,
+        scaleFactor,
+        paintCount,
+        ready: this.ready,
+        pendingUpdate: this.pendingUpdate,
+        worldWidth: this.world.width,
+        worldHeight: this.world.height,
+        target: [this.target[1], this.target[2], this.target[3], this.target[4]],
+      });
+    }
     // Flush world subscriptions.
     this.world.flushSubscriptions();
     const updates = this.world.getScheduledUpdates(this.target, scaleFactor);
@@ -1114,5 +1179,29 @@ export class Runtime {
 
   updateNextFrame() {
     this.pendingUpdate = true;
+  }
+
+  addDebugSubscriber(callback: (event: RuntimeDebugEvent) => void) {
+    this.debugSubscribers.add(callback);
+    return () => {
+      this.removeDebugSubscriber(callback);
+    };
+  }
+
+  removeDebugSubscriber(callback: (event: RuntimeDebugEvent) => void) {
+    this.debugSubscribers.delete(callback);
+  }
+
+  private hasDebugSubscribers() {
+    return this.debugSubscribers.size > 0;
+  }
+
+  private emitDebug(event: RuntimeDebugEvent) {
+    if (this.debugSubscribers.size === 0) {
+      return;
+    }
+    for (const callback of this.debugSubscribers) {
+      callback(event);
+    }
   }
 }

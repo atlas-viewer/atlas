@@ -13,6 +13,8 @@ import { useClassname } from './hooks/use-classname';
 import { Container } from './components/Container';
 import { useIsomorphicLayoutEffect } from './utility/react';
 import { useDiffProps } from './hooks/use-diff-props';
+import { DevTools, DevToolsProps } from './components/DevTools';
+import { registerAtlasRuntime } from './devtools/registry';
 
 export type AtlasProps = {
   debug?: boolean;
@@ -40,6 +42,7 @@ export type AtlasProps = {
   enableNavigator?: boolean;
   htmlChildren?: ReactNode;
   children: ReactNode;
+  devTools?: boolean | DevToolsProps;
   runtimeOptions?: Partial<RuntimeOptions>;
   filters?: Partial<ViewerFilters>;
 };
@@ -87,6 +90,7 @@ export const Atlas: React.FC<
     debug,
     filters,
     homePaddingPx,
+    devTools,
     ...restProps
   } = props;
 
@@ -131,6 +135,13 @@ export const Atlas: React.FC<
     forceRefresh,
     unstable_webglRenderer,
   });
+
+  useEffect(() => {
+    if (!preset) {
+      return;
+    }
+    return registerAtlasRuntime(preset);
+  }, [preset]);
 
   // This holds the class name for the container. This is changes when the
   // editing mode changes.
@@ -486,6 +497,8 @@ export const Atlas: React.FC<
     background = computed.getPropertyValue('--atlas-background') || background;
   }
 
+  const autoDevToolsProps = typeof devTools === 'object' ? devTools : undefined;
+
   return (
     <Container
       ref={ref}
@@ -557,6 +570,7 @@ export const Atlas: React.FC<
           />
         </Container>
       ) : null}
+      {devTools ? <DevTools {...autoDevToolsProps} runtimeId={autoDevToolsProps?.runtimeId || preset?.runtime.id} /> : null}
       {hideInlineStyle ? (
         // We still need this, even if inline styles are hidden, this classname is unique to this viewport.
         <style>{`.atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }`}</style>

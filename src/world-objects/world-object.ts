@@ -94,7 +94,9 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const x = props.x || 0;
     const y = props.y || 0;
 
-    this.id = props.id;
+    if (typeof props.id !== 'undefined') {
+      this.id = props.id;
+    }
     const s = typeof props.scale !== 'undefined' ? props.scale : this.scale;
 
     this.points[0] = 1;

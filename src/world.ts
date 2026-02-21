@@ -19,6 +19,7 @@ import { BaseObject } from './objects/base-object';
 import { SpacialContent } from './spacial-content/spacial-content';
 import { SupportedEvents } from './events';
 import { Geometry } from './objects/geometry';
+import type { WorldDebugEvent } from './modules/react-reconciler/devtools/types';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
@@ -46,6 +47,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   needsRecalculate = true;
   emptyPaintables = [];
   renderOrder: number[] = [];
+  debugSubscribers = new Set<(event: WorldDebugEvent) => void>();
 
   get x(): number {
     return 0;
@@ -107,6 +109,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       }
     }
 
+    this.emitDebug({
+      type: 'touch',
+      at: performance.now(),
+      event: eventName,
+      touches: touchTargets.length,
+    });
+
     return targets.map((target) => this.propagateEvent(eventName, e, target, { bubbles: true, cancelable: true }));
   }
 
@@ -131,7 +140,17 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     // - When a mouse down event is detected:
     //    - Store click / clickStart / drag items
 
-    return this.propagateEvent(eventName, e, worldObjects, opts);
+    const result = this.propagateEvent(eventName, e, worldObjects, opts);
+    this.emitDebug({
+      type: 'pointer',
+      at: performance.now(),
+      event: eventName,
+      x,
+      y,
+      targets: result.length,
+    });
+
+    return result;
   }
 
   _propagateEventTargets: any[] = [];
@@ -511,6 +530,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   trigger<T>(type: string, data?: T) {
+    this.emitDebug({
+      type: 'trigger',
+      at: performance.now(),
+      event: type,
+      data,
+    });
     this.triggerQueue.push([type, data]);
   }
 
@@ -566,5 +591,25 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   constraintBounds(immediate?: boolean) {
     this.trigger('constrain-bounds', { immediate });
+  }
+
+  addDebugSubscriber(callback: (event: WorldDebugEvent) => void) {
+    this.debugSubscribers.add(callback);
+    return () => {
+      this.removeDebugSubscriber(callback);
+    };
+  }
+
+  removeDebugSubscriber(callback: (event: WorldDebugEvent) => void) {
+    this.debugSubscribers.delete(callback);
+  }
+
+  private emitDebug(event: WorldDebugEvent) {
+    if (this.debugSubscribers.size === 0) {
+      return;
+    }
+    for (const callback of this.debugSubscribers) {
+      callback(event);
+    }
   }
 }
