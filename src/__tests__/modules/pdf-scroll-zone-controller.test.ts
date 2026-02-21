@@ -11,11 +11,12 @@ import { WorldObject } from '../../world-objects/world-object';
 import { Zone } from '../../world-objects/zone';
 
 class MockRenderer implements Renderer {
+  constructor(private readonly scale = 1) {}
   beforeFrame(): void {}
   paint(): void {}
   afterFrame(): void {}
   getScale(): number {
-    return 1;
+    return this.scale;
   }
   prepareLayer(): void {}
   finishLayer(): void {}
@@ -51,7 +52,7 @@ function createPage(id: string, y: number) {
   return object;
 }
 
-function createRuntimeWithPdfController() {
+function createRuntimeWithPdfController({ rendererScale = 1 }: { rendererScale?: number } = {}) {
   const world = new World(1000, 3000);
   const page1 = createPage('page-1', 0);
   const page2 = createPage('page-2', 1280);
@@ -61,7 +62,7 @@ function createRuntimeWithPdfController() {
   world.addZone(new Zone({ id: 'page-2', x: 0, y: 1280, width: 1000, height: 1200, objects: [page2] }));
 
   const runtime = new Runtime(
-    new MockRenderer(),
+    new MockRenderer(rendererScale),
     world,
     {
       x: 0,
@@ -93,6 +94,46 @@ function emitWheel(runtime: Runtime, x: number, y: number, deltaY: number) {
     } as any,
     x,
     y
+  );
+  runtime.world.flushSubscriptions();
+}
+
+function emitMouseDown(runtime: Runtime, x: number, y: number, clientY: number) {
+  runtime.world.propagatePointerEvent(
+    'onMouseDown' as any,
+    {
+      atlas: { x, y },
+      clientY,
+      stopPropagation: () => {},
+    } as any,
+    x,
+    y
+  );
+  runtime.world.flushSubscriptions();
+}
+
+function emitMouseMove(runtime: Runtime, x: number, y: number, clientY: number) {
+  runtime.world.propagatePointerEvent(
+    'onMouseMove' as any,
+    {
+      atlas: { x, y },
+      clientY,
+      stopPropagation: () => {},
+    } as any,
+    x,
+    y
+  );
+  runtime.world.flushSubscriptions();
+}
+
+function emitMouseUp(runtime: Runtime) {
+  runtime.world.propagatePointerEvent(
+    'onMouseUp' as any,
+    {
+      stopPropagation: () => {},
+    } as any,
+    0,
+    0
   );
   runtime.world.flushSubscriptions();
 }
@@ -134,6 +175,46 @@ describe('pdf scroll zone controller', () => {
 
     expect(runtime.mode).toBe('sketch');
     expect(runtime.getViewport().y).toBeGreaterThan(startY);
+  });
+
+  test('scroll-mode drag uses client delta with scale factor (hi-dpi safe)', () => {
+    const runtime = createRuntimeWithPdfController({ rendererScale: 2 });
+    const startY = runtime.getViewport().y;
+
+    emitMouseDown(runtime, 100, 100, 200);
+    // Drag up by 100 CSS pixels; with scale factor 2 this should move 50 world units.
+    emitMouseMove(runtime, 100, 100, 100);
+    emitMouseUp(runtime);
+
+    expect(runtime.getViewport().y).toBeCloseTo(startY + 50, 3);
+  });
+
+  test('scroll-mode normalizes to vertical-only and keeps restoration target in sync', () => {
+    const runtime = createRuntimeWithPdfController();
+    const initialViewport = runtime.getViewport();
+
+    runtime.setViewport({
+      x: initialViewport.x + 180,
+      y: 240,
+      width: initialViewport.width,
+      height: initialViewport.height,
+    });
+    runtime.updateNextFrame();
+    runFrame(runtime);
+    runtime.world.flushSubscriptions();
+
+    const normalizedViewport = runtime.getViewport();
+    expect(normalizedViewport.x).toBeCloseTo(initialViewport.x, 3);
+    expect(normalizedViewport.y).toBeCloseTo(240, 3);
+
+    emitClick(runtime, 100, 100);
+    runtime.deselectZone();
+    runtime.world.flushSubscriptions();
+
+    const pending = runtime.transitionManager.getPendingTransition();
+    expect(pending.done).toBe(false);
+    expect(pending.to[1]).toBeCloseTo(initialViewport.x, 0);
+    expect(pending.to[2]).toBeCloseTo(240, 3);
   });
 
   test('enters zone-active mode on zone click', () => {

@@ -17,9 +17,11 @@ import type {
 	ViewerMode,
 } from "../../renderer/runtime";
 import {
+	getNavigatorVisibleZoneIdSet,
 	getNavigatorWorldRegion,
 	getNavigatorWorldTransform,
 	type NavigatorRendererStyle,
+	type NavigatorZoneWindowOptions,
 	navigatorToWorldPoint,
 } from "../navigator-renderer/navigator-renderer";
 import type { PdfScrollZoneControllerConfig } from "../pdf-scroll-zone-controller/pdf-scroll-zone-controller";
@@ -108,6 +110,7 @@ export type AtlasProps = {
 		opacityActive?: number;
 		opacityIdle?: number;
 		style?: Partial<NavigatorRendererStyle>;
+		pdfScrollZoneZoneWindow?: NavigatorZoneWindowOptions;
 	};
 	htmlChildren?: ReactNode;
 	children: ReactNode;
@@ -200,8 +203,12 @@ export const Atlas: React.FC<
 			opacityActive: navigatorOptions?.opacityActive ?? 0.94,
 			opacityIdle: navigatorOptions?.opacityIdle ?? 0,
 			style: navigatorOptions?.style,
+			zoneWindow:
+				interactionMode === "pdf-scroll-zone"
+					? navigatorOptions?.pdfScrollZoneZoneWindow || { total: 9 }
+					: undefined,
 		}),
-		[navigatorOptions],
+		[navigatorOptions, interactionMode],
 	);
 
 	const renderPreset = useMemo<PresetNames | Presets>(() => {
@@ -222,11 +229,28 @@ export const Atlas: React.FC<
 			hasExplicitPresetOptions = true;
 		}
 
-		if (presetName === "default-preset" && resolvedNavigatorOptions.style) {
-			presetOptions.navigatorRendererOptions = {
-				style: resolvedNavigatorOptions.style,
-			};
-			hasExplicitPresetOptions = true;
+		if (presetName === "default-preset") {
+			const injectedNavigatorRendererOptions: Record<string, unknown> = {};
+			if (resolvedNavigatorOptions.style) {
+				injectedNavigatorRendererOptions.style = resolvedNavigatorOptions.style;
+			}
+			if (resolvedNavigatorOptions.zoneWindow) {
+				injectedNavigatorRendererOptions.zoneWindow =
+					resolvedNavigatorOptions.zoneWindow;
+			}
+
+			if (Object.keys(injectedNavigatorRendererOptions).length > 0) {
+				const existingNavigatorRendererOptions =
+					(presetOptions.navigatorRendererOptions || {}) as Record<
+						string,
+						unknown
+					>;
+				presetOptions.navigatorRendererOptions = {
+					...existingNavigatorRendererOptions,
+					...injectedNavigatorRendererOptions,
+				};
+				hasExplicitPresetOptions = true;
+			}
 		}
 
 		if (hasExplicitPresetOptions) {
@@ -234,7 +258,12 @@ export const Atlas: React.FC<
 		}
 
 		return _renderPreset || "default-preset";
-	}, [_renderPreset, debug, resolvedNavigatorOptions.style]);
+	}, [
+		_renderPreset,
+		debug,
+		resolvedNavigatorOptions.style,
+		resolvedNavigatorOptions.zoneWindow,
+	]);
 
 	// This is an HTML element that sits above the Canvas element that is passed to the controller.
 	// Additional non-canvas drawn elements can be placed here and positioned. CSS is applied to this
@@ -611,9 +640,18 @@ export const Atlas: React.FC<
 		);
 	};
 
+	const getNavigatorRegion = useCallback(
+		(runtime: Runtime) =>
+			getNavigatorWorldRegion(runtime.world, {
+				target: runtime.getViewport(),
+				zoneWindow: resolvedNavigatorOptions.zoneWindow,
+			}),
+		[resolvedNavigatorOptions.zoneWindow],
+	);
+
 	const recalculateNavigatorDimensions = () => {
 		if (preset && preset.navigator) {
-			const region = getNavigatorWorldRegion(preset.runtime.world);
+			const region = getNavigatorRegion(preset.runtime);
 			const wHeight = region.height;
 			const wWidth = region.width;
 
@@ -680,6 +718,7 @@ export const Atlas: React.FC<
 		restProps.width,
 		restProps.height,
 		resolvedNavigatorOptions.width,
+		getNavigatorRegion,
 	]);
 
 	const Canvas = useCallback(
@@ -888,6 +927,8 @@ export const Atlas: React.FC<
 			offsetY: 0,
 			startClientX: 0,
 			startClientY: 0,
+			startWorldX: 0,
+			startWorldY: 0,
 		};
 
 		const setDragging = (dragging: boolean) => {
@@ -902,7 +943,7 @@ export const Atlas: React.FC<
 			}
 			const localX = event.clientX - rect.left;
 			const localY = event.clientY - rect.top;
-			const region = getNavigatorWorldRegion(runtime.world);
+			const region = getNavigatorRegion(runtime);
 			const transform = getNavigatorWorldTransform(
 				region.width,
 				region.height,
@@ -951,7 +992,14 @@ export const Atlas: React.FC<
 			}
 		};
 		const getZoneAtWorldPoint = (worldX: number, worldY: number) => {
+			const visibleZoneIds = getNavigatorVisibleZoneIdSet(runtime.world, {
+				target: runtime.getViewport(),
+				zoneWindow: resolvedNavigatorOptions.zoneWindow,
+			});
 			for (const zone of runtime.world.zones) {
+				if (visibleZoneIds && !visibleZoneIds.has(zone.id)) {
+					continue;
+				}
 				zone.recalculateBounds();
 				if (zone.points[0] === 0) {
 					continue;
@@ -986,6 +1034,8 @@ export const Atlas: React.FC<
 			drag.pointerId = event.pointerId;
 			drag.startClientX = event.clientX;
 			drag.startClientY = event.clientY;
+			drag.startWorldX = worldPoint.x;
+			drag.startWorldY = worldPoint.y;
 
 			if (isInsideViewport) {
 				drag.offsetX = worldPoint.x - viewport.x;
@@ -1029,7 +1079,7 @@ export const Atlas: React.FC<
 			);
 			let didNavigateToZone = false;
 			if (dragDistance < 4) {
-				const zone = getZoneAtWorldPoint(worldPoint.x, worldPoint.y);
+				const zone = getZoneAtWorldPoint(drag.startWorldX, drag.startWorldY);
 				if (zone) {
 					didNavigateToZone = runtime.goToZone(zone.id);
 					if (didNavigateToZone) {
@@ -1076,7 +1126,7 @@ export const Atlas: React.FC<
 			navigatorCanvas.removeEventListener("pointerup", finishDrag);
 			navigatorCanvas.removeEventListener("pointercancel", onPointerCancel);
 		};
-	}, [preset, enableNavigator, markNavigatorActive]);
+	}, [preset, enableNavigator, markNavigatorActive, getNavigatorRegion]);
 
 	strictModeDoubleRender.current = true;
 

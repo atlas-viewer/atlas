@@ -1,4 +1,5 @@
 import {
+  getNavigatorVisibleZoneIdSet,
   getNavigatorWorldRegion,
   getNavigatorWorldTransform,
   navigatorToWorldPoint,
@@ -44,5 +45,60 @@ describe('Navigator transform helpers', () => {
 
     const region = getNavigatorWorldRegion(world);
     expect(region).toEqual({ x: 300, y: 600, width: 1000, height: 2000 });
+  });
+
+  test('limits navigator region to a sliding window of zones around viewport in scroll mode', () => {
+    const zones = Array.from({ length: 10 }, (_, index) => {
+      const top = index * 1000;
+      return {
+        id: `page-${index + 1}`,
+        points: [1, 0, top, 1000, top + 1000],
+        recalculateBounds: () => {},
+      };
+    });
+
+    const world: any = {
+      width: 1000,
+      height: 10000,
+      zones,
+      getActiveZone: () => undefined,
+    };
+
+    const middle = getNavigatorWorldRegion(world, {
+      target: { x: 0, y: 5200, width: 1000, height: 800 },
+      zoneWindow: { total: 5, before: 2, after: 2 },
+    });
+    expect(middle).toEqual({ x: 0, y: 3000, width: 1000, height: 5000 });
+
+    const nearEnd = getNavigatorWorldRegion(world, {
+      target: { x: 0, y: 9000, width: 1000, height: 800 },
+      zoneWindow: { total: 5, before: 2, after: 2 },
+    });
+    expect(nearEnd).toEqual({ x: 0, y: 5000, width: 1000, height: 5000 });
+  });
+
+  test('returns visible zone ids for the current navigator window', () => {
+    const zones = Array.from({ length: 10 }, (_, index) => {
+      const top = index * 1000;
+      return {
+        id: `page-${index + 1}`,
+        points: [1, 0, top, 1000, top + 1000],
+        recalculateBounds: () => {},
+      };
+    });
+
+    const world: any = {
+      width: 1000,
+      height: 10000,
+      zones,
+      getActiveZone: () => undefined,
+    };
+
+    const visible = getNavigatorVisibleZoneIdSet(world, {
+      target: { x: 0, y: 5200, width: 1000, height: 800 },
+      zoneWindow: { total: 5, before: 2, after: 2 },
+    });
+
+    expect(Array.from(visible || []).sort()).toEqual(['page-4', 'page-5', 'page-6', 'page-7', 'page-8']);
   });
 });

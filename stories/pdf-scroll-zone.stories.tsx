@@ -6,6 +6,10 @@ import "../src/modules/react-reconciler/types";
 
 export default { title: "PDF Scroll Zone" };
 
+const navigatorOptions = {
+	pdfScrollZoneZoneWindow: { total: 3, before: 1, after: 1 },
+};
+
 const testPages = [
 	{
 		id: "https://iiif.wellcomecollection.org/image/b18035723_0001.JP2/full/715,/0/default.jpg",
@@ -122,6 +126,7 @@ export function WrapperZonesAndGoToZone() {
 				onCreated={(ctx) => setRuntime(ctx.runtime)}
 				containerStyle={{ border: "1px solid #d0d7de" }}
 				devTools
+				navigatorOptions={navigatorOptions}
 			>
 				{pageLayouts.map((page) => (
 					<Page

@@ -73,7 +73,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let initialHomeAnchorKey: string | undefined;
       const initialHomeSyncRetryDeadlineMs = performance.now() + 5000;
       let followUpFrameQueued = false;
-      let dragStartWorldY = 0;
+      let dragStartClientY = 0;
       let dragStartViewportY = 0;
       let isDragging = false;
       let scrollViewY = 0;
@@ -350,6 +350,25 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         runtime.updateNextFrame();
         return true;
       };
+      const normalizeScrollModeViewport = () => {
+        if (mode !== 'scroll-mode' || restoringViewport || exitTransitionInFlight || runtime.world.hasActiveZone()) {
+          return;
+        }
+        const currentViewport = runtime.getViewport();
+        const normalizedViewport = getScrollViewport(currentViewport.y);
+        if (!normalizedViewport) {
+          return;
+        }
+        scrollViewY = normalizedViewport.y;
+        if (!hasViewportChanged(currentViewport, normalizedViewport)) {
+          return;
+        }
+        if (runtime.transitionManager.hasPending()) {
+          runtime.transitionManager.stopTransition();
+        }
+        runtime.setViewport(normalizedViewport);
+        runtime.updateNextFrame();
+      };
 
       const findZoneAtPoint = (x: number, y: number) => {
         for (const zone of runtime.world.zones) {
@@ -486,7 +505,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         initialHomeAnchorLocked = true;
         e.stopPropagation();
         isDragging = true;
-        dragStartWorldY = e.atlas.y;
+        dragStartClientY = e.clientY;
         dragStartViewportY = scrollViewY;
       };
 
@@ -498,8 +517,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return;
         }
         e.stopPropagation();
-        const delta = e.atlas.y - dragStartWorldY;
-        applyScrollViewport(dragStartViewportY - delta);
+        const deltaPx = e.clientY - dragStartClientY;
+        const deltaWorld = deltaPx / Math.max(0.0001, runtime.getScaleFactor());
+        applyScrollViewport(dragStartViewportY - deltaWorld);
       };
 
       const onMouseUp = () => {
@@ -543,6 +563,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (!isActiveSession()) {
           return;
         }
+        normalizeScrollModeViewport();
         syncInitialHomeAnchor();
         if (exitTransitionInFlight && !runtime.transitionManager.hasPending()) {
           exitTransitionInFlight = false;

@@ -5,6 +5,7 @@ import { ImageTexture } from '../../spacial-content/image-texture';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
 import type { World } from '../../world';
+import type { ZoneInterface } from '../../world-objects/zone';
 import { DebugRenderer } from '../debug-renderer/debug-renderer';
 
 export type NavigatorTransform = {
@@ -38,6 +39,18 @@ export type NavigatorRendererOptions = {
   maxRects?: number;
   minVisibleRectSize?: number;
   drawFallbackBoxes?: boolean;
+  zoneWindow?: NavigatorZoneWindowOptions;
+};
+
+export type NavigatorZoneWindowOptions = {
+  total?: number;
+  before?: number;
+  after?: number;
+};
+
+export type NavigatorWorldRegionOptions = {
+  target?: Strand | { x: number; y: number; width: number; height: number };
+  zoneWindow?: NavigatorZoneWindowOptions;
 };
 
 const DEFAULT_STYLE: NavigatorRendererStyle = {
@@ -53,6 +66,202 @@ type ImageCacheEntry = {
   image: HTMLImageElement;
   status: 'loading' | 'loaded' | 'error';
 };
+
+type ZoneBounds = {
+  zone: ZoneInterface;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+type ResolvedZoneWindow = {
+  total: number;
+  before: number;
+  after: number;
+};
+
+function toInt(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+function resolveZoneWindow(
+  zoneWindow: NavigatorZoneWindowOptions | undefined,
+  zoneCount: number
+): ResolvedZoneWindow | null {
+  if (!zoneWindow || zoneCount <= 1) {
+    return null;
+  }
+
+  const requestedTotal = toInt(zoneWindow.total);
+  const requestedBefore = toInt(zoneWindow.before);
+  const requestedAfter = toInt(zoneWindow.after);
+
+  let total =
+    typeof requestedTotal !== 'undefined'
+      ? Math.max(1, requestedTotal)
+      : typeof requestedBefore !== 'undefined' || typeof requestedAfter !== 'undefined'
+      ? Math.max(1, Math.max(0, requestedBefore || 0) + Math.max(0, requestedAfter || 0) + 1)
+      : 9;
+  let before = typeof requestedBefore !== 'undefined' ? Math.max(0, requestedBefore) : undefined;
+  let after = typeof requestedAfter !== 'undefined' ? Math.max(0, requestedAfter) : undefined;
+
+  if (typeof before === 'undefined' && typeof after === 'undefined') {
+    before = Math.floor((total - 1) / 2);
+    after = total - before - 1;
+  } else if (typeof before === 'undefined') {
+    before = Math.max(0, total - (after || 0) - 1);
+  } else if (typeof after === 'undefined') {
+    after = Math.max(0, total - before - 1);
+  }
+
+  const expectedTotal = before + after + 1;
+  if (expectedTotal !== total) {
+    total = expectedTotal;
+  }
+
+  total = Math.max(1, Math.min(zoneCount, total));
+  before = Math.min(before, total - 1);
+  after = total - before - 1;
+
+  return { total, before, after };
+}
+
+function getZoneBounds(world: World): ZoneBounds[] {
+  const bounds: ZoneBounds[] = [];
+  for (let i = 0; i < world.zones.length; i++) {
+    const zone = world.zones[i];
+    zone.recalculateBounds();
+    if (zone.points[0] === 0) {
+      continue;
+    }
+    bounds.push({
+      zone,
+      minX: zone.points[1],
+      minY: zone.points[2],
+      maxX: zone.points[3],
+      maxY: zone.points[4],
+    });
+  }
+  bounds.sort((a, b) => {
+    if (a.minY !== b.minY) {
+      return a.minY - b.minY;
+    }
+    if (a.minX !== b.minX) {
+      return a.minX - b.minX;
+    }
+    return (a.zone?.id || '').localeCompare(b.zone?.id || '');
+  });
+  return bounds;
+}
+
+function getWindowedZoneBounds(world: World, options: NavigatorWorldRegionOptions): ZoneBounds[] | null {
+  const resolvedWindow = resolveZoneWindow(options.zoneWindow, world.zones.length);
+  if (!resolvedWindow) {
+    return null;
+  }
+
+  const bounds = getZoneBounds(world);
+  if (bounds.length <= resolvedWindow.total) {
+    return bounds;
+  }
+
+  const anchorIndex = getAnchorZoneIndex(bounds, options.target);
+  let start = anchorIndex - resolvedWindow.before;
+  let end = start + resolvedWindow.total - 1;
+
+  if (start < 0) {
+    start = 0;
+    end = resolvedWindow.total - 1;
+  }
+
+  if (end >= bounds.length) {
+    end = bounds.length - 1;
+    start = Math.max(0, end - resolvedWindow.total + 1);
+  }
+
+  return bounds.slice(start, end + 1);
+}
+
+function getViewportCenter(target: NavigatorWorldRegionOptions['target']): { x: number; y: number } | null {
+  if (!target) {
+    return null;
+  }
+  if (Array.isArray(target) || ArrayBuffer.isView(target)) {
+    const strand = target as Strand;
+    if (strand[0] === 0) {
+      return null;
+    }
+    return {
+      x: (strand[1] + strand[3]) / 2,
+      y: (strand[2] + strand[4]) / 2,
+    };
+  }
+  return {
+    x: target.x + target.width / 2,
+    y: target.y + target.height / 2,
+  };
+}
+
+function getAnchorZoneIndex(zoneBounds: ZoneBounds[], target: NavigatorWorldRegionOptions['target']): number {
+  if (zoneBounds.length === 0) {
+    return 0;
+  }
+
+  const center = getViewportCenter(target);
+  if (!center) {
+    return 0;
+  }
+
+  for (let i = 0; i < zoneBounds.length; i++) {
+    const zone = zoneBounds[i];
+    if (center.x >= zone.minX && center.x <= zone.maxX && center.y >= zone.minY && center.y <= zone.maxY) {
+      return i;
+    }
+  }
+
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < zoneBounds.length; i++) {
+    const zone = zoneBounds[i];
+    const zoneCenterY = (zone.minY + zone.maxY) / 2;
+    const distance = Math.abs(center.y - zoneCenterY);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = i;
+    }
+  }
+  return closestIndex;
+}
+
+function toRegion(zoneBounds: ZoneBounds[]): NavigatorWorldRegion | null {
+  if (zoneBounds.length === 0) {
+    return null;
+  }
+
+  let minX = zoneBounds[0].minX;
+  let minY = zoneBounds[0].minY;
+  let maxX = zoneBounds[0].maxX;
+  let maxY = zoneBounds[0].maxY;
+
+  for (let i = 1; i < zoneBounds.length; i++) {
+    const zone = zoneBounds[i];
+    minX = Math.min(minX, zone.minX);
+    minY = Math.min(minY, zone.minY);
+    maxX = Math.max(maxX, zone.maxX);
+    maxY = Math.max(maxY, zone.maxY);
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
 
 export function getNavigatorWorldTransform(
   worldWidth: number,
@@ -80,7 +289,7 @@ export function getNavigatorWorldTransform(
   };
 }
 
-export function getNavigatorWorldRegion(world: World): NavigatorWorldRegion {
+export function getNavigatorWorldRegion(world: World, options: NavigatorWorldRegionOptions = {}): NavigatorWorldRegion {
   const activeZone = world.getActiveZone();
   if (activeZone) {
     activeZone.recalculateBounds();
@@ -93,12 +302,46 @@ export function getNavigatorWorldRegion(world: World): NavigatorWorldRegion {
       };
     }
   }
+
+  const windowedBounds = getWindowedZoneBounds(world, options);
+  if (windowedBounds && windowedBounds.length > 0) {
+    const region = toRegion(windowedBounds);
+    if (region) {
+      return region;
+    }
+  }
+
   return {
     x: 0,
     y: 0,
     width: Math.max(1, world.width),
     height: Math.max(1, world.height),
   };
+}
+
+export function getNavigatorVisibleZoneIdSet(
+  world: World,
+  options: NavigatorWorldRegionOptions = {}
+): Set<string> | null {
+  const activeZone = world.getActiveZone();
+  if (activeZone) {
+    activeZone.recalculateBounds();
+    if (activeZone.points[0] !== 0) {
+      return new Set([activeZone.id]);
+    }
+    return new Set();
+  }
+
+  const windowedBounds = getWindowedZoneBounds(world, options);
+  if (!windowedBounds) {
+    return null;
+  }
+
+  const visibleZoneIds = new Set<string>();
+  for (const bounds of windowedBounds) {
+    visibleZoneIds.add(bounds.zone.id);
+  }
+  return visibleZoneIds;
 }
 
 export function navigatorToWorldPoint(transform: NavigatorTransform, x: number, y: number): { x: number; y: number } {
@@ -120,6 +363,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private readonly maxRects: number;
   private readonly minVisibleRectSize: number;
   private readonly drawFallbackBoxes: boolean;
+  private readonly zoneWindow?: NavigatorZoneWindowOptions;
   private readonly baseCanvas: HTMLCanvasElement;
   private readonly baseContext: CanvasRenderingContext2D;
   private readonly worldTarget: Strand = DnaFactory.singleBox(1, 1, 0, 0);
@@ -132,6 +376,10 @@ export class NavigatorRenderer extends DebugRenderer {
   private lastTargetY = Number.NaN;
   private lastTargetX2 = Number.NaN;
   private lastTargetY2 = Number.NaN;
+  private lastRegionX = Number.NaN;
+  private lastRegionY = Number.NaN;
+  private lastRegionWidth = Number.NaN;
+  private lastRegionHeight = Number.NaN;
 
   constructor(canvas: HTMLCanvasElement, options: NavigatorRendererOptions = {}) {
     super(canvas);
@@ -139,6 +387,7 @@ export class NavigatorRenderer extends DebugRenderer {
     this.maxRects = Math.max(100, options.maxRects || 5000);
     this.minVisibleRectSize = Math.max(1, options.minVisibleRectSize || 1);
     this.drawFallbackBoxes = options.drawFallbackBoxes !== false;
+    this.zoneWindow = options.zoneWindow;
     this.context.globalAlpha = 1;
     this.context.imageSmoothingEnabled = false;
 
@@ -182,6 +431,14 @@ export class NavigatorRenderer extends DebugRenderer {
       return;
     }
 
+    const region = getNavigatorWorldRegion(world, {
+      target,
+      zoneWindow: this.zoneWindow,
+    });
+    const regionChanged = this.hasRegionChanged(region);
+    if (regionChanged) {
+      this.worldLayerDirty = true;
+    }
     const viewportChanged = this.hasViewportChanged(target);
     const shouldRender = this.renderNextFrame || this.worldLayerDirty || viewportChanged;
 
@@ -200,18 +457,22 @@ export class NavigatorRenderer extends DebugRenderer {
     }
 
     if (this.worldLayerDirty) {
-      this.renderWorldLayer(world);
+      this.renderWorldLayer(world, region);
       this.worldLayerDirty = false;
     }
 
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.context.drawImage(this.baseCanvas, 0, 0);
-    this.renderViewportBox(world, target);
+    this.renderViewportBox(target, region);
 
     this.lastTargetX = target[1];
     this.lastTargetY = target[2];
     this.lastTargetX2 = target[3];
     this.lastTargetY2 = target[4];
+    this.lastRegionX = region.x;
+    this.lastRegionY = region.y;
+    this.lastRegionWidth = region.width;
+    this.lastRegionHeight = region.height;
     this.renderNextFrame = false;
   }
 
@@ -224,18 +485,26 @@ export class NavigatorRenderer extends DebugRenderer {
     );
   }
 
+  private hasRegionChanged(region: NavigatorWorldRegion) {
+    return (
+      this.lastRegionX !== region.x ||
+      this.lastRegionY !== region.y ||
+      this.lastRegionWidth !== region.width ||
+      this.lastRegionHeight !== region.height
+    );
+  }
+
   private syncBaseLayerCanvas() {
     this.baseCanvas.width = this.canvas.width;
     this.baseCanvas.height = this.canvas.height;
   }
 
-  private renderWorldLayer(world: World) {
+  private renderWorldLayer(world: World, region: NavigatorWorldRegion) {
     const ctx = this.baseContext;
     ctx.clearRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
     ctx.fillStyle = this.style.background;
     ctx.fillRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
 
-    const region = getNavigatorWorldRegion(world);
     const activeZone = world.getActiveZone();
     const navigatorTransform = getNavigatorWorldTransform(
       region.width,
@@ -465,8 +734,7 @@ export class NavigatorRenderer extends DebugRenderer {
     ctx.globalAlpha = 1;
   }
 
-  private renderViewportBox(world: World, target: Strand) {
-    const region = getNavigatorWorldRegion(world);
+  private renderViewportBox(target: Strand, region: NavigatorWorldRegion) {
     const transform = getNavigatorWorldTransform(
       region.width,
       region.height,
