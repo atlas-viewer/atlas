@@ -150,6 +150,57 @@ describe('zone core and runtime zone navigation', () => {
     expect(world.getZoneById('missing')).toBeUndefined();
   });
 
+  test('runtime.getZoneRuntimeState reports existence, active state, and viewport visibility', () => {
+    const world = new World(1000, 2000);
+    const object = createWorldObject({
+      id: 'zone-a-object',
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 400,
+    });
+    world.appendChild(object);
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 400,
+        objects: [object],
+      })
+    );
+
+    const runtime = new Runtime(new MockRenderer(), world, {
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 300,
+      scale: 1,
+    });
+    runtime.stop();
+
+    expect(runtime.getZoneRuntimeState('zone-a')).toEqual({
+      zoneId: 'zone-a',
+      exists: true,
+      active: false,
+      visibleInViewport: true,
+    });
+
+    runtime.selectZone('zone-a');
+    expect(runtime.getZoneRuntimeState('zone-a').active).toBe(true);
+
+    runtime.setViewport({ x: 800, y: 800, width: 300, height: 300 });
+    expect(runtime.getZoneRuntimeState('zone-a').visibleInViewport).toBe(false);
+
+    expect(runtime.getZoneRuntimeState('missing-zone')).toEqual({
+      zoneId: 'missing-zone',
+      exists: false,
+      active: false,
+      visibleInViewport: false,
+    });
+  });
+
   test('runtime.goToZone returns true and starts a transition for existing zones', () => {
     const world = new World(1000, 2000);
     const object = createWorldObject({

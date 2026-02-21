@@ -10,11 +10,15 @@ type ControllerMode = 'scroll-mode' | 'zone-active';
 export type PdfScrollZoneControllerConfig = PopmotionControllerConfig & {
   scrollWheelFactor?: number;
   scrollLoadAheadFactor?: number;
+  clickDragThresholdPx?: number;
 };
 
-const defaultConfig: Required<Pick<PdfScrollZoneControllerConfig, 'scrollWheelFactor' | 'scrollLoadAheadFactor'>> = {
+const defaultConfig: Required<
+  Pick<PdfScrollZoneControllerConfig, 'scrollWheelFactor' | 'scrollLoadAheadFactor' | 'clickDragThresholdPx'>
+> = {
   scrollWheelFactor: 1,
   scrollLoadAheadFactor: 1,
+  clickDragThresholdPx: 6,
 };
 const ZONE_VIEWPORT_HEIGHT_RATIO = 0.9;
 const ZONE_VIEWPORT_VERTICAL_PADDING_RATIO = (1 - ZONE_VIEWPORT_HEIGHT_RATIO) / 2;
@@ -43,7 +47,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       const sessionId = nextPdfControllerSessionId++;
       activePdfControllerSessionByRuntime.set(runtime as object, sessionId);
       const isActiveSession = () => activePdfControllerSessionByRuntime.get(runtime as object) === sessionId;
-      const { scrollWheelFactor, scrollLoadAheadFactor } = {
+      const { scrollWheelFactor, scrollLoadAheadFactor, clickDragThresholdPx } = {
         ...defaultConfig,
         ...config,
       };
@@ -75,6 +79,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let followUpFrameQueued = false;
       let dragStartClientY = 0;
       let dragStartViewportY = 0;
+      let pointerDownClientX = 0;
+      let pointerDownClientY = 0;
+      let suppressNextClick = false;
       let isDragging = false;
       let scrollViewY = 0;
       let scrollBaseViewportCache: ScrollViewport | undefined;
@@ -457,6 +464,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (!isActiveSession()) {
           return;
         }
+        if (suppressNextClick) {
+          return;
+        }
         if (!e.atlas) {
           return;
         }
@@ -505,6 +515,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         initialHomeAnchorLocked = true;
         e.stopPropagation();
         isDragging = true;
+        suppressNextClick = false;
+        pointerDownClientX = typeof e.clientX === 'number' ? e.clientX : 0;
+        pointerDownClientY = typeof e.clientY === 'number' ? e.clientY : 0;
         dragStartClientY = e.clientY;
         dragStartViewportY = scrollViewY;
       };
@@ -517,6 +530,12 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return;
         }
         e.stopPropagation();
+        if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+          const movedPx = Math.hypot(e.clientX - pointerDownClientX, e.clientY - pointerDownClientY);
+          if (movedPx > clickDragThresholdPx) {
+            suppressNextClick = true;
+          }
+        }
         const deltaPx = e.clientY - dragStartClientY;
         const deltaWorld = deltaPx / Math.max(0.0001, runtime.getScaleFactor());
         applyScrollViewport(dragStartViewportY - deltaWorld);
@@ -527,6 +546,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return;
         }
         isDragging = false;
+        suppressNextClick = false;
       };
 
       const onKeyDown = (e: KeyboardEvent) => {

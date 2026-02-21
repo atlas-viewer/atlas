@@ -55,6 +55,13 @@ export type RuntimeOptions = {
   maxUnderZoom: number;
 };
 
+export type RuntimeZoneState = {
+  zoneId: string;
+  exists: boolean;
+  active: boolean;
+  visibleInViewport: boolean;
+};
+
 export class Runtime {
   id = nanoid();
   ready = false;
@@ -1031,6 +1038,47 @@ export class Runtime {
   deselectZone() {
     this.world.deselectZone();
     this.pendingUpdate = true;
+  }
+
+  getZoneRuntimeState(zoneId: string, viewport: Projection = this.getViewport()): RuntimeZoneState {
+    const zone = this.world.getZoneById(zoneId);
+    if (!zone) {
+      return {
+        zoneId,
+        exists: false,
+        active: false,
+        visibleInViewport: false,
+      };
+    }
+
+    zone.recalculateBounds();
+    const active = this.world.getActiveZone()?.id === zoneId;
+
+    if (zone.points[0] === 0) {
+      return {
+        zoneId,
+        exists: true,
+        active,
+        visibleInViewport: false,
+      };
+    }
+
+    const zoneX = zone.points[1];
+    const zoneY = zone.points[2];
+    const zoneWidth = zone.points[3] - zone.points[1];
+    const zoneHeight = zone.points[4] - zone.points[2];
+    const visibleInViewport =
+      zoneX < viewport.x + viewport.width &&
+      zoneX + zoneWidth > viewport.x &&
+      zoneY < viewport.y + viewport.height &&
+      zoneY + zoneHeight > viewport.y;
+
+    return {
+      zoneId,
+      exists: true,
+      active,
+      visibleInViewport,
+    };
   }
 
   hook<Name extends keyof RuntimeHooks, Arg = UnwrapHookArg<Name>>(name: keyof RuntimeHooks, arg: Arg) {

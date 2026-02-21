@@ -1,7 +1,10 @@
 /** @vitest-environment happy-dom */
 
 import type { Strand } from '@atlas-viewer/dna';
-import { pdfScrollZoneController } from '../../modules/pdf-scroll-zone-controller/pdf-scroll-zone-controller';
+import {
+  type PdfScrollZoneControllerConfig,
+  pdfScrollZoneController,
+} from '../../modules/pdf-scroll-zone-controller/pdf-scroll-zone-controller';
 import type { Renderer } from '../../renderer/renderer';
 import { Runtime } from '../../renderer/runtime';
 import type { PositionPair } from '../../types';
@@ -52,14 +55,38 @@ function createPage(id: string, y: number) {
   return object;
 }
 
-function createRuntimeWithPdfController({ rendererScale = 1 }: { rendererScale?: number } = {}) {
+function createRuntimeWithPdfController({
+  rendererScale = 1,
+  controllerConfig = {},
+}: {
+  rendererScale?: number;
+  controllerConfig?: PdfScrollZoneControllerConfig;
+} = {}) {
   const world = new World(1000, 3000);
   const page1 = createPage('page-1', 0);
   const page2 = createPage('page-2', 1280);
   world.appendChild(page1);
   world.appendChild(page2);
-  world.addZone(new Zone({ id: 'page-1', x: 0, y: 0, width: 1000, height: 1200, objects: [page1] }));
-  world.addZone(new Zone({ id: 'page-2', x: 0, y: 1280, width: 1000, height: 1200, objects: [page2] }));
+  world.addZone(
+    new Zone({
+      id: 'page-1',
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 1200,
+      objects: [page1],
+    })
+  );
+  world.addZone(
+    new Zone({
+      id: 'page-2',
+      x: 0,
+      y: 1280,
+      width: 1000,
+      height: 1200,
+      objects: [page2],
+    })
+  );
 
   const runtime = new Runtime(
     new MockRenderer(rendererScale),
@@ -71,7 +98,7 @@ function createRuntimeWithPdfController({ rendererScale = 1 }: { rendererScale?:
       height: 800,
       scale: 1,
     },
-    [pdfScrollZoneController()]
+    [pdfScrollZoneController(controllerConfig)]
   );
   runtime.stop();
   world.flushSubscriptions();
@@ -98,11 +125,12 @@ function emitWheel(runtime: Runtime, x: number, y: number, deltaY: number) {
   runtime.world.flushSubscriptions();
 }
 
-function emitMouseDown(runtime: Runtime, x: number, y: number, clientY: number) {
+function emitMouseDown(runtime: Runtime, x: number, y: number, clientY: number, clientX = 0) {
   runtime.world.propagatePointerEvent(
     'onMouseDown' as any,
     {
       atlas: { x, y },
+      clientX,
       clientY,
       stopPropagation: () => {},
     } as any,
@@ -112,11 +140,12 @@ function emitMouseDown(runtime: Runtime, x: number, y: number, clientY: number) 
   runtime.world.flushSubscriptions();
 }
 
-function emitMouseMove(runtime: Runtime, x: number, y: number, clientY: number) {
+function emitMouseMove(runtime: Runtime, x: number, y: number, clientY: number, clientX = 0) {
   runtime.world.propagatePointerEvent(
     'onMouseMove' as any,
     {
       atlas: { x, y },
+      clientX,
       clientY,
       stopPropagation: () => {},
     } as any,
@@ -187,6 +216,24 @@ describe('pdf scroll zone controller', () => {
     emitMouseUp(runtime);
 
     expect(runtime.getViewport().y).toBeCloseTo(startY + 50, 3);
+  });
+
+  test('scroll-mode click-vs-drag threshold is configurable in browser pixels', () => {
+    const relaxed = createRuntimeWithPdfController({
+      controllerConfig: { clickDragThresholdPx: 20 },
+    });
+    emitMouseDown(relaxed, 100, 100, 200, 100);
+    emitMouseMove(relaxed, 100, 100, 208, 100);
+    emitClick(relaxed, 100, 100);
+    expect(relaxed.world.getActiveZone()?.id).toBe('page-1');
+
+    const strict = createRuntimeWithPdfController({
+      controllerConfig: { clickDragThresholdPx: 2 },
+    });
+    emitMouseDown(strict, 100, 100, 200, 100);
+    emitMouseMove(strict, 100, 100, 208, 100);
+    emitClick(strict, 100, 100);
+    expect(strict.world.hasActiveZone()).toBe(false);
   });
 
   test('scroll-mode normalizes to vertical-only and keeps restoration target in sync', () => {
@@ -373,7 +420,16 @@ describe('pdf scroll zone controller', () => {
     const beforeZoneViewport = runtime.getViewport();
     expect(beforeZoneViewport.y).toBeCloseTo(0, 0);
 
-    world.addZone(new Zone({ id: 'late-zone', x: 0, y: 600, width: 1000, height: 1200, objects: [page] }));
+    world.addZone(
+      new Zone({
+        id: 'late-zone',
+        x: 0,
+        y: 600,
+        width: 1000,
+        height: 1200,
+        objects: [page],
+      })
+    );
     runtime.updateNextFrame();
     runFrame(runtime);
     world.flushSubscriptions();

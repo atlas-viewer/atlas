@@ -1,12 +1,12 @@
-import { Renderer } from '../../renderer/renderer';
-import { Paint } from '../../world-objects/paint';
-import { World } from '../../world';
-import { Strand } from '@atlas-viewer/dna';
-import { SpacialContent } from '../../spacial-content/spacial-content';
-import { PositionPair } from '../../types';
-import { Text } from '../../objects/text';
+import type { Strand } from '@atlas-viewer/dna';
 import { Box } from '../../objects/box';
+import { Text } from '../../objects/text';
+import type { Renderer } from '../../renderer/renderer';
+import type { SpacialContent } from '../../spacial-content/spacial-content';
+import type { PositionPair } from '../../types';
 import { Stylesheet } from '../../utility/stylesheet';
+import type { World } from '../../world';
+import type { Paint } from '../../world-objects/paint';
 
 export type OverlayRendererOptions = {
   sheetPrefix: string;
@@ -73,7 +73,14 @@ export class OverlayRenderer implements Renderer {
   }
 
   createHtmlHost(paint: Text | Box) {
-    if (this.htmlContainer && (this.options.box || paint.props.className || paint.props.html || paint.props.href)) {
+    if (
+      this.htmlContainer &&
+      ((paint instanceof Text && this.options.text) ||
+        this.options.box ||
+        paint.props.className ||
+        paint.props.html ||
+        paint.props.href)
+    ) {
       const div = document.createElement(paint.props.href ? 'a' : 'div');
       if (paint.props.href) {
         div.style.display = 'block';
@@ -263,6 +270,7 @@ export class OverlayRenderer implements Renderer {
     if (
       ((this.options.text && paint instanceof Text) ||
         (paint instanceof Box && (this.options.box || paint.props.className || paint.props.html))) &&
+      paint.__host &&
       paint.__host.tx !== this.paintTx
     ) {
       this.visible.push(paint);
