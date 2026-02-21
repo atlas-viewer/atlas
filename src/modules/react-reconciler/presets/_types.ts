@@ -2,6 +2,7 @@ import { BrowserEventManager } from '../../browser-event-manager/browser-event-m
 import { Runtime, RuntimeOptions } from '../../../renderer/runtime';
 import { Renderer } from '../../../renderer/renderer';
 import { RuntimeController, Viewer } from '../../../types';
+import { AtlasWebGLFallbackEvent } from '../../webgl-renderer/types';
 
 export type Preset = {
   name: string;
@@ -17,6 +18,7 @@ export type Preset = {
 
   // Elements.
   canvas?: HTMLCanvasElement;
+  parityCanvas?: HTMLCanvasElement;
   overlay?: HTMLDivElement;
   container?: HTMLDivElement;
   navigator?: HTMLCanvasElement;
@@ -28,6 +30,8 @@ export type PresetArgs = {
   runtimeOptions?: RuntimeOptions;
   containerElement?: HTMLDivElement;
   canvasElement?: HTMLCanvasElement;
+  parityCanvasElement?: HTMLCanvasElement;
   overlayElement?: HTMLDivElement;
   navigatorElement?: HTMLCanvasElement;
+  onWebGLFallback?: (event: AtlasWebGLFallbackEvent) => void;
 };

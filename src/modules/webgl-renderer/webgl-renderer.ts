@@ -8,14 +8,23 @@ import { World } from '../../world';
 import { Paint } from '../../world-objects/paint';
 import { PositionPair } from '../../types';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { HookOptions } from '../../renderer/runtime';
+import { buildCssFilter } from '../shared/build-css-filter';
+import { AtlasWebGLFallbackEvent } from './types';
+import { isWebGLImageFastPathCandidate } from './webgl-eligibility';
+
+export type { AtlasWebGLFallbackEvent, AtlasWebGLFallbackReason } from './types';
 
 export type WebGLRendererOptions = {
   dpi?: number;
+  onFatalImageError?: (event: AtlasWebGLFallbackEvent) => void;
 };
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
+  options: WebGLRendererOptions;
+  fatalImageError?: AtlasWebGLFallbackEvent;
 
   program: WebGLProgram;
   fragmentShader: WebGLShader;
@@ -76,11 +85,29 @@ export class WebGLRenderer implements Renderer {
   };
   rendererPosition: DOMRect;
   dpi: number;
+  onContextLost = (event: Event) => {
+    event.preventDefault();
+    this.emitFatalImageError({
+      reason: 'webgl-context-lost',
+      error: event,
+    });
+  };
 
   constructor(canvas: HTMLCanvasElement, options?: WebGLRendererOptions) {
     this.canvas = canvas;
     this.rendererPosition = canvas.getBoundingClientRect();
-    this.gl = canvas.getContext('webgl2') as WebGL2RenderingContext;
+    this.options = options || {};
+
+    const gl = canvas.getContext('webgl2');
+    if (!gl) {
+      this.emitFatalImageError({
+        reason: 'webgl-context-unavailable',
+        error: new Error('WebGL2 context unavailable'),
+      });
+      throw new Error('WebGL2 context unavailable');
+    }
+    this.gl = gl;
+    this.canvas.addEventListener('webglcontextlost', this.onContextLost as EventListener);
 
     this.fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, this.fragmentShaderSource);
     this.vertexShader = this.createShader(this.gl.VERTEX_SHADER, this.vertexShaderSource);
@@ -107,13 +134,27 @@ export class WebGLRenderer implements Renderer {
     // Resize step.
     this.resize();
 
-    // @todo change.
     this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
     this.gl.clearColor(0, 0, 0, 0);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
     this.gl.useProgram(this.program);
     this.gl.enableVertexAttribArray(this.attributes.position);
+  }
+
+  emitFatalImageError(event: Omit<AtlasWebGLFallbackEvent, 'from' | 'to'>) {
+    if (this.fatalImageError) {
+      return;
+    }
+    const fullEvent: AtlasWebGLFallbackEvent = {
+      from: 'webgl',
+      to: 'canvas',
+      ...event,
+    };
+    this.fatalImageError = fullEvent;
+    if (this.options.onFatalImageError) {
+      this.options.onFatalImageError(fullEvent);
+    }
   }
 
   resize() {
@@ -126,12 +167,18 @@ export class WebGLRenderer implements Renderer {
     return true;
   }
 
-  beforeFrame(world: World, delta: number, target: Strand) {
+  beforeFrame(world: World, delta: number, target: Strand, options: HookOptions) {
+    const filter = buildCssFilter(options);
+    if (this.canvas.style.filter !== filter) {
+      this.canvas.style.filter = filter;
+    }
+
     this.gl.clearColor(0, 0, 0, 0);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
     this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
-    this.gl.uniform2f(this.uniforms.resolution, this.gl.canvas.width, this.gl.canvas.height);
+    // Runtime coordinates are in CSS pixels, so keep shader resolution in CSS pixel space.
+    this.gl.uniform2f(this.uniforms.resolution, this.gl.canvas.width / this.dpi, this.gl.canvas.height / this.dpi);
     if (this.lastResize > 1000) {
       this.lastResize = 0;
       this.resizeCanvasToDisplaySize();
@@ -142,18 +189,13 @@ export class WebGLRenderer implements Renderer {
   lastResize = 0;
 
   prepareLayer(paint: SpacialContent) {
-    // no-op.
     if (!paint.__host || !paint.__host.webgl) {
-      if (paint instanceof SingleImage || paint instanceof TiledImage) {
-        // create it if it does not exist.
+      if ((paint instanceof SingleImage || paint instanceof TiledImage) && isWebGLImageFastPathCandidate(paint, 0)) {
         this.createImageHost(paint);
       }
       if (paint instanceof ImageTexture) {
         this.createTextureHost(paint);
       }
-      // if (paint instanceof Box) {
-      //   this.createTextureHost(paint);
-      // }
     }
   }
 
@@ -169,15 +211,19 @@ export class WebGLRenderer implements Renderer {
     if (paint instanceof ImageTexture) {
       const initial = paint.getTexture();
       if (initial.source) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+        try {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+        } catch (error) {
+          this.emitFatalImageError({
+            reason: 'teximage-security',
+            contentId: paint.id,
+            error,
+          });
+        }
       }
       lastImage = initial;
     } else {
       // @todo draw box and set webgl.updateTexture function.
-      // const data = paint.props.backgroundColor === 'red' ? new Uint8Array([255, 0, 0]) : new Uint8Array([0, 0, 255]);
-      // const alignment = 1;
-      // gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
-      // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, data);
     }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -209,7 +255,19 @@ export class WebGLRenderer implements Renderer {
         const texture = this.gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        try {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        } catch (error) {
+          this.emitFatalImageError({
+            reason: 'teximage-security',
+            imageUrl: paint.getImageUrl ? paint.getImageUrl(index) : undefined,
+            contentId: paint.id,
+            tileIndex: index,
+            error,
+          });
+          this.removeLoadingIndex(paint, index);
+          return;
+        }
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -217,60 +275,98 @@ export class WebGLRenderer implements Renderer {
         gl.bindTexture(gl.TEXTURE_2D, null);
         paint.__host.webgl.textures[index] = texture;
         paint.__host.webgl.loaded.push(index);
+        this.removeLoadingIndex(paint, index);
       },
     };
   }
 
+  removeLoadingIndex(paint: SpacialContent, index: number) {
+    if (!paint.__host?.webgl?.loading) {
+      return;
+    }
+    const loadingIndex = paint.__host.webgl.loading.indexOf(index);
+    if (loadingIndex !== -1) {
+      paint.__host.webgl.loading.splice(loadingIndex, 1);
+    }
+  }
+
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
-    if (paint.type === 'spacial-content') {
-      if (paint.__host && paint.__host.webgl) {
-        if (paint.getTexture) {
-          const newText = paint?.getTexture();
-          if (newText && paint.__host.webgl.lastImage !== newText.hash && newText.source && !paint.__host.webgl.error) {
-            try {
-              const level = 0;
-              const internalFormat = this.gl.RGBA;
-              const srcFormat = this.gl.RGBA;
-              const srcType = this.gl.UNSIGNED_BYTE;
-              this.gl.bindTexture(this.gl.TEXTURE_2D, paint.__host.webgl.texture);
-              this.gl.texImage2D(this.gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, newText.source);
-              paint.__host.webgl.lastImage = newText.hash;
-            } catch (e) {
-              paint.__host.webgl.error = e;
-            }
-          }
-        }
+    if (paint.type !== 'spacial-content') {
+      return;
+    }
+    if (!paint.__host || !paint.__host.webgl) {
+      return;
+    }
 
-        if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) === -1 && paint.getImageUrl) {
-          paint.__host.webgl.loading.push(index);
-          const image = document.createElement('img');
-          image.decoding = 'async';
-          image.crossOrigin = 'anonymous';
-          image.src = paint.getImageUrl(index);
-          image.onload = () => {
-            image.onload = null;
-            return paint.__host.webgl.onLoad(index, image);
-          };
-        }
+    if ((paint instanceof SingleImage || paint instanceof TiledImage) && !isWebGLImageFastPathCandidate(paint, index)) {
+      return;
+    }
 
-        const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
-        if (texture) {
-          this.gl.enableVertexAttribArray(this.attributes.texCoord);
-
-          this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.texCoord);
-          this.gl.enableVertexAttribArray(this.attributes.texCoord);
-          this.gl.vertexAttribPointer(this.attributes.texCoord, 2, this.gl.FLOAT, false, 0, 0);
-
-          this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.position);
-          this.gl.enableVertexAttribArray(this.attributes.position);
-          this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
-
-          this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-          this.gl.uniform1i(this.uniforms.texture, 0);
-          this.setRectangle(x, y, width, height);
-          this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+    if (paint.getTexture) {
+      const newText = paint.getTexture();
+      if (newText && paint.__host.webgl.lastImage !== newText.hash && newText.source && !paint.__host.webgl.error) {
+        try {
+          const level = 0;
+          const internalFormat = this.gl.RGBA;
+          const srcFormat = this.gl.RGBA;
+          const srcType = this.gl.UNSIGNED_BYTE;
+          this.gl.bindTexture(this.gl.TEXTURE_2D, paint.__host.webgl.texture);
+          this.gl.texImage2D(this.gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, newText.source);
+          paint.__host.webgl.lastImage = newText.hash;
+        } catch (error) {
+          paint.__host.webgl.error = error;
+          this.emitFatalImageError({
+            reason: 'teximage-security',
+            contentId: paint.id,
+            tileIndex: index,
+            error,
+          });
         }
       }
+    }
+
+    if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) === -1 && paint.getImageUrl) {
+      paint.__host.webgl.loading.push(index);
+      const imageUrl = paint.getImageUrl(index);
+      const image = document.createElement('img');
+      image.decoding = 'async';
+      image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        image.onload = null;
+        image.onerror = null;
+        return paint.__host.webgl.onLoad(index, image);
+      };
+      image.onerror = (error) => {
+        image.onload = null;
+        image.onerror = null;
+        this.removeLoadingIndex(paint, index);
+        this.emitFatalImageError({
+          reason: 'image-cors-or-load',
+          imageUrl,
+          contentId: paint.id,
+          tileIndex: index,
+          error,
+        });
+      };
+      image.src = imageUrl;
+    }
+
+    const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
+    if (texture) {
+      this.gl.enableVertexAttribArray(this.attributes.texCoord);
+
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.texCoord);
+      this.gl.enableVertexAttribArray(this.attributes.texCoord);
+      this.gl.vertexAttribPointer(this.attributes.texCoord, 2, this.gl.FLOAT, false, 0, 0);
+
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.position);
+      this.gl.enableVertexAttribArray(this.attributes.position);
+      this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
+
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      this.gl.uniform1i(this.uniforms.texture, 0);
+      this.setRectangle(x, y, width, height);
+      this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     }
   }
 
@@ -365,14 +461,16 @@ export class WebGLRenderer implements Renderer {
     // Lookup the size the browser is displaying the canvas in CSS pixels.
     const displayWidth = canvas.clientWidth;
     const displayHeight = canvas.clientHeight;
+    const targetWidth = Math.round(displayWidth * this.dpi);
+    const targetHeight = Math.round(displayHeight * this.dpi);
 
     // Check if the canvas is not the same size.
-    const needResize = canvas.width !== displayWidth || canvas.height !== displayHeight;
+    const needResize = canvas.width !== targetWidth || canvas.height !== targetHeight;
 
     if (needResize) {
       // Make the canvas the same size
-      canvas.width = displayWidth;
-      canvas.height = displayHeight;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
     }
 
     return needResize;
@@ -409,5 +507,8 @@ export class WebGLRenderer implements Renderer {
   }
 
   finishLayer() {}
-  reset() {}
+  reset() {
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost as EventListener);
+    this.canvas.style.filter = 'none';
+  }
 }

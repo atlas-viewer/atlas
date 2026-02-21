@@ -379,7 +379,10 @@ export const flexbox = () => {
         }
       `}</style>
 			<div className="atlas-flex">
-				<AtlasAuto renderPreset={["default-preset", { canvasBox: true }]}>
+				<AtlasAuto
+					unstable_webglRenderer
+					renderPreset={["default-preset", { canvasBox: true }]}
+				>
 					<world>
 						<ImageService key="wunder" {...staticTiles[1]} />
 					</world>
@@ -423,6 +426,7 @@ export const transparent = () => {
       `}</style>
 			<div className="atlas-flex">
 				<AtlasAuto
+					unstable_webglRenderer
 					background="transparent"
 					renderPreset={["default-preset", { canvasBox: true }]}
 				>
@@ -568,7 +572,11 @@ export const viewerFilters = () => {
 			</div>
 
 			<div className="atlas-flex">
-				<AtlasAuto renderPreset={preset} filters={appliedFilters}>
+				<AtlasAuto
+					unstable_webglRenderer
+					renderPreset={preset}
+					filters={appliedFilters}
+				>
 					<world>
 						<ImageService key="wunder" {...staticTiles[1]} />
 					</world>

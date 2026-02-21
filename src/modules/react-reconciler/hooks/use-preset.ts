@@ -7,10 +7,17 @@ const defaultArgs = {};
 
 export function usePreset(
   renderPreset: PresetNames | Presets | undefined,
-  options: { width: number; height: number; forceRefresh?: any; unstable_webglRenderer?: boolean }
+  options: {
+    width: number;
+    height: number;
+    forceRefresh?: any;
+    unstable_webglRenderer?: boolean;
+    onWebGLFallback?: PresetArgs['onWebGLFallback'];
+  }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
   const canvasRef = useRef<HTMLCanvasElement>();
+  const parityCanvasRef = useRef<HTMLCanvasElement>();
   const navigatorRef = useRef<HTMLCanvasElement>();
   const containerRef = useRef<HTMLElement>();
   const viewport = useRef<{ width: number; height: number; didUpdate?: boolean }>({
@@ -35,12 +42,14 @@ export function usePreset(
     const createdPreset = presetFn({
       containerElement,
       canvasElement,
+      parityCanvasElement: parityCanvasRef.current,
       overlayElement,
       navigatorElement,
       viewport: viewport.current,
       dpi: window.devicePixelRatio || 1,
       forceRefresh: options.forceRefresh,
       unstable_webglRenderer: options.unstable_webglRenderer,
+      onWebGLFallback: options.onWebGLFallback,
       ...(presetArgs || {}),
     });
 
@@ -63,11 +72,12 @@ export function usePreset(
         }
       }
     };
-  }, [presetName, presetArgs]);
+  }, [presetName, presetArgs, options.unstable_webglRenderer, options.onWebGLFallback]);
 
   const refs = useMemo(
     () => ({
       canvas: canvasRef,
+      parityCanvas: parityCanvasRef,
       overlay: overlayRef,
       container: containerRef,
       navigator: navigatorRef,

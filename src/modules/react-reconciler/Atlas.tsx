@@ -15,6 +15,7 @@ import { useIsomorphicLayoutEffect } from './utility/react';
 import { useDiffProps } from './hooks/use-diff-props';
 import { DevTools, DevToolsProps } from './components/DevTools';
 import { registerAtlasRuntime } from './devtools/registry';
+import { AtlasWebGLFallbackEvent } from '../webgl-renderer/types';
 
 export type AtlasProps = {
   debug?: boolean;
@@ -22,6 +23,7 @@ export type AtlasProps = {
   onCreated?: (ctx: Preset) => void | Promise<void>;
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
+  onWebGLFallback?: (event: AtlasWebGLFallbackEvent) => void;
   unstable_noReconciler?: boolean;
   overlayStyle?: any;
   containerStyle?: any;
@@ -72,6 +74,7 @@ export const Atlas: React.FC<
     resetWorldOnChange = true,
     // eslint-disable-next-line
     unstable_webglRenderer = false,
+    onWebGLFallback,
     // eslint-disable-next-line
     unstable_noReconciler = false,
     hideInlineStyle = false,
@@ -97,6 +100,10 @@ export const Atlas: React.FC<
   useDiffProps(props, 'Atlas.tsx', props.debug);
 
   const [mode, setMode] = useState(_mode);
+  const [activeWebGL, setActiveWebGL] = useState(unstable_webglRenderer);
+  const fallbackLockedRef = useRef(false);
+  const pendingRestoreViewportRef = useRef<Projection | null>(null);
+  const currentRuntimeRef = useRef<Runtime | null>(null);
   // Reference to the current HTML Canvas element
   // Set by React by passing <canvas ref={...} />
   // Used to instantiate the controller and viewer with the correct HTML element.
@@ -129,11 +136,45 @@ export const Atlas: React.FC<
     _ref(component);
   };
 
+  const handleWebGLFallback = useCallback(
+    (event: AtlasWebGLFallbackEvent) => {
+      if (fallbackLockedRef.current) {
+        return;
+      }
+
+      fallbackLockedRef.current = true;
+      if (currentRuntimeRef.current) {
+        pendingRestoreViewportRef.current = currentRuntimeRef.current.getViewport();
+      }
+      setActiveWebGL(false);
+      if (onWebGLFallback) {
+        onWebGLFallback(event);
+      }
+    },
+    [onWebGLFallback]
+  );
+
+  const handleCreated = useCallback(
+    (ctx: Preset) => {
+      if (pendingRestoreViewportRef.current) {
+        ctx.runtime.setViewport(pendingRestoreViewportRef.current);
+        ctx.runtime.updateNextFrame();
+        pendingRestoreViewportRef.current = null;
+      }
+
+      if (onCreated) {
+        return onCreated(ctx);
+      }
+    },
+    [onCreated]
+  );
+
   const [presetName, preset, viewport, refs] = usePreset(renderPreset, {
     width: restProps.width,
     height: restProps.height,
     forceRefresh,
-    unstable_webglRenderer,
+    unstable_webglRenderer: activeWebGL,
+    onWebGLFallback: handleWebGLFallback,
   });
 
   useEffect(() => {
@@ -150,6 +191,21 @@ export const Atlas: React.FC<
   useEffect(() => {
     setMode(_mode);
   }, [_mode]);
+
+  useEffect(() => {
+    currentRuntimeRef.current = preset ? preset.runtime : null;
+  }, [preset]);
+
+  useEffect(() => {
+    if (!unstable_webglRenderer) {
+      setActiveWebGL(false);
+      return;
+    }
+
+    if (!fallbackLockedRef.current) {
+      setActiveWebGL(true);
+    }
+  }, [unstable_webglRenderer]);
 
   // This changes the mutable state object with the position (top/left/width/height) of the
   // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing
@@ -384,7 +440,7 @@ export const Atlas: React.FC<
         if (preset) {
           preset.runtime.goHome();
 
-          const result = onCreated && onCreated(preset);
+          const result = handleCreated && handleCreated(preset);
           return void (result && result.then ? result.then(activate) : activate());
         } else {
           throw new Error('Invalid configuration - no runtime found');
@@ -394,7 +450,7 @@ export const Atlas: React.FC<
       return props.children;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [preset]
+    [preset, handleCreated]
   );
 
   useEffect(() => {
@@ -427,7 +483,24 @@ export const Atlas: React.FC<
           preset.canvas.style.width = canvasWidth + 'px';
           preset.canvas.style.height = canvasHeight + 'px';
 
-          preset.canvas.getContext('2d')?.scale(ratio, ratio);
+          const context = preset.canvas.getContext('2d');
+          if (context) {
+            context.setTransform(1, 0, 0, 1, 0, 0);
+            context.scale(ratio, ratio);
+          }
+
+          if (preset.parityCanvas) {
+            preset.parityCanvas.width = canvasWidth * ratio;
+            preset.parityCanvas.height = canvasHeight * ratio;
+            preset.parityCanvas.style.width = canvasWidth + 'px';
+            preset.parityCanvas.style.height = canvasHeight + 'px';
+
+            const parityContext = preset.parityCanvas.getContext('2d');
+            if (parityContext) {
+              parityContext.setTransform(1, 0, 0, 1, 0, 0);
+              parityContext.scale(ratio, ratio);
+            }
+          }
 
           if (preset && preset.em) {
             preset.em.updateBounds();
@@ -520,16 +593,28 @@ export const Atlas: React.FC<
       {presetName === 'static-preset' ? (
         <Container className="atlas-static-container" ref={refs.container as any} tabIndex={0} {...containerProps} />
       ) : (
-        <canvas
-          className="atlas-canvas"
-          /*@ts-ignore*/
-          part="atlas-canvas"
-          tabIndex={0}
-          {...canvasProps}
-          {...containerProps}
-          ref={refs.canvas as any}
-          data-background={background}
-        />
+        <>
+          <canvas
+            className="atlas-canvas"
+            /*@ts-ignore*/
+            part="atlas-canvas"
+            tabIndex={0}
+            {...canvasProps}
+            {...containerProps}
+            ref={refs.canvas as any}
+            data-background={background}
+          />
+          {activeWebGL ? (
+            <canvas
+              className="atlas-parity-canvas"
+              /*@ts-ignore*/
+              part="atlas-parity-canvas"
+              aria-hidden="true"
+              data-background="transparent"
+              ref={refs.parityCanvas as any}
+            />
+          ) : null}
+        </>
       )}
 
       <Container
@@ -554,7 +639,7 @@ export const Atlas: React.FC<
             preset={preset}
             mode={mode}
             setIsReady={setIsReady}
-            onCreated={onCreated}
+            onCreated={handleCreated}
           >
             {children}
           </AtlasWithReconciler>
@@ -579,6 +664,7 @@ export const Atlas: React.FC<
         .atlas { position: relative; display: flex; background: ${background}; z-index: var(--atlas-z-index, 10); -webkit-touch-callout: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
         .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
+        .atlas-parity-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }
         .atlas-static-preset { touch-action: inherit; }

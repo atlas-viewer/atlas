@@ -12,6 +12,7 @@ import { Box } from '../../objects/box';
 import LRUCache from 'lru-cache';
 import { Geometry } from '../../objects/geometry';
 import { HookOptions } from '../../standalone';
+import { buildCssFilter } from '../shared/build-css-filter';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -28,6 +29,9 @@ export type CanvasRendererOptions = {
   box?: boolean;
   polygon?: boolean;
   lruCache?: boolean;
+  paintImages?: boolean;
+  shouldPaintImage?: (paint: SingleImage | TiledImage, index: number) => boolean;
+  readiness?: 'first-meaningful-paint' | 'immediate';
 };
 
 export type ImageBuffer = {
@@ -117,6 +121,10 @@ export class CanvasRenderer implements Renderer {
     // this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
     this.dpi = options?.dpi || 1;
+    if (this.options.readiness === 'immediate') {
+      this.firstMeaningfulPaint = true;
+      this.canvas.style.opacity = '1';
+    }
 
     this.hostCache = options?.lruCache
       ? new LRUCache<string, HTMLCanvasElement>({
@@ -323,48 +331,9 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
 
-    if (
-      options.enableFilters &&
-      (options.filters.brightness ||
-        options.filters.contrast ||
-        options.filters.grayscale ||
-        options.filters.invert ||
-        options.filters.sepia ||
-        options.filters.saturate ||
-        options.filters.hueRotate ||
-        options.filters.blur)
-    ) {
-      let filter = '';
-      if (options.filters.brightness) {
-        filter += `brightness(${~~(100 + options.filters.brightness * 100)}%) `;
-      }
-      if (options.filters.contrast) {
-        filter += `contrast(${~~(100 + options.filters.contrast * 100)}%) `;
-      }
-      if (options.filters.grayscale) {
-        filter += `grayscale(${~~(options.filters.grayscale * 100)}%) `;
-      }
-      if (options.filters.invert) {
-        filter += `invert(${~~(options.filters.invert * 100)}%) `;
-      }
-      if (options.filters.sepia) {
-        filter += `sepia(${~~(options.filters.sepia * 100)}%) `;
-      }
-      if (options.filters.saturate) {
-        filter += `saturate(${~~(100 + options.filters.saturate * 100)}%) `;
-      }
-      if (options.filters.hueRotate) {
-        filter += `hue-rotate(${options.filters.hueRotate}deg) `;
-      }
-      if (options.filters.blur) {
-        filter += `blur(${options.filters.blur}px) `;
-      }
-
-      if (this.ctx.filter !== filter) {
-        this.ctx.filter = filter;
-      }
-    } else {
-      this.ctx.filter = 'none';
+    const filter = buildCssFilter(options);
+    if (this.ctx.filter !== filter) {
+      this.ctx.filter = filter;
     }
   }
 
@@ -396,7 +365,9 @@ export class CanvasRenderer implements Renderer {
 
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
-      if (paint.display.rotation) {
+      const rotation = paint.display.rotation || 0;
+      const didRotate = rotation !== 0;
+      if (didRotate) {
         this.ctx.save();
         let moveX = x + width / 2;
         let moveY = y + height / 2;
@@ -405,13 +376,27 @@ export class CanvasRenderer implements Renderer {
           moveY -= paint.crop[index * 5 + 2];
         }
         this.ctx.translate(moveX, moveY);
-        this.ctx.rotate((paint.display.rotation * Math.PI) / 180);
+        this.ctx.rotate((rotation * Math.PI) / 180);
         this.ctx.translate(-moveX, -moveY);
+      }
+
+      const shouldPaintImages = this.options.paintImages !== false;
+      const shouldPaintImage = this.options.shouldPaintImage ? this.options.shouldPaintImage(paint, index) : true;
+      if (!shouldPaintImages || !shouldPaintImage) {
+        if (didRotate) {
+          this.ctx.restore();
+        }
+        this.ctx.globalAlpha = ga;
+        return;
       }
 
       this.visible.push(paint);
       if (typeof paint.style && (paint.style as any).opacity !== 'undefined') {
         if (!paint.style.opacity) {
+          if (didRotate) {
+            this.ctx.restore();
+          }
+          this.ctx.globalAlpha = ga;
           return;
         }
         this.ctx.globalAlpha = paint.style.opacity;
@@ -436,6 +421,10 @@ export class CanvasRenderer implements Renderer {
         // If we've not prepared an initial "meaningful paint", then skip the
         // rendering to avoid tiles loading in, breaking the illusion a bit!
         if (!this.firstMeaningfulPaint) {
+          if (didRotate) {
+            this.ctx.restore();
+          }
+          this.ctx.globalAlpha = ga;
           return;
         }
 
@@ -507,7 +496,7 @@ export class CanvasRenderer implements Renderer {
         // nothing to do here, likely that the image isn't loaded yet.
       }
 
-      if (paint.display.rotation) {
+      if (didRotate) {
         this.ctx.restore();
       }
     }

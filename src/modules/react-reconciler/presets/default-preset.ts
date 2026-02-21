@@ -9,6 +9,7 @@ import { BrowserEventManager } from '../../browser-event-manager/browser-event-m
 import { Preset, PresetArgs } from './_types';
 import { unmountComponentAtNode } from '../reconciler';
 import { DebugRenderer } from '../../debug-renderer/debug-renderer';
+import { isWebGLImageFastPathCandidate } from '../../webgl-renderer/webgl-eligibility';
 
 export type DefaultPresetName = 'default-preset';
 
@@ -27,6 +28,7 @@ export function defaultPreset({
   viewport,
   forceRefresh,
   canvasElement,
+  parityCanvasElement,
   overlayElement,
   controllerConfig,
   unstable_webglRenderer,
@@ -36,6 +38,7 @@ export function defaultPreset({
   polygon = true,
   navigatorElement,
   runtimeOptions,
+  onWebGLFallback,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -53,13 +56,44 @@ export function defaultPreset({
       })
     : undefined;
 
+  let baseRenderer: CanvasRenderer | WebGLRenderer;
+  let parityCanvasRenderer: CanvasRenderer | undefined;
+
+  if (unstable_webglRenderer) {
+    try {
+      baseRenderer = new WebGLRenderer(canvasElement, {
+        dpi,
+        onFatalImageError: onWebGLFallback,
+      });
+    } catch (error) {
+      baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon });
+    }
+  } else {
+    baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon });
+  }
+
+  const usingWebGL = baseRenderer instanceof WebGLRenderer;
+
+  if (usingWebGL && parityCanvasElement) {
+    parityCanvasRenderer = new CanvasRenderer(parityCanvasElement, {
+      dpi,
+      debug,
+      box: canvasBox,
+      polygon,
+      paintImages: true,
+      shouldPaintImage: (paint, index) => !isWebGLImageFastPathCandidate(paint, index),
+      readiness: 'immediate',
+    });
+  }
+
+  const shouldRenderBoxesInOverlay = usingWebGL && !parityCanvasRenderer ? true : !canvasBox;
+
   const renderer = new CompositeRenderer([
-    unstable_webglRenderer
-      ? new WebGLRenderer(canvasElement, { dpi })
-      : new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon }),
+    baseRenderer,
+    parityCanvasRenderer,
     overlayElement
       ? new OverlayRenderer(overlayElement, {
-          box: unstable_webglRenderer || !canvasBox,
+          box: shouldRenderBoxesInOverlay,
           text: true,
           triggerResize: forceRefresh,
         })
@@ -84,6 +118,7 @@ export function defaultPreset({
     renderer,
     controller,
     canvas: canvasElement,
+    parityCanvas: parityCanvasRenderer ? parityCanvasElement : undefined,
     navigator: navigatorElement,
     unmount() {
       unmountComponentAtNode(runtime);
