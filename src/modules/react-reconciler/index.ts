@@ -31,3 +31,5 @@ export * from './presets/default-preset';
 export * from './presets/static-preset';
 export * from './types';
 export * from './devtools/types';
+export * from '../shared/image-loading-config';
+export * from '../shared/image-load-events';

@@ -10,3 +10,5 @@ export * from './modules/grid-builder/grid-builder';
 export * from './modules/popmotion-controller/popmotion-controller';
 export * from './modules/iiif/standalone';
 export * from './modules/browser-event-manager/browser-event-manager';
+export * from './modules/shared/image-loading-config';
+export * from './modules/shared/image-load-events';

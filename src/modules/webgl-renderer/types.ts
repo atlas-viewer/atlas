@@ -1,3 +1,5 @@
+export type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+
 export type AtlasWebGLFallbackReason =
   | 'image-cors-or-load'
   | 'teximage-security'

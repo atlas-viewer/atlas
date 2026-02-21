@@ -103,6 +103,9 @@ export function resetImageLoadingState(runtime: Runtime): ImageRecoveryResult {
     if (Array.isArray(renderer.loadingQueue)) {
       renderer.loadingQueue = [];
     }
+    if (Array.isArray(renderer.tileRequestQueue)) {
+      renderer.tileRequestQueue = [];
+    }
 
     if (Array.isArray(renderer.drawCalls)) {
       renderer.drawCalls = [];
@@ -138,6 +141,26 @@ export function resetImageLoadingState(runtime: Runtime): ImageRecoveryResult {
 
     if (typeof renderer.loadingQueueOrdered === 'boolean') {
       renderer.loadingQueueOrdered = true;
+    }
+
+    if (renderer.requiredTileKeys?.clear) {
+      renderer.requiredTileKeys.clear();
+    }
+
+    if (renderer.requiredPrefetchTileKeys?.clear) {
+      renderer.requiredPrefetchTileKeys.clear();
+    }
+
+    if (renderer.queuedTileRequestKeys?.clear) {
+      renderer.queuedTileRequestKeys.clear();
+    }
+
+    if (renderer.imageRequestPool?.cancelAll) {
+      renderer.imageRequestPool.cancelAll({ silent: true });
+    }
+
+    if (renderer.inFlightImageLoads?.clear) {
+      renderer.inFlightImageLoads.clear();
     }
 
     if (typeof renderer.reset === 'function') {

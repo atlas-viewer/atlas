@@ -13,6 +13,9 @@ export function usePreset(
     forceRefresh?: any;
     unstable_webglRenderer?: boolean;
     onWebGLFallback?: PresetArgs['onWebGLFallback'];
+    onImageError?: PresetArgs['onImageError'];
+    imageLoading?: PresetArgs['imageLoading'];
+    webglFallbackOnImageLoadError?: PresetArgs['webglFallbackOnImageLoadError'];
   }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
@@ -50,6 +53,9 @@ export function usePreset(
       forceRefresh: options.forceRefresh,
       unstable_webglRenderer: options.unstable_webglRenderer,
       onWebGLFallback: options.onWebGLFallback,
+      onImageError: options.onImageError,
+      imageLoading: options.imageLoading,
+      webglFallbackOnImageLoadError: options.webglFallbackOnImageLoadError,
       ...(presetArgs || {}),
     });
 
@@ -72,7 +78,15 @@ export function usePreset(
         }
       }
     };
-  }, [presetName, presetArgs, options.unstable_webglRenderer, options.onWebGLFallback]);
+  }, [
+    presetName,
+    presetArgs,
+    options.unstable_webglRenderer,
+    options.onWebGLFallback,
+    options.onImageError,
+    options.imageLoading,
+    options.webglFallbackOnImageLoadError,
+  ]);
 
   const refs = useMemo(
     () => ({

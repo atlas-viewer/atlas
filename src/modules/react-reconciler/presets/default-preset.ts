@@ -39,6 +39,9 @@ export function defaultPreset({
   navigatorElement,
   runtimeOptions,
   onWebGLFallback,
+  onImageError,
+  imageLoading,
+  webglFallbackOnImageLoadError,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -64,12 +67,15 @@ export function defaultPreset({
       baseRenderer = new WebGLRenderer(canvasElement, {
         dpi,
         onFatalImageError: onWebGLFallback,
+        onImageError,
+        imageLoading,
+        fallbackOnImageLoadError: webglFallbackOnImageLoadError,
       });
     } catch (error) {
-      baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon });
+      baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, imageLoading, onImageError });
     }
   } else {
-    baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon });
+    baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, imageLoading, onImageError });
   }
 
   const usingWebGL = baseRenderer instanceof WebGLRenderer;
@@ -83,6 +89,8 @@ export function defaultPreset({
       paintImages: true,
       shouldPaintImage: (paint, index) => !isWebGLImageFastPathCandidate(paint, index),
       readiness: 'immediate',
+      imageLoading,
+      onImageError,
     });
   }
 

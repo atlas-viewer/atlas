@@ -2,8 +2,33 @@
 
 import { describe, expect, test, vi } from 'vitest';
 import { CanvasRenderer } from '../../modules/canvas-renderer/canvas-renderer';
+import { resolveImageLoadingConfig } from '../../modules/shared/image-loading-config';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const defaultHookOptions = {
+  filters: {
+    grayscale: 0,
+    contrast: 0,
+    brightness: 0,
+    saturate: 0,
+    sepia: 0,
+    invert: 0,
+    hueRotate: 0,
+    blur: 0,
+  },
+  enableFilters: false,
+};
 
 function createMockContext() {
   return {
@@ -152,7 +177,7 @@ describe('Canvas image loading behavior', () => {
 
   test('balanced prefetch ring is capped and concurrency is bounded', () => {
     const { renderer } = createRenderer({ readiness: 'immediate' });
-    expect(renderer.parallelTasks).toBe(6);
+    expect(renderer.parallelTasks).toBe(resolveImageLoadingConfig().maxConcurrentRequests);
 
     const tiled = TiledImage.fromTile(
       'https://example.org/tiled',
@@ -184,5 +209,162 @@ describe('Canvas image loading behavior', () => {
 
     renderer.paint(image, 0, 0, 0, 100, 100);
     expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('uses adaptive defaults unless explicit imageLoading overrides are set', () => {
+    const expected = resolveImageLoadingConfig();
+    const auto = createRenderer({ readiness: 'immediate' }).renderer;
+    expect(auto.parallelTasks).toBe(expected.maxConcurrentRequests);
+    expect(auto.maxPrefetchPerFrame).toBe(expected.maxPrefetchPerFrame);
+
+    const manual = createRenderer({
+      readiness: 'immediate',
+      imageLoading: { maxConcurrentRequests: 9, maxPrefetchPerFrame: 4 },
+    }).renderer;
+    expect(manual.parallelTasks).toBe(9);
+    expect(manual.maxPrefetchPerFrame).toBe(4);
+  });
+
+  test('retries failed tile requests with backoff and emits error metadata', async () => {
+    const onImageError = vi.fn();
+    const { renderer } = createRenderer({
+      readiness: 'immediate',
+      onImageError,
+      imageLoading: {
+        maxAttempts: 3,
+        baseDelayMs: 100,
+        maxDelayMs: 100,
+        jitterRatio: 0,
+        errorRetryIntervalMs: 1000,
+      },
+    });
+    const image = createImage('retry');
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    (renderer as any).visible = [image];
+
+    vi.spyOn((renderer as any).imageRequestPool, 'acquire').mockReturnValue({
+      requestKey: 'retry',
+      release: vi.fn(),
+      promise: Promise.reject(new Error('network')),
+    });
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const scheduled = renderer.schedulePaintToCanvas(buffer, image, 0, 10, false);
+      expect(scheduled).toBe(true);
+      const task = (renderer as any).loadingQueue.pop();
+      await task.task();
+
+      const state = buffer.tiles[0];
+      expect(state.attempts).toBe(attempt);
+      expect(onImageError.mock.calls[attempt - 1][0].attempt).toBe(attempt);
+      expect(onImageError.mock.calls[attempt - 1][0].renderer).toBe('canvas');
+      if (attempt < 3) {
+        expect(state.state).toBe('idle');
+        expect(onImageError.mock.calls[attempt - 1][0].willRetry).toBe(true);
+      } else {
+        expect(state.state).toBe('error');
+        expect(onImageError.mock.calls[attempt - 1][0].willRetry).toBe(false);
+      }
+
+      // Simulate waiting for cooldown between attempts.
+      state.nextRetryAt = performance.now() - 1;
+    }
+  });
+
+  test('prunes stale in-flight work and avoids stale decode commit', async () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('cancel');
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    (renderer as any).visible = [image];
+
+    const d = deferred<HTMLImageElement>();
+    const release = vi.fn();
+    vi.spyOn((renderer as any).imageRequestPool, 'acquire').mockReturnValue({
+      requestKey: 'cancel',
+      release,
+      promise: d.promise,
+    });
+
+    renderer.schedulePaintToCanvas(buffer, image, 0, 10, false);
+    const task = (renderer as any).loadingQueue.pop();
+    const running = task.task();
+
+    const tileKey = `${image.id}::${image.display.scale}::0`;
+    expect((renderer as any).inFlightImageLoads.has(tileKey)).toBe(true);
+
+    (renderer as any).requiredTileKeys.clear();
+    (renderer as any).requiredPrefetchTileKeys.clear();
+    (renderer as any).pruneStaleTileWork();
+    expect(release).toHaveBeenCalledTimes(1);
+
+    d.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await running;
+
+    expect((renderer as any).loadingQueue.length).toBe(0);
+    expect(buffer.tiles[0].state).toBe('idle');
+  });
+
+  test('batches decoded tile reveal across consecutive frames', () => {
+    const { renderer } = createRenderer({
+      readiness: 'immediate',
+      imageLoading: { revealDelayFrames: 1, revealBatchWindowFrames: 1 },
+    });
+    const image = createImage('batched');
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    const tileKey = `${image.id}::${image.display.scale}::0`;
+
+    buffer.tiles[0] = { state: 'decoded', loadedAt: undefined };
+    (renderer as any).pendingTileReveals.set(tileKey, {
+      imageBuffer: buffer,
+      index: 0,
+      queuedFrame: 0,
+    });
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    expect(buffer.tiles[0].loadedAt).toBeTypeOf('number');
+  });
+
+  test('pendingUpdate remains active while tile reveals are queued', () => {
+    const { renderer } = createRenderer({
+      readiness: 'immediate',
+      imageLoading: { revealDelayFrames: 2, revealBatchWindowFrames: 1 },
+    });
+    const image = createImage('pending-reveal');
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    const tileKey = `${image.id}::${image.display.scale}::0`;
+    buffer.tiles[0] = { state: 'decoded', loadedAt: undefined };
+    (renderer as any).pendingTileReveals.set(tileKey, {
+      imageBuffer: buffer,
+      index: 0,
+      queuedFrame: 1,
+    });
+
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('skips fade for quickly loaded tiles', () => {
+    const { renderer } = createRenderer({
+      readiness: 'immediate',
+      imageLoading: { skipFadeIfLoadedWithinMs: 500, revealDelayFrames: 0, revealBatchWindowFrames: 0 },
+    });
+    const image = createImage('quick-fade-skip');
+    setCompositeState(image, true, { fadeInMs: 1000 });
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    buffer.canvases[0] = 'quick-fade-skip-0';
+    renderer.hostCache.set('quick-fade-skip-0', {} as HTMLCanvasElement);
+    buffer.tiles[0] = {
+      state: 'decoded',
+      requestedAt: performance.now() - 20,
+      loadedAt: performance.now(),
+      skipFade: true,
+    };
+
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect((renderer as any).hasTilesFading).toBe(false);
   });
 });

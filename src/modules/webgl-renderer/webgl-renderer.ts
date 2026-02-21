@@ -12,16 +12,24 @@ import { HookOptions } from '../../renderer/runtime';
 import { buildCssFilter } from '../shared/build-css-filter';
 import { AtlasWebGLFallbackEvent } from './types';
 import { isWebGLImageFastPathCandidate } from './webgl-eligibility';
+import { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import { getRetryDelayMs, ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
+import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
 
 export type { AtlasWebGLFallbackEvent, AtlasWebGLFallbackReason } from './types';
 
 export type WebGLRendererOptions = {
   dpi?: number;
   onFatalImageError?: (event: AtlasWebGLFallbackEvent) => void;
+  onImageError?: (event: AtlasImageLoadErrorEvent) => void;
+  imageLoading?: Partial<ImageLoadingConfig>;
+  fallbackOnImageLoadError?: boolean;
 };
 
 type WebGLTileRequest = {
   key: string;
+  tileKey: string;
+  requestKey: string;
   paint: SingleImage | TiledImage;
   index: number;
   url: string;
@@ -29,7 +37,28 @@ type WebGLTileRequest = {
   prefetch: boolean;
 };
 
-const imageCache: { [id: string]: HTMLImageElement } = {};
+type WebGLTileLoadingState = {
+  state: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
+  attempts?: number;
+  nextRetryAt?: number;
+  lastRequestKey?: string;
+  cancelledAt?: number;
+  error?: unknown;
+  url?: string;
+  requestedAt?: number;
+  skipFade?: boolean;
+};
+
+type InFlightTileLoad = {
+  tileKey: string;
+  requestKey: string;
+  consumerId: string;
+  paint: SingleImage | TiledImage;
+  index: number;
+  release: (opts?: { silent?: boolean }) => void;
+};
+
+const imageCache = new Map<string, HTMLImageElement>();
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
@@ -101,13 +130,27 @@ export class WebGLRenderer implements Renderer {
   dpi: number;
   maxConcurrentTasks = 6;
   maxPrefetchPerFrame = 8;
+  imageLoadingConfig: ImageLoadingConfig;
+  imageRequestPool: ImageRequestPool;
   framePrefetchCount = 0;
   loadingCount = 0;
   hasTilesFading = false;
   requiresRepaint = true;
   tileRequestQueue: WebGLTileRequest[] = [];
   queuedTileRequestKeys = new Set<string>();
-  inFlightImageLoads = new Map<string, Promise<HTMLImageElement>>();
+  inFlightImageLoads = new Map<string, InFlightTileLoad>();
+  requiredTileKeys = new Set<string>();
+  requiredPrefetchTileKeys = new Set<string>();
+  requestGeneration = 0;
+  frameCounter = 0;
+  pendingTileReveals = new Map<
+    string,
+    {
+      paint: SingleImage | TiledImage;
+      index: number;
+      queuedFrame: number;
+    }
+  >();
   onContextLost = (event: Event) => {
     event.preventDefault();
     this.emitFatalImageError({
@@ -120,6 +163,15 @@ export class WebGLRenderer implements Renderer {
     this.canvas = canvas;
     this.rendererPosition = canvas.getBoundingClientRect();
     this.options = options || {};
+    this.imageLoadingConfig = resolveImageLoadingConfig(this.options.imageLoading);
+    this.maxConcurrentTasks = this.imageLoadingConfig.maxConcurrentRequests;
+    this.maxPrefetchPerFrame = this.imageLoadingConfig.maxPrefetchPerFrame;
+    this.imageRequestPool = new ImageRequestPool({
+      timeoutMs: this.imageLoadingConfig.timeoutMs,
+      crossOrigin: 'anonymous',
+      useFetch: true,
+      cache: imageCache,
+    });
 
     const gl = canvas.getContext('webgl2');
     if (!gl) {
@@ -197,6 +249,10 @@ export class WebGLRenderer implements Renderer {
     this.hasTilesFading = false;
     this.requiresRepaint = false;
     this.framePrefetchCount = 0;
+    this.frameCounter += 1;
+    this.requiredTileKeys.clear();
+    this.requiredPrefetchTileKeys.clear();
+    this.flushTileRevealBatch();
 
     const filter = buildCssFilter(options);
     if (this.canvas.style.filter !== filter) {
@@ -280,6 +336,7 @@ export class WebGLRenderer implements Renderer {
       loading: [],
       loaded: [],
       loadedAt: [],
+      tileState: {},
       lastLevelRendered: -1,
       onLoad: (index: number, image: any) => {
         const gl = this.gl;
@@ -306,7 +363,15 @@ export class WebGLRenderer implements Renderer {
         gl.bindTexture(gl.TEXTURE_2D, null);
         paint.__host.webgl.textures[index] = texture;
         paint.__host.webgl.loaded.push(index);
-        paint.__host.webgl.loadedAt[index] = performance.now();
+        paint.__host.webgl.loadedAt[index] = undefined;
+        this.setTileState(paint, index, {
+          ...this.getTileState(paint, index),
+          state: 'decoded',
+          attempts: 0,
+          nextRetryAt: undefined,
+          error: undefined,
+        });
+        this.enqueueTileReveal(this.getTileKey(paint, index), paint, index);
         this.requiresRepaint = true;
         this.removeLoadingIndex(paint, index);
       },
@@ -322,6 +387,171 @@ export class WebGLRenderer implements Renderer {
       paint.__host.webgl.loading.splice(loadingIndex, 1);
       this.loadingCount = Math.max(0, this.loadingCount - 1);
       this.requiresRepaint = true;
+    }
+  }
+
+  private getTileKey(paint: SingleImage | TiledImage, index: number): string {
+    return `${paint.id}::${paint.display.scale}::${index}`;
+  }
+
+  private nextRequestKey(tileKey: string): string {
+    this.requestGeneration += 1;
+    return `${tileKey}::${this.requestGeneration}`;
+  }
+
+  private getTileState(paint: SingleImage | TiledImage, index: number): WebGLTileLoadingState {
+    const host = paint.__host?.webgl;
+    if (!host) {
+      return { state: 'idle' };
+    }
+    if (!host.tileState) {
+      host.tileState = {};
+    }
+    if (!host.tileState[index]) {
+      host.tileState[index] = { state: 'idle' };
+    }
+    return host.tileState[index] as WebGLTileLoadingState;
+  }
+
+  private setTileState(paint: SingleImage | TiledImage, index: number, state: WebGLTileLoadingState) {
+    const host = paint.__host?.webgl;
+    if (!host) {
+      return;
+    }
+    if (!host.tileState) {
+      host.tileState = {};
+    }
+    host.tileState[index] = state;
+  }
+
+  private markTileRequired(tileKey: string, prefetch: boolean) {
+    if (prefetch) {
+      this.requiredPrefetchTileKeys.add(tileKey);
+      return;
+    }
+    this.requiredTileKeys.add(tileKey);
+  }
+
+  private isTileRequired(tileKey: string): boolean {
+    return this.requiredTileKeys.has(tileKey) || this.requiredPrefetchTileKeys.has(tileKey);
+  }
+
+  private shouldSkipFade(tileState: WebGLTileLoadingState | undefined, now = performance.now()): boolean {
+    if (!tileState?.requestedAt) {
+      return false;
+    }
+    return now - tileState.requestedAt <= this.imageLoadingConfig.skipFadeIfLoadedWithinMs;
+  }
+
+  private enqueueTileReveal(tileKey: string, paint: SingleImage | TiledImage, index: number) {
+    const now = performance.now();
+    if (this.imageLoadingConfig.revealDelayFrames === 0 && this.imageLoadingConfig.revealBatchWindowFrames === 0) {
+      if (paint.__host?.webgl?.loadedAt) {
+        paint.__host.webgl.loadedAt[index] = now;
+      }
+      const state = this.getTileState(paint, index);
+      this.setTileState(paint, index, {
+        ...state,
+        skipFade: this.shouldSkipFade(state, now),
+      });
+      return;
+    }
+
+    this.pendingTileReveals.set(tileKey, {
+      paint,
+      index,
+      queuedFrame: this.frameCounter,
+    });
+  }
+
+  private flushTileRevealBatch() {
+    if (this.pendingTileReveals.size === 0) {
+      return;
+    }
+
+    const delay = this.imageLoadingConfig.revealDelayFrames;
+    const windowFrames = this.imageLoadingConfig.revealBatchWindowFrames;
+    const now = performance.now();
+
+    const entries = [...this.pendingTileReveals.entries()].sort((a, b) => a[1].queuedFrame - b[1].queuedFrame);
+    let cursor = 0;
+
+    while (cursor < entries.length) {
+      const first = entries[cursor];
+      if (this.frameCounter - first[1].queuedFrame < delay) {
+        break;
+      }
+
+      const cutoffFrame = first[1].queuedFrame + windowFrames;
+      while (cursor < entries.length && entries[cursor][1].queuedFrame <= cutoffFrame) {
+        const [tileKey, pending] = entries[cursor];
+        const host = pending.paint.__host?.webgl;
+        const state = this.getTileState(pending.paint, pending.index);
+        if (host?.loadedAt && state.state === 'decoded' && !host.loadedAt[pending.index]) {
+          host.loadedAt[pending.index] = now;
+          this.setTileState(pending.paint, pending.index, {
+            ...state,
+            skipFade: this.shouldSkipFade(state, now),
+          });
+          this.requiresRepaint = true;
+        }
+        this.pendingTileReveals.delete(tileKey);
+        cursor += 1;
+      }
+    }
+  }
+
+  private emitImageError(event: Omit<AtlasImageLoadErrorEvent, 'renderer'>) {
+    if (this.options.onImageError) {
+      this.options.onImageError({
+        renderer: 'webgl',
+        ...event,
+      });
+    }
+  }
+
+  private releaseInFlightTileLoad(tileKey: string, opts: { silent?: boolean } = {}) {
+    const inFlight = this.inFlightImageLoads.get(tileKey);
+    if (!inFlight) {
+      return;
+    }
+    inFlight.release(opts);
+    this.inFlightImageLoads.delete(tileKey);
+  }
+
+  private pruneStaleTileWork() {
+    this.tileRequestQueue = this.tileRequestQueue.filter((request) => {
+      if (this.isTileRequired(request.tileKey)) {
+        return true;
+      }
+      this.queuedTileRequestKeys.delete(request.key);
+      const state = this.getTileState(request.paint, request.index);
+      if (state.lastRequestKey === request.requestKey && state.state === 'queued') {
+        this.setTileState(request.paint, request.index, {
+          ...state,
+          state: 'idle',
+          cancelledAt: performance.now(),
+        });
+      }
+      this.pendingTileReveals.delete(request.tileKey);
+      return false;
+    });
+
+    for (const [tileKey, inFlight] of [...this.inFlightImageLoads.entries()]) {
+      if (this.isTileRequired(tileKey)) {
+        continue;
+      }
+      const state = this.getTileState(inFlight.paint, inFlight.index);
+      if (state.lastRequestKey === inFlight.requestKey && state.state === 'loading') {
+        this.setTileState(inFlight.paint, inFlight.index, {
+          ...state,
+          state: 'idle',
+          cancelledAt: performance.now(),
+        });
+      }
+      this.pendingTileReveals.delete(tileKey);
+      this.removeLoadingIndex(inFlight.paint, inFlight.index);
+      this.releaseInFlightTileLoad(tileKey, { silent: true });
     }
   }
 
@@ -357,15 +587,31 @@ export class WebGLRenderer implements Renderer {
     return true;
   }
 
-  private shouldDrawLayer(paint: SingleImage | TiledImage, isActiveLayer: boolean): boolean {
+  private shouldDrawLayer(paint: SingleImage | TiledImage, index: number, isActiveLayer: boolean): boolean {
     const policy = this.getCompositeRenderOptions(paint)?.layerPolicy || 'fallback-only';
     if (policy === 'active-only') {
-      return isActiveLayer;
+      if (isActiveLayer) {
+        return true;
+      }
+      const texture = paint.__host?.webgl?.texture ? paint.__host.webgl.texture : paint.__host?.webgl?.textures?.[index];
+      return !!texture;
     }
     return true;
   }
 
   private getFadeAlpha(paint: SingleImage | TiledImage, index: number, isActiveLayer: boolean): number {
+    if (this.getTileState(paint, index).skipFade) {
+      return 1;
+    }
+
+    const isRevealDeferred =
+      this.getTileState(paint, index).state === 'decoded' &&
+      !paint.__host?.webgl?.loadedAt?.[index] &&
+      (this.imageLoadingConfig.revealDelayFrames > 0 || this.imageLoadingConfig.revealBatchWindowFrames > 0);
+    if (isRevealDeferred) {
+      return 0;
+    }
+
     const options = this.getCompositeRenderOptions(paint);
     if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
       return 1;
@@ -381,57 +627,8 @@ export class WebGLRenderer implements Renderer {
     return Math.max(0, Math.min(1, elapsed / options.fadeInMs));
   }
 
-  private loadImageOnce(url: string): Promise<HTMLImageElement> {
-    return new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = document.createElement('img');
-      image.decoding = 'async';
-      image.crossOrigin = 'anonymous';
-      image.onload = () => {
-        image.onload = null;
-        image.onerror = null;
-        resolve(image);
-      };
-      image.onerror = (error) => {
-        image.onload = null;
-        image.onerror = null;
-        reject(error);
-      };
-      image.src = url;
-      if (image.complete && image.naturalWidth > 0) {
-        image.onload = null;
-        image.onerror = null;
-        resolve(image);
-      }
-    });
-  }
-
-  private requestImage(url: string): Promise<HTMLImageElement> {
-    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
-      return Promise.resolve(imageCache[url]);
-    }
-
-    const inFlight = this.inFlightImageLoads.get(url);
-    if (inFlight) {
-      return inFlight;
-    }
-
-    let request: Promise<HTMLImageElement>;
-    request = this.loadImageOnce(url)
-      .then((image) => {
-        imageCache[url] = image;
-        return image;
-      })
-      .finally(() => {
-        if (this.inFlightImageLoads.get(url) === request) {
-          this.inFlightImageLoads.delete(url);
-        }
-      });
-    this.inFlightImageLoads.set(url, request);
-    return request;
-  }
-
   private getTileRequestKey(paint: SingleImage | TiledImage, index: number): string {
-    return `${paint.id}::${index}`;
+    return `${paint.id}::${paint.display.scale}::${index}`;
   }
 
   private enqueueTileRequest(
@@ -444,6 +641,9 @@ export class WebGLRenderer implements Renderer {
       return false;
     }
 
+    const tileKey = this.getTileKey(paint, index);
+    this.markTileRequired(tileKey, prefetch);
+
     const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures?.[index];
     if (texture) {
       return false;
@@ -453,13 +653,33 @@ export class WebGLRenderer implements Renderer {
       return false;
     }
 
+    const tileState = this.getTileState(paint, index);
+    const now = performance.now();
+    if (tileState.nextRetryAt && tileState.nextRetryAt > now) {
+      return false;
+    }
+
     const key = this.getTileRequestKey(paint, index);
     if (this.queuedTileRequestKeys.has(key)) {
       return false;
     }
 
+    const requestKey = this.nextRequestKey(tileKey);
+    this.pendingTileReveals.delete(tileKey);
+    this.setTileState(paint, index, {
+      ...tileState,
+      state: 'queued',
+      requestedAt: now,
+      lastRequestKey: requestKey,
+      cancelledAt: undefined,
+      error: undefined,
+      skipFade: false,
+    });
+
     this.tileRequestQueue.push({
       key,
+      tileKey,
+      requestKey,
       paint,
       index,
       url: paint.getImageUrl(index),
@@ -535,6 +755,11 @@ export class WebGLRenderer implements Renderer {
         continue;
       }
 
+      const state = this.getTileState(next.paint, next.index);
+      if (state.lastRequestKey !== next.requestKey) {
+        continue;
+      }
+
       const texture = host.texture ? host.texture : host.textures?.[next.index];
       if (texture) {
         continue;
@@ -543,23 +768,96 @@ export class WebGLRenderer implements Renderer {
         continue;
       }
 
+      this.setTileState(next.paint, next.index, {
+        ...state,
+        state: 'loading',
+        url: next.url,
+        requestedAt: state.requestedAt || performance.now(),
+      });
       host.loading.push(next.index);
       this.loadingCount++;
       this.requiresRepaint = true;
 
-      this.requestImage(next.url)
+      const consumerId = `${next.tileKey}::${next.requestKey}`;
+      const acquired = this.imageRequestPool.acquire(next.url, consumerId);
+      this.inFlightImageLoads.set(next.tileKey, {
+        tileKey: next.tileKey,
+        requestKey: next.requestKey,
+        consumerId,
+        paint: next.paint,
+        index: next.index,
+        release: acquired.release,
+      });
+
+      acquired.promise
         .then((image) => {
+          this.releaseInFlightTileLoad(next.tileKey, { silent: true });
+          const currentState = this.getTileState(next.paint, next.index);
+          if (currentState.lastRequestKey !== next.requestKey || currentState.state !== 'loading') {
+            this.removeLoadingIndex(next.paint, next.index);
+            return;
+          }
           next.paint.__host?.webgl?.onLoad(next.index, image);
         })
         .catch((error) => {
+          this.releaseInFlightTileLoad(next.tileKey, { silent: true });
+          if (isImageRequestCancelledError(error)) {
+            const cancelledState = this.getTileState(next.paint, next.index);
+            if (cancelledState.lastRequestKey === next.requestKey) {
+              this.setTileState(next.paint, next.index, {
+                ...cancelledState,
+                state: 'idle',
+                cancelledAt: performance.now(),
+              });
+            }
+            this.pendingTileReveals.delete(next.tileKey);
+            this.removeLoadingIndex(next.paint, next.index);
+            return;
+          }
+
+          const failedState = this.getTileState(next.paint, next.index);
+          if (failedState.lastRequestKey !== next.requestKey) {
+            this.removeLoadingIndex(next.paint, next.index);
+            return;
+          }
+
+          const attempts = (failedState.attempts || 0) + 1;
+          const willRetry = attempts < this.imageLoadingConfig.maxAttempts;
+          const nextRetryAt = willRetry
+            ? performance.now() + getRetryDelayMs(this.imageLoadingConfig, attempts)
+            : performance.now() + this.imageLoadingConfig.errorRetryIntervalMs;
+
+          this.setTileState(next.paint, next.index, {
+            ...failedState,
+            state: willRetry ? 'idle' : 'error',
+            attempts,
+            nextRetryAt,
+            error,
+          });
+          this.pendingTileReveals.delete(next.tileKey);
           this.removeLoadingIndex(next.paint, next.index);
-          this.emitFatalImageError({
-            reason: 'image-cors-or-load',
+
+          this.emitImageError({
+            severity: 'recoverable',
             imageUrl: next.url,
             contentId: next.paint.id,
             tileIndex: next.index,
+            attempt: attempts,
+            maxAttempts: this.imageLoadingConfig.maxAttempts,
+            willRetry,
+            nextRetryAt,
             error,
           });
+
+          if (!willRetry && this.options.fallbackOnImageLoadError) {
+            this.emitFatalImageError({
+              reason: 'image-cors-or-load',
+              imageUrl: next.url,
+              contentId: next.paint.id,
+              tileIndex: next.index,
+              error,
+            });
+          }
         })
         .finally(() => {
           this.processTileQueue();
@@ -620,7 +918,7 @@ export class WebGLRenderer implements Renderer {
       }
     }
 
-    if (imagePaint && !this.shouldDrawLayer(paint, isActiveLayer)) {
+    if (imagePaint && !this.shouldDrawLayer(paint, index, isActiveLayer)) {
       return;
     }
 
@@ -663,6 +961,7 @@ export class WebGLRenderer implements Renderer {
       this.tileRequestQueue.length > 0 ||
       this.loadingCount > 0 ||
       this.inFlightImageLoads.size > 0 ||
+      this.pendingTileReveals.size > 0 ||
       this.hasTilesFading
     );
   }
@@ -672,6 +971,7 @@ export class WebGLRenderer implements Renderer {
   }
 
   afterFrame() {
+    this.pruneStaleTileWork();
     this.processTileQueue();
   }
 
@@ -805,6 +1105,15 @@ export class WebGLRenderer implements Renderer {
     this.requiresRepaint = false;
     this.tileRequestQueue = [];
     this.queuedTileRequestKeys.clear();
+    for (const tileKey of [...this.inFlightImageLoads.keys()]) {
+      this.releaseInFlightTileLoad(tileKey, { silent: true });
+    }
+    this.imageRequestPool.cancelAll({ silent: true });
     this.inFlightImageLoads.clear();
+    this.requiredTileKeys.clear();
+    this.requiredPrefetchTileKeys.clear();
+    this.pendingTileReveals.clear();
+    this.requestGeneration += 1;
+    this.frameCounter = 0;
   }
 }

@@ -3,6 +3,8 @@ import { Runtime, RuntimeOptions } from '../../../renderer/runtime';
 import { Renderer } from '../../../renderer/renderer';
 import { RuntimeController, Viewer } from '../../../types';
 import { AtlasWebGLFallbackEvent } from '../../webgl-renderer/types';
+import { AtlasImageLoadErrorEvent } from '../../shared/image-load-events';
+import { ImageLoadingConfig } from '../../shared/image-loading-config';
 
 export type Preset = {
   name: string;
@@ -34,4 +36,7 @@ export type PresetArgs = {
   overlayElement?: HTMLDivElement;
   navigatorElement?: HTMLCanvasElement;
   onWebGLFallback?: (event: AtlasWebGLFallbackEvent) => void;
+  onImageError?: (event: AtlasImageLoadErrorEvent) => void;
+  imageLoading?: Partial<ImageLoadingConfig>;
+  webglFallbackOnImageLoadError?: boolean;
 };

@@ -16,6 +16,8 @@ import { useDiffProps } from './hooks/use-diff-props';
 import { DevTools, DevToolsProps } from './components/DevTools';
 import { registerAtlasRuntime } from './devtools/registry';
 import { AtlasWebGLFallbackEvent } from '../webgl-renderer/types';
+import { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import { ImageLoadingConfig } from '../shared/image-loading-config';
 
 export type AtlasProps = {
   debug?: boolean;
@@ -24,6 +26,9 @@ export type AtlasProps = {
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
   onWebGLFallback?: (event: AtlasWebGLFallbackEvent) => void;
+  onImageError?: (event: AtlasImageLoadErrorEvent) => void;
+  webglFallbackOnImageLoadError?: boolean;
+  imageLoading?: Partial<ImageLoadingConfig>;
   unstable_noReconciler?: boolean;
   overlayStyle?: any;
   containerStyle?: any;
@@ -75,6 +80,9 @@ export const Atlas: React.FC<
     // eslint-disable-next-line
     unstable_webglRenderer = false,
     onWebGLFallback,
+    onImageError,
+    webglFallbackOnImageLoadError = false,
+    imageLoading,
     // eslint-disable-next-line
     unstable_noReconciler = false,
     hideInlineStyle = false,
@@ -175,6 +183,9 @@ export const Atlas: React.FC<
     forceRefresh,
     unstable_webglRenderer: activeWebGL,
     onWebGLFallback: handleWebGLFallback,
+    onImageError,
+    webglFallbackOnImageLoadError,
+    imageLoading,
   });
 
   useEffect(() => {

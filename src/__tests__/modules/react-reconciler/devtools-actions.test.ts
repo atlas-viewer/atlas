@@ -1,5 +1,6 @@
 /** @vitest-environment happy-dom */
 
+import { vi } from 'vitest';
 import { Runtime } from '../../../renderer/runtime';
 import { World } from '../../../world';
 import { Renderer } from '../../../renderer/renderer';
@@ -12,9 +13,17 @@ import { resetImageLoadingState } from '../../../modules/react-reconciler/devtoo
 
 class MockCanvasLikeRenderer implements Renderer {
   loadingQueue: any[] = [{ id: 'queued' }];
+  tileRequestQueue: any[] = [{ id: 'tile' }];
+  queuedTileRequestKeys = new Set<string>(['a::0']);
   drawCalls: Array<() => void> = [() => undefined];
   invalidated: string[] = ['stale'];
   imageIdsLoaded: string[] = ['tile-a'];
+  requiredTileKeys = new Set<string>(['needed']);
+  requiredPrefetchTileKeys = new Set<string>(['prefetch']);
+  inFlightImageLoads = new Map<string, any>([['tile', { release: () => undefined }]]);
+  imageRequestPool = {
+    cancelAll: vi.fn(),
+  };
   imagesPending = 2;
   imagesLoaded = 1;
   tasksRunning = 1;
@@ -95,6 +104,12 @@ describe('DevTools actions', () => {
     expect(image.__host.canvas.indices).toEqual([]);
     expect(image.__host.canvas.loading).toBe(false);
     expect(runtime.pendingUpdate).toBe(true);
+    const renderer = runtime.renderer as unknown as MockCanvasLikeRenderer;
+    expect(renderer.requiredTileKeys.size).toBe(0);
+    expect(renderer.requiredPrefetchTileKeys.size).toBe(0);
+    expect(renderer.queuedTileRequestKeys.size).toBe(0);
+    expect(renderer.inFlightImageLoads.size).toBe(0);
+    expect(renderer.imageRequestPool.cancelAll).toHaveBeenCalledTimes(1);
 
     runtime.stop();
   });
