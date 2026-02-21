@@ -37,6 +37,7 @@ export type PopmotionControllerConfig = {
   ignoreSingleFingerTouch?: boolean;
   enablePanOnWait?: boolean;
   requireMetaKeyForWheelZoom?: boolean;
+  wheelInExploreModeOnly?: boolean;
   panOnWaitDelay?: number;
   parentElement?: HTMLElement | null;
   onPanInSketchMode?: () => void;
@@ -69,6 +70,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   ignoreSingleFingerTouch: false,
   enablePanOnWait: false,
   requireMetaKeyForWheelZoom: false,
+  wheelInExploreModeOnly: false,
   panOnWaitDelay: 40,
   onPanInSketchMode: () => {
     // no-op
@@ -88,6 +90,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         panOnWaitDelay,
         parentElement,
         requireMetaKeyForWheelZoom,
+        wheelInExploreModeOnly,
         enablePanMomentum,
         panMomentumStrength,
         panTimeConstant,
@@ -431,6 +434,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onWheel(e: WheelEvent & { atlas: { x: number; y: number } }) {
+        if (wheelInExploreModeOnly && runtime.mode !== 'explore') {
+          return;
+        }
         stopPanMomentum();
         const normalized = normalizeWheel(e);
         const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;

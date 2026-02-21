@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import type { Strand } from '@atlas-viewer/dna';
+import { DnaFactory } from '@atlas-viewer/dna';
 import type { Renderer } from '../../renderer/renderer';
 import { Runtime } from '../../renderer/runtime';
 import type { PositionPair } from '../../types';
@@ -62,8 +63,26 @@ describe('zone core and runtime zone navigation', () => {
       height: 100,
     });
 
-    world.addZone(new Zone({ id: 'zone-a', x: 0, y: 0, width: 100, height: 100, objects: [objectA] }));
-    world.addZone(new Zone({ id: 'zone-b', x: 200, y: 200, width: 100, height: 100, objects: [objectB] }));
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        objects: [objectA],
+      })
+    );
+    world.addZone(
+      new Zone({
+        id: 'zone-b',
+        x: 200,
+        y: 200,
+        width: 100,
+        height: 100,
+        objects: [objectB],
+      })
+    );
 
     world.selectZone(0);
 
@@ -80,7 +99,16 @@ describe('zone core and runtime zone navigation', () => {
       width: 100,
       height: 100,
     });
-    world.addZone(new Zone({ id: 'zone-a', x: 0, y: 0, width: 100, height: 100, objects: [objectA] }));
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        objects: [objectA],
+      })
+    );
     const layoutEvents: string[] = [];
 
     world.addLayoutSubscriber((type) => {
@@ -105,7 +133,16 @@ describe('zone core and runtime zone navigation', () => {
       width: 100,
       height: 100,
     });
-    world.addZone(new Zone({ id: 'zone-a', x: 0, y: 0, width: 100, height: 100, objects: [objectA] }));
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        objects: [objectA],
+      })
+    );
 
     expect(world.hasZone('zone-a')).toBe(true);
     expect(world.hasZone('missing')).toBe(false);
@@ -123,7 +160,16 @@ describe('zone core and runtime zone navigation', () => {
       height: 1200,
     });
     world.appendChild(object);
-    world.addZone(new Zone({ id: 'page-1', x: 0, y: 0, width: 1000, height: 1200, objects: [object] }));
+    world.addZone(
+      new Zone({
+        id: 'page-1',
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 1200,
+        objects: [object],
+      })
+    );
 
     const runtime = new Runtime(new MockRenderer(), world, {
       x: 0,
@@ -151,7 +197,16 @@ describe('zone core and runtime zone navigation', () => {
       height: 400,
     });
     world.appendChild(object);
-    world.addZone(new Zone({ id: 'zone-a', x: 100, y: 200, width: 300, height: 400, objects: [object] }));
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 100,
+        y: 200,
+        width: 300,
+        height: 400,
+        objects: [object],
+      })
+    );
 
     const runtime = new Runtime(new MockRenderer(), world, {
       x: 120,
@@ -211,7 +266,16 @@ describe('zone core and runtime zone navigation', () => {
       height: 400,
     });
     world.appendChild(object);
-    world.addZone(new Zone({ id: 'zone-a', x: 100, y: 100, width: 400, height: 400, objects: [object] }));
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 100,
+        y: 100,
+        width: 400,
+        height: 400,
+        objects: [object],
+      })
+    );
 
     const runtime = new Runtime(new MockRenderer(), world, {
       x: 150,
@@ -243,5 +307,61 @@ describe('zone core and runtime zone navigation', () => {
 
     expect(didNavigate).toBe(false);
     expect(runtime.world.hasActiveZone()).toBe(false);
+  });
+
+  test('zone selection keeps outside objects visible briefly for fade-out', () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+
+    const world = new World(1000, 1000);
+    const objectA = createWorldObject({
+      id: 'a',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+    const objectB = createWorldObject({
+      id: 'b',
+      x: 200,
+      y: 200,
+      width: 100,
+      height: 100,
+    });
+    world.appendChild(objectA);
+    world.appendChild(objectB);
+    world.addZone(
+      new Zone({
+        id: 'zone-a',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        objects: [objectA],
+      })
+    );
+    world.addZone(
+      new Zone({
+        id: 'zone-b',
+        x: 200,
+        y: 200,
+        width: 100,
+        height: 100,
+        objects: [objectB],
+      })
+    );
+
+    world.selectZone('zone-a');
+    const target = DnaFactory.singleBox(1000, 1000, 0, 0);
+    const duringFade = world.getObjectsAt(target, false, true).map(([obj]) => obj.id);
+    expect(duringFade).toContain('a');
+    expect(duringFade).toContain('b');
+
+    now = world.zoneVisibilityFadeDurationMs + 1;
+    const afterFade = world.getObjectsAt(target, false, true).map(([obj]) => obj.id);
+    expect(afterFade).toContain('a');
+    expect(afterFade).not.toContain('b');
+
+    vi.restoreAllMocks();
   });
 });

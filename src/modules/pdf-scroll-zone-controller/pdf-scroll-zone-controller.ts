@@ -18,6 +18,7 @@ const defaultConfig: Required<Pick<PdfScrollZoneControllerConfig, 'scrollWheelFa
 };
 const ZONE_VIEWPORT_HEIGHT_RATIO = 0.9;
 const ZONE_VIEWPORT_VERTICAL_PADDING_RATIO = (1 - ZONE_VIEWPORT_HEIGHT_RATIO) / 2;
+const ZONE_AUTO_EXIT_MIN_COVERAGE_RATIO = 0.8;
 
 function toScrollViewport(viewport: { x: number; y: number; width: number; height: number }): ScrollViewport {
   return {
@@ -46,6 +47,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       const originalManualHomePosition = runtime.manualHomePosition;
       let mode: ControllerMode = 'scroll-mode';
       let restoringViewport = false;
+      let exitTransitionInFlight = false;
       let savedScrollViewport: ScrollViewport | undefined;
       let dragStartWorldY = 0;
       let dragStartViewportY = 0;
@@ -55,6 +57,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       const popmotion = popmotionController({
         ...config,
         enableClickToZoom: false,
+        wheelInExploreModeOnly: true,
       });
 
       const ensureEventActivated = (eventName: string) => {
@@ -191,10 +194,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return false;
         }
         scrollViewY = nextViewport.y;
-        runtime.world.gotoRegion({
-          ...nextViewport,
-          immediate: false,
-        });
+        runtime.transitionManager.goToRegion(nextViewport);
         runtime.updateNextFrame();
         return true;
       };
@@ -221,6 +221,40 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           setMode('zone-active');
         }
       };
+      const restoreScrollViewport = () => {
+        const targetY = savedScrollViewport ? savedScrollViewport.y : scrollViewY;
+        const didAnimate = animateToScrollViewport(targetY);
+        savedScrollViewport = undefined;
+        exitTransitionInFlight = didAnimate;
+        if (!didAnimate) {
+          exitTransitionInFlight = false;
+          restoringViewport = false;
+          applyScrollViewport(scrollViewY);
+        }
+        runtime.updateNextFrame();
+      };
+      const shouldAutoExitActiveZone = () => {
+        if (mode !== 'zone-active') {
+          return false;
+        }
+        const activeZone = runtime.world.getActiveZone();
+        if (!activeZone) {
+          return false;
+        }
+        activeZone.recalculateBounds();
+        if (activeZone.points[0] === 0) {
+          return false;
+        }
+        const viewport = runtime.getViewport();
+        if (viewport.width <= 0 || viewport.height <= 0) {
+          return false;
+        }
+        const zoneWidth = activeZone.points[3] - activeZone.points[1];
+        const zoneHeight = activeZone.points[4] - activeZone.points[2];
+        const widthCoverage = zoneWidth / viewport.width;
+        const heightCoverage = zoneHeight / viewport.height;
+        return widthCoverage < ZONE_AUTO_EXIT_MIN_COVERAGE_RATIO && heightCoverage < ZONE_AUTO_EXIT_MIN_COVERAGE_RATIO;
+      };
 
       const exitZone = () => {
         if (mode !== 'zone-active') {
@@ -229,18 +263,14 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         setMode('scroll-mode');
         restoringViewport = true;
         runtime.deselectZone();
-        const targetY = savedScrollViewport ? savedScrollViewport.y : scrollViewY;
-        const didAnimate = animateToScrollViewport(targetY);
-        savedScrollViewport = undefined;
-        if (!didAnimate) {
-          restoringViewport = false;
-          applyScrollViewport(scrollViewY);
-        }
-        runtime.updateNextFrame();
+        restoreScrollViewport();
       };
 
       const onClick = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
         if (!e.atlas) {
+          return;
+        }
+        if (exitTransitionInFlight) {
           return;
         }
         if (mode === 'scroll-mode') {
@@ -257,6 +287,10 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onWheel = (e: WheelEvent) => {
+        if (exitTransitionInFlight) {
+          e.stopPropagation();
+          return;
+        }
         if (mode !== 'scroll-mode') {
           return;
         }
@@ -268,7 +302,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onMouseDown = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
-        if (mode !== 'scroll-mode' || !e.atlas) {
+        if (mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
         e.stopPropagation();
@@ -278,7 +312,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onMouseMove = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
-        if (!isDragging || mode !== 'scroll-mode' || !e.atlas) {
+        if (!isDragging || mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
         e.stopPropagation();
@@ -317,6 +351,18 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       applyScrollViewport(scrollViewY);
 
       const stopPopmotion = popmotion.start(runtime);
+      const removeAutoExitHook = runtime.registerHook('useAfterFrame', () => {
+        if (exitTransitionInFlight && !runtime.transitionManager.hasPending()) {
+          exitTransitionInFlight = false;
+          restoringViewport = false;
+        }
+        if (restoringViewport) {
+          return;
+        }
+        if (shouldAutoExitActiveZone()) {
+          exitZone();
+        }
+      });
 
       const removeLayout = runtime.world.addLayoutSubscriber((type) => {
         if (type === 'goto-region') {
@@ -342,23 +388,21 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           }
           const wasZoneActive = mode === 'zone-active';
           setMode('scroll-mode');
-          if (!restoringViewport) {
-            if (wasZoneActive) {
-              const restoreY = savedScrollViewport ? savedScrollViewport.y : scrollViewY;
-              const didAnimate = animateToScrollViewport(restoreY);
-              savedScrollViewport = undefined;
-              if (!didAnimate) {
-                applyScrollViewport(scrollViewY);
-              }
-            } else {
-              applyScrollViewport(scrollViewY);
-            }
+          if (exitTransitionInFlight) {
+            return;
+          }
+          if (wasZoneActive) {
+            restoringViewport = true;
+            restoreScrollViewport();
+          } else if (!restoringViewport) {
+            applyScrollViewport(scrollViewY);
           }
         }
       });
 
       return () => {
         stopPopmotion();
+        removeAutoExitHook();
         removeLayout();
         runtime.world.removeEventListener('click', onClick);
         runtime.world.removeEventListener('wheel', onWheel);

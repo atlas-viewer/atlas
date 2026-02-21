@@ -48,6 +48,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   emptyPaintables = [];
   renderOrder: number[] = [];
   debugSubscribers = new Set<(event: WorldDebugEvent) => void>();
+  zoneVisibilityFadeDurationMs = 220;
+  zoneVisibilityFade?: {
+    zoneId: string;
+    startedAt: number;
+  };
 
   get x(): number {
     return 0;
@@ -301,11 +306,19 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       const zone = this.getZoneById(id);
       if (zone) {
         this.selectedZone = this.zones.indexOf(zone);
+        this.zoneVisibilityFade = {
+          zoneId: zone.id,
+          startedAt: performance.now(),
+        };
         this.trigger('zone-changed');
       }
     } else {
       if (this.zones[id]) {
         this.selectedZone = id;
+        this.zoneVisibilityFade = {
+          zoneId: this.zones[id].id,
+          startedAt: performance.now(),
+        };
         this.trigger('zone-changed');
       }
     }
@@ -313,6 +326,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   deselectZone() {
     this.selectedZone = undefined;
+    this.zoneVisibilityFade = undefined;
     this.trigger('zone-changed');
   }
 
@@ -508,8 +522,20 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return this._updatedList;
   }
 
-  getObjectsAt(target: Strand, all = false): Array<[WorldObject, Paintable[]]> {
+  private getZoneOutsideVisibility(zone: ZoneInterface): number {
+    if (!this.zoneVisibilityFade || this.zoneVisibilityFade.zoneId !== zone.id) {
+      return 0;
+    }
+    const elapsed = performance.now() - this.zoneVisibilityFade.startedAt;
+    if (elapsed >= this.zoneVisibilityFadeDurationMs) {
+      return 0;
+    }
+    return Math.max(0, 1 - elapsed / this.zoneVisibilityFadeDurationMs);
+  }
+
+  getObjectsAt(target: Strand, all = false, includeZoneFade = false): Array<[WorldObject, Paintable[]]> {
     const zone = this.getActiveZone();
+    const includeOutsideObjects = zone && includeZoneFade ? this.getZoneOutsideVisibility(zone) > 0 : false;
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
 
     const len = this.renderOrder.length;
@@ -519,7 +545,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       const index = this.renderOrder[_index];
       if (filteredPoints[index * 5] !== 0) {
         const object = this.objects[index];
-        if (!object || (zone && zone.objects.indexOf(object) === -1)) {
+        const inZone = !zone || zone.objects.indexOf(object) !== -1;
+        if (!object || (!inZone && !includeOutsideObjects)) {
           continue;
         }
         if (object.type !== 'world-object') {
@@ -538,7 +565,9 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1): Paint[] {
-    const objects = this.getObjectsAt(target);
+    const zone = this.getActiveZone();
+    const outsideVisibility = zone ? this.getZoneOutsideVisibility(zone) : 0;
+    const objects = this.getObjectsAt(target, false, true);
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
@@ -546,8 +575,18 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const layers: Paint[] = [];
     for (let index = 0; index < len; index++) {
       if (objects[index]) {
-        layers.push(...objects[index][0].getAllPointsAt(target, transformer, scaleFactor));
+        const worldObject = objects[index][0];
+        const paints = worldObject.getAllPointsAt(target, transformer, scaleFactor);
+        const inZone = !zone || zone.objects.indexOf(worldObject) !== -1;
+        const zoneVisibilityAlpha = inZone ? 1 : outsideVisibility;
+        for (let i = 0; i < paints.length; i++) {
+          (paints[i][0] as any).__zoneVisibilityAlpha = zoneVisibilityAlpha;
+        }
+        layers.push(...paints);
       }
+    }
+    if (zone && outsideVisibility > 0) {
+      this.triggerRepaint();
     }
     return layers;
   }

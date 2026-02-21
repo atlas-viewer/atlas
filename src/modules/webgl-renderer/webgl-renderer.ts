@@ -1,20 +1,20 @@
-import { Renderer } from '../../renderer/renderer';
-import { SpacialContent } from '../../spacial-content/spacial-content';
-import { Box } from '../../objects/box';
-import { SingleImage } from '../../spacial-content/single-image';
-import { TiledImage } from '../../spacial-content/tiled-image';
-import { Strand } from '@atlas-viewer/dna';
-import { World } from '../../world';
-import { Paint } from '../../world-objects/paint';
-import { PositionPair } from '../../types';
+import type { Strand } from '@atlas-viewer/dna';
+import type { Box } from '../../objects/box';
+import type { Renderer } from '../../renderer/renderer';
+import type { HookOptions } from '../../renderer/runtime';
 import { ImageTexture } from '../../spacial-content/image-texture';
-import { HookOptions } from '../../renderer/runtime';
+import { SingleImage } from '../../spacial-content/single-image';
+import type { SpacialContent } from '../../spacial-content/spacial-content';
+import { TiledImage } from '../../spacial-content/tiled-image';
+import type { PositionPair } from '../../types';
+import type { World } from '../../world';
+import type { Paint } from '../../world-objects/paint';
 import { buildCssFilter } from '../shared/build-css-filter';
-import { AtlasWebGLFallbackEvent } from './types';
-import { isWebGLImageFastPathCandidate } from './webgl-eligibility';
-import { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
-import { getRetryDelayMs, ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
+import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
 import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
+import type { AtlasWebGLFallbackEvent } from './types';
+import { isWebGLImageFastPathCandidate } from './webgl-eligibility';
 
 export type { AtlasWebGLFallbackEvent, AtlasWebGLFallbackReason } from './types';
 
@@ -109,7 +109,7 @@ export class WebGLRenderer implements Renderer {
         vec2 clipSpace = zeroToTwo - 1.0;
 
         gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-        
+
         v_texCoord = a_texCoord;
     }
   `;
@@ -622,7 +622,9 @@ export class WebGLRenderer implements Renderer {
       if (isActiveLayer) {
         return true;
       }
-      const texture = paint.__host?.webgl?.texture ? paint.__host.webgl.texture : paint.__host?.webgl?.textures?.[index];
+      const texture = paint.__host?.webgl?.texture
+        ? paint.__host.webgl.texture
+        : paint.__host?.webgl?.textures?.[index];
       return !!texture;
     }
     return true;
@@ -956,6 +958,8 @@ export class WebGLRenderer implements Renderer {
 
     if (texture) {
       const baseAlpha = imagePaint ? (typeof paint.style?.opacity === 'number' ? paint.style.opacity : 1) : 1;
+      const zoneVisibilityAlpha =
+        typeof (paint as any).__zoneVisibilityAlpha === 'number' ? (paint as any).__zoneVisibilityAlpha : 1;
       if (!baseAlpha) {
         return;
       }
@@ -963,7 +967,7 @@ export class WebGLRenderer implements Renderer {
       if (fadeAlpha < 1) {
         this.hasTilesFading = true;
       }
-      const alpha = baseAlpha * fadeAlpha;
+      const alpha = baseAlpha * fadeAlpha * zoneVisibilityAlpha;
 
       this.gl.enableVertexAttribArray(this.attributes.texCoord);
 
@@ -1032,7 +1036,10 @@ export class WebGLRenderer implements Renderer {
   }
 
   getCanvasDims() {
-    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
+    return {
+      width: this.canvas.width / this.dpi,
+      height: this.canvas.height / this.dpi,
+    };
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {

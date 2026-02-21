@@ -779,6 +779,8 @@ export class CanvasRenderer implements Renderer {
 
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
     const ga = this.ctx.globalAlpha;
+    const zoneVisibilityAlpha =
+      typeof (paint as any).__zoneVisibilityAlpha === 'number' ? (paint as any).__zoneVisibilityAlpha : 1;
 
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
@@ -807,7 +809,8 @@ export class CanvasRenderer implements Renderer {
 
         this.visible.push(paint);
 
-        const baseOpacity = typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1;
+        const baseOpacity =
+          (typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) * zoneVisibilityAlpha;
         if (!baseOpacity) {
           return;
         }
@@ -941,10 +944,8 @@ export class CanvasRenderer implements Renderer {
         );
 
         const scale = paint.props.relativeStyle ? 1 : width / paint.width;
-
-        if (typeof style.opacity !== 'undefined') {
-          this.ctx.globalAlpha = style.opacity;
-        }
+        const styleOpacity = typeof style.opacity !== 'undefined' ? style.opacity : 1;
+        this.ctx.globalAlpha = ga * styleOpacity * zoneVisibilityAlpha;
 
         let bw = 0;
         if (typeof style.borderWidth !== 'undefined') {

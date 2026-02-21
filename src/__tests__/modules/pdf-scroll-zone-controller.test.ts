@@ -97,6 +97,10 @@ function emitWheel(runtime: Runtime, x: number, y: number, deltaY: number) {
   runtime.world.flushSubscriptions();
 }
 
+function runFrame(runtime: Runtime, delta = 16) {
+  runtime.render(performance.now() + delta);
+}
+
 describe('pdf scroll zone controller', () => {
   test('initializes at the top of the first page in scroll-mode', () => {
     const runtime = createRuntimeWithPdfController();
@@ -159,30 +163,74 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.mode).toBe('sketch');
   });
 
-  test('programmatic deselect animates back to scroll viewport', () => {
+  test('programmatic deselect animates back to scroll viewport like Escape', () => {
     const runtime = createRuntimeWithPdfController();
+    const runtimeViaEscape = createRuntimeWithPdfController();
 
     emitClick(runtime, 100, 100);
+    emitClick(runtimeViaEscape, 100, 100);
+
     runtime.deselectZone();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     runtime.world.flushSubscriptions();
     runtime.world.flushSubscriptions();
+    runtimeViaEscape.world.flushSubscriptions();
 
     const pending = runtime.transitionManager.getPendingTransition();
+    const pendingEscape = runtimeViaEscape.transitionManager.getPendingTransition();
     expect(runtime.world.hasActiveZone()).toBe(false);
     expect(runtime.mode).toBe('sketch');
     expect(pending.done).toBe(false);
     expect(pending.total_time).toBeGreaterThan(0);
+    expect(pending.total_time).toBe(pendingEscape.total_time);
+    expect(pending.to[1]).toBeCloseTo(pendingEscape.to[1], 0);
+    expect(pending.to[2]).toBeCloseTo(pendingEscape.to[2], 0);
+    expect(pending.to[3]).toBeCloseTo(pendingEscape.to[3], 0);
+    expect(pending.to[4]).toBeCloseTo(pendingEscape.to[4], 0);
   });
 
-  test('stays in zone when zooming out with wheel', () => {
+  test('auto exits zone when zone is below 80% of viewport width and height', () => {
     const runtime = createRuntimeWithPdfController();
 
     emitClick(runtime, 100, 100);
     expect(runtime.world.hasActiveZone()).toBe(true);
+    runtime.transitionManager.stopTransition();
+    runtime.setViewport({
+      x: -450,
+      y: -350,
+      width: 2000,
+      height: 2000,
+    });
+    runtime.updateNextFrame();
+    runFrame(runtime);
+    runtime.world.flushSubscriptions();
 
-    emitWheel(runtime, 100, 100, 120);
+    expect(runtime.world.hasActiveZone()).toBe(false);
+    expect(runtime.mode).toBe('sketch');
+    expect(runtime.transitionManager.getPendingTransition().done).toBe(false);
+  });
 
+  test('ignores wheel zoom while auto-exit transition is in flight', () => {
+    const runtime = createRuntimeWithPdfController();
+
+    emitClick(runtime, 100, 100);
     expect(runtime.world.hasActiveZone()).toBe(true);
-    expect(runtime.mode).toBe('explore');
+    runtime.transitionManager.stopTransition();
+    runtime.setViewport({
+      x: -450,
+      y: -350,
+      width: 2000,
+      height: 2000,
+    });
+    runtime.updateNextFrame();
+    runFrame(runtime);
+    runtime.world.flushSubscriptions();
+
+    const pendingBefore = runtime.transitionManager.getPendingTransition().to.slice(0);
+    emitWheel(runtime, 100, 100, 240);
+    const pendingAfter = runtime.transitionManager.getPendingTransition().to.slice(0);
+
+    expect(runtime.world.hasActiveZone()).toBe(false);
+    expect(pendingAfter).toEqual(pendingBefore);
   });
 });
