@@ -216,9 +216,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
             y: scrollViewY,
           });
         }
-        const didNavigate = runtime.goToZone(zoneId, {
-          paddingPx: getZoneViewportPaddingPx(),
-        });
+        const didNavigate = runtime.goToZone(zoneId);
         if (didNavigate) {
           setMode('zone-active');
         }
@@ -346,7 +344,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           setMode('scroll-mode');
           if (!restoringViewport) {
             if (wasZoneActive) {
-              const didAnimate = animateToScrollViewport(scrollViewY);
+              const restoreY = savedScrollViewport ? savedScrollViewport.y : scrollViewY;
+              const didAnimate = animateToScrollViewport(restoreY);
+              savedScrollViewport = undefined;
               if (!didAnimate) {
                 applyScrollViewport(scrollViewY);
               }

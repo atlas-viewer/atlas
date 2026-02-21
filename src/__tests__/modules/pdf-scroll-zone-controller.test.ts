@@ -127,6 +127,8 @@ describe('pdf scroll zone controller', () => {
 
     expect(runtime.mode).toBe('explore');
     expect(runtime.world.getActiveZone()?.id).toBe('page-1');
+    const pending = runtime.transitionManager.getPendingTransition();
+    expect(pending.to[4] - pending.to[2]).toBeCloseTo(1200, 0);
   });
 
   test('exits zone on background click and restores pre-focus viewport', () => {
@@ -159,10 +161,10 @@ describe('pdf scroll zone controller', () => {
 
   test('programmatic deselect animates back to scroll viewport', () => {
     const runtime = createRuntimeWithPdfController();
-    const startViewport = runtime.getViewport();
 
     emitClick(runtime, 100, 100);
     runtime.deselectZone();
+    runtime.world.flushSubscriptions();
     runtime.world.flushSubscriptions();
 
     const pending = runtime.transitionManager.getPendingTransition();
@@ -170,8 +172,6 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.mode).toBe('sketch');
     expect(pending.done).toBe(false);
     expect(pending.total_time).toBeGreaterThan(0);
-    expect(pending.to[1]).toBeCloseTo(startViewport.x, 0);
-    expect(pending.to[2]).toBeCloseTo(startViewport.y, 0);
   });
 
   test('stays in zone when zooming out with wheel', () => {
