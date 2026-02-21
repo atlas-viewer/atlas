@@ -17,6 +17,7 @@ import type {
 	ViewerMode,
 } from "../../renderer/runtime";
 import {
+	getNavigatorWorldRegion,
 	getNavigatorWorldTransform,
 	type NavigatorRendererStyle,
 	navigatorToWorldPoint,
@@ -612,13 +613,23 @@ export const Atlas: React.FC<
 
 	const recalculateNavigatorDimensions = () => {
 		if (preset && preset.navigator) {
-			const wHeight = preset.runtime.world.height;
-			const wWidth = preset.runtime.world.width;
+			const region = getNavigatorWorldRegion(preset.runtime.world);
+			const wHeight = region.height;
+			const wWidth = region.width;
 
 			const ratio = window.devicePixelRatio || 1;
-			const canvasWidth = Math.max(1, resolvedNavigatorOptions.width);
-			const canvasHeight =
-				(canvasWidth / Math.max(1, wWidth)) * Math.max(1, wHeight);
+			const safeWorldWidth = Math.max(1, wWidth);
+			const safeWorldHeight = Math.max(1, wHeight);
+			const configuredWidth = Math.max(1, resolvedNavigatorOptions.width);
+			const maxNavigatorHeight = Math.max(1, restProps.height - 20);
+			let canvasWidth = configuredWidth;
+			let canvasHeight = (configuredWidth / safeWorldWidth) * safeWorldHeight;
+
+			if (canvasHeight > maxNavigatorHeight) {
+				const scale = maxNavigatorHeight / canvasHeight;
+				canvasHeight = maxNavigatorHeight;
+				canvasWidth = Math.max(1, configuredWidth * scale);
+			}
 
 			preset.navigator.width = canvasWidth * ratio;
 			preset.navigator.height = canvasHeight * ratio;
@@ -643,12 +654,13 @@ export const Atlas: React.FC<
 						navigatorRenderer.invalidateWorldLayer();
 					}
 				}
-				if (type === "recalculate-world-size") {
+				if (type === "recalculate-world-size" || type === "zone-changed") {
 					recalculateNavigatorDimensions();
 					recalculateHomeCover();
 					if (
-						viewport.current.width !== restProps.width ||
-						viewport.current.height !== restProps.height
+						type === "recalculate-world-size" &&
+						(viewport.current.width !== restProps.width ||
+							viewport.current.height !== restProps.height)
 					) {
 						rt.resize(
 							viewport.current.width,
@@ -874,6 +886,8 @@ export const Atlas: React.FC<
 			pointerId: -1,
 			offsetX: 0,
 			offsetY: 0,
+			startClientX: 0,
+			startClientY: 0,
 		};
 
 		const setDragging = (dragging: boolean) => {
@@ -888,11 +902,14 @@ export const Atlas: React.FC<
 			}
 			const localX = event.clientX - rect.left;
 			const localY = event.clientY - rect.top;
+			const region = getNavigatorWorldRegion(runtime.world);
 			const transform = getNavigatorWorldTransform(
-				runtime.world.width,
-				runtime.world.height,
+				region.width,
+				region.height,
 				rect.width,
 				rect.height,
+				region.x,
+				region.y,
 			);
 			return navigatorToWorldPoint(transform, localX, localY);
 		};
@@ -933,6 +950,23 @@ export const Atlas: React.FC<
 				runtime.world.constraintBounds(true);
 			}
 		};
+		const getZoneAtWorldPoint = (worldX: number, worldY: number) => {
+			for (const zone of runtime.world.zones) {
+				zone.recalculateBounds();
+				if (zone.points[0] === 0) {
+					continue;
+				}
+				if (
+					worldX >= zone.points[1] &&
+					worldX <= zone.points[3] &&
+					worldY >= zone.points[2] &&
+					worldY <= zone.points[4]
+				) {
+					return zone;
+				}
+			}
+			return undefined;
+		};
 
 		const onPointerDown = (event: PointerEvent) => {
 			if (event.button !== 0) {
@@ -950,6 +984,8 @@ export const Atlas: React.FC<
 
 			drag.active = true;
 			drag.pointerId = event.pointerId;
+			drag.startClientX = event.clientX;
+			drag.startClientY = event.clientY;
 
 			if (isInsideViewport) {
 				drag.offsetX = worldPoint.x - viewport.x;
@@ -986,10 +1022,27 @@ export const Atlas: React.FC<
 			if (!drag.active || event.pointerId !== drag.pointerId) {
 				return;
 			}
+			const worldPoint = getWorldPointFromEvent(event);
+			const dragDistance = Math.hypot(
+				event.clientX - drag.startClientX,
+				event.clientY - drag.startClientY,
+			);
+			let didNavigateToZone = false;
+			if (dragDistance < 4) {
+				const zone = getZoneAtWorldPoint(worldPoint.x, worldPoint.y);
+				if (zone) {
+					didNavigateToZone = runtime.goToZone(zone.id);
+					if (didNavigateToZone) {
+						runtime.updateNextFrame();
+					}
+				}
+			}
 			drag.active = false;
 			drag.pointerId = -1;
 			setDragging(false);
-			runtime.world.constraintBounds(true);
+			if (!didNavigateToZone) {
+				runtime.world.constraintBounds(true);
+			}
 			if (navigatorCanvas.hasPointerCapture(event.pointerId)) {
 				navigatorCanvas.releasePointerCapture(event.pointerId);
 			}

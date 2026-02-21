@@ -115,6 +115,7 @@ export function WrapperZonesAndGoToZone() {
 			</div>
 
 			<Atlas
+				enableNavigator
 				width={1280}
 				height={800}
 				interactionMode="pdf-scroll-zone"

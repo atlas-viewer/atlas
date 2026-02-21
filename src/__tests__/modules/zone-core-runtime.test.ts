@@ -309,7 +309,7 @@ describe('zone core and runtime zone navigation', () => {
     expect(runtime.world.hasActiveZone()).toBe(false);
   });
 
-  test('zone selection keeps outside objects visible briefly for fade-out', () => {
+  test('zone selection fades outside objects then keeps them dimmed', () => {
     let now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
 
@@ -360,7 +360,7 @@ describe('zone core and runtime zone navigation', () => {
     now = world.zoneVisibilityFadeDurationMs + 1;
     const afterFade = world.getObjectsAt(target, false, true).map(([obj]) => obj.id);
     expect(afterFade).toContain('a');
-    expect(afterFade).not.toContain('b');
+    expect(afterFade).toContain('b');
 
     vi.restoreAllMocks();
   });

@@ -11,8 +11,17 @@ export type NavigatorTransform = {
   scale: number;
   offsetX: number;
   offsetY: number;
+  worldX: number;
+  worldY: number;
   worldWidth: number;
   worldHeight: number;
+};
+
+export type NavigatorWorldRegion = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export type NavigatorRendererStyle = {
@@ -49,7 +58,9 @@ export function getNavigatorWorldTransform(
   worldWidth: number,
   worldHeight: number,
   navigatorWidth: number,
-  navigatorHeight: number
+  navigatorHeight: number,
+  worldX = 0,
+  worldY = 0
 ): NavigatorTransform {
   const safeWorldWidth = Math.max(1, worldWidth);
   const safeWorldHeight = Math.max(1, worldHeight);
@@ -62,22 +73,45 @@ export function getNavigatorWorldTransform(
     scale,
     offsetX: (navigatorWidth - drawnWidth) / 2,
     offsetY: (navigatorHeight - drawnHeight) / 2,
+    worldX,
+    worldY,
     worldWidth: safeWorldWidth,
     worldHeight: safeWorldHeight,
   };
 }
 
+export function getNavigatorWorldRegion(world: World): NavigatorWorldRegion {
+  const activeZone = world.getActiveZone();
+  if (activeZone) {
+    activeZone.recalculateBounds();
+    if (activeZone.points[0] !== 0) {
+      return {
+        x: activeZone.points[1],
+        y: activeZone.points[2],
+        width: Math.max(1, activeZone.points[3] - activeZone.points[1]),
+        height: Math.max(1, activeZone.points[4] - activeZone.points[2]),
+      };
+    }
+  }
+  return {
+    x: 0,
+    y: 0,
+    width: Math.max(1, world.width),
+    height: Math.max(1, world.height),
+  };
+}
+
 export function navigatorToWorldPoint(transform: NavigatorTransform, x: number, y: number): { x: number; y: number } {
   if (!transform.scale || !Number.isFinite(transform.scale)) {
-    return { x: 0, y: 0 };
+    return { x: transform.worldX, y: transform.worldY };
   }
 
-  const worldX = (x - transform.offsetX) / transform.scale;
-  const worldY = (y - transform.offsetY) / transform.scale;
+  const worldX = transform.worldX + (x - transform.offsetX) / transform.scale;
+  const worldY = transform.worldY + (y - transform.offsetY) / transform.scale;
 
   return {
-    x: Math.max(0, Math.min(transform.worldWidth, worldX)),
-    y: Math.max(0, Math.min(transform.worldHeight, worldY)),
+    x: Math.max(transform.worldX, Math.min(transform.worldX + transform.worldWidth, worldX)),
+    y: Math.max(transform.worldY, Math.min(transform.worldY + transform.worldHeight, worldY)),
   };
 }
 
@@ -201,17 +235,21 @@ export class NavigatorRenderer extends DebugRenderer {
     ctx.fillStyle = this.style.background;
     ctx.fillRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
 
+    const region = getNavigatorWorldRegion(world);
+    const activeZone = world.getActiveZone();
     const navigatorTransform = getNavigatorWorldTransform(
-      world.width,
-      world.height,
+      region.width,
+      region.height,
       this.baseCanvas.width,
-      this.baseCanvas.height
+      this.baseCanvas.height,
+      region.x,
+      region.y
     );
 
-    this.worldTarget[1] = 0;
-    this.worldTarget[2] = 0;
-    this.worldTarget[3] = world.width;
-    this.worldTarget[4] = world.height;
+    this.worldTarget[1] = region.x;
+    this.worldTarget[2] = region.y;
+    this.worldTarget[3] = region.x + region.width;
+    this.worldTarget[4] = region.y + region.height;
 
     const points = world.getPointsAt(this.worldTarget, this.aggregate, navigatorTransform.scale);
     let drawn = 0;
@@ -235,6 +273,12 @@ export class NavigatorRenderer extends DebugRenderer {
         const key = i * 5;
         if (position[key] === 0) {
           continue;
+        }
+        if (activeZone) {
+          const owner = (paint as any)?.__owner?.value;
+          if (!owner || activeZone.objects.indexOf(owner) === -1) {
+            continue;
+          }
         }
 
         const x = position[key + 1] + navigatorTransform.offsetX;
@@ -422,10 +466,18 @@ export class NavigatorRenderer extends DebugRenderer {
   }
 
   private renderViewportBox(world: World, target: Strand) {
-    const transform = getNavigatorWorldTransform(world.width, world.height, this.canvas.width, this.canvas.height);
+    const region = getNavigatorWorldRegion(world);
+    const transform = getNavigatorWorldTransform(
+      region.width,
+      region.height,
+      this.canvas.width,
+      this.canvas.height,
+      region.x,
+      region.y
+    );
 
-    const x = target[1] * transform.scale + transform.offsetX;
-    const y = target[2] * transform.scale + transform.offsetY;
+    const x = (target[1] - transform.worldX) * transform.scale + transform.offsetX;
+    const y = (target[2] - transform.worldY) * transform.scale + transform.offsetY;
     const width = (target[3] - target[1]) * transform.scale;
     const height = (target[4] - target[2]) * transform.scale;
 

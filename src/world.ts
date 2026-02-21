@@ -49,6 +49,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   renderOrder: number[] = [];
   debugSubscribers = new Set<(event: WorldDebugEvent) => void>();
   zoneVisibilityFadeDurationMs = 220;
+  zoneOutsideOpacity = 0.2;
   zoneVisibilityFade?: {
     zoneId: string;
     startedAt: number;
@@ -522,15 +523,25 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return this._updatedList;
   }
 
+  private isZoneOutsideVisibilityFading(zone: ZoneInterface): boolean {
+    return !!(
+      this.zoneVisibilityFade &&
+      this.zoneVisibilityFade.zoneId === zone.id &&
+      performance.now() - this.zoneVisibilityFade.startedAt < this.zoneVisibilityFadeDurationMs
+    );
+  }
+
   private getZoneOutsideVisibility(zone: ZoneInterface): number {
+    const dimmedOpacity = this.zoneOutsideOpacity;
     if (!this.zoneVisibilityFade || this.zoneVisibilityFade.zoneId !== zone.id) {
-      return 0;
+      return dimmedOpacity;
     }
     const elapsed = performance.now() - this.zoneVisibilityFade.startedAt;
     if (elapsed >= this.zoneVisibilityFadeDurationMs) {
-      return 0;
+      return dimmedOpacity;
     }
-    return Math.max(0, 1 - elapsed / this.zoneVisibilityFadeDurationMs);
+    const progress = Math.max(0, Math.min(1, elapsed / this.zoneVisibilityFadeDurationMs));
+    return 1 - progress * (1 - dimmedOpacity);
   }
 
   getObjectsAt(target: Strand, all = false, includeZoneFade = false): Array<[WorldObject, Paintable[]]> {
@@ -585,7 +596,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         layers.push(...paints);
       }
     }
-    if (zone && outsideVisibility > 0) {
+    if (zone && this.isZoneOutsideVisibilityFading(zone)) {
       this.triggerRepaint();
     }
     return layers;
