@@ -367,4 +367,13 @@ describe('Canvas image loading behavior', () => {
     renderer.paint(image, 0, 0, 0, 100, 100);
     expect((renderer as any).hasTilesFading).toBe(false);
   });
+
+  test('resetReadyState clears first meaningful paint in non-immediate mode', () => {
+    const { renderer } = createRenderer();
+    renderer.firstMeaningfulPaint = true;
+
+    renderer.resetReadyState();
+
+    expect(renderer.firstMeaningfulPaint).toBe(false);
+  });
 });

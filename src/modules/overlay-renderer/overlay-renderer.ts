@@ -254,7 +254,7 @@ export class OverlayRenderer implements Renderer {
   }
 
   isReady(): boolean {
-    return false;
+    return true;
   }
 
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {

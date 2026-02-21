@@ -16,6 +16,7 @@ import { Paint } from '../world-objects/paint';
 import { TransitionManager } from '../modules/transition-manager/transition-manager';
 import { nanoid } from 'nanoid';
 import type { RuntimeDebugEvent } from '../modules/react-reconciler/devtools/types';
+import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -55,6 +56,9 @@ export type RuntimeOptions = {
 export class Runtime {
   id = nanoid();
   ready = false;
+  readyCycle = 0;
+  readyReason: AtlasReadyResetReason = 'initial';
+  readyTimestamp: number | undefined;
   // Helper getters.
   get x(): number {
     return this.target[1];
@@ -940,6 +944,27 @@ export class Runtime {
 
   reset() {
     this.renderer.reset();
+    this.resetReadyState('runtime-reset');
+  }
+
+  resetReadyState(reason: AtlasReadyResetReason = 'manual') {
+    this.ready = false;
+    this.readyCycle += 1;
+    this.readyReason = reason;
+    this.readyTimestamp = undefined;
+    if (this.renderer.resetReadyState) {
+      this.renderer.resetReadyState();
+    }
+    this.pendingUpdate = true;
+  }
+
+  getReadyState(): { ready: boolean; cycle: number; reason: AtlasReadyResetReason; timestamp?: number } {
+    return {
+      ready: this.ready,
+      cycle: this.readyCycle,
+      reason: this.readyReason,
+      timestamp: this.readyTimestamp,
+    };
   }
 
   selectZone(zone: number | string) {
@@ -1138,8 +1163,9 @@ export class Runtime {
     this.firstRender = false;
     this.pendingUpdate = false;
     this.logNextRender = false;
-    if (this.renderer.isReady()) {
+    if (!this.ready && this.renderer.isReady()) {
       this.ready = true;
+      this.readyTimestamp = performance.now();
       this.world.trigger('ready');
     }
 

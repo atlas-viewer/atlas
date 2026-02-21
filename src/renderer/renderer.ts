@@ -20,6 +20,7 @@ export interface Renderer {
   resize(): void;
   resize(width?: number, height?: number): void;
   triggerResize?: () => void;
+  resetReadyState?: () => void;
 
   reset(): void;
   getRendererScreenPosition():

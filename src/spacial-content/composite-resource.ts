@@ -72,7 +72,7 @@ export class CompositeResource
       maxImageSize: 2048,
       quality: 1.3,
       layerPolicy: 'always-blend',
-      loadingBias: 'speed',
+      loadingBias: 'balanced',
       prefetchRadius: 1,
       fadeInMs: 300,
       fadeFallbackTiles: false,

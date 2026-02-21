@@ -16,6 +16,7 @@ export function usePreset(
     onImageError?: PresetArgs['onImageError'];
     imageLoading?: PresetArgs['imageLoading'];
     webglFallbackOnImageLoadError?: PresetArgs['webglFallbackOnImageLoadError'];
+    webglReadiness?: PresetArgs['webglReadiness'];
   }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
@@ -56,6 +57,7 @@ export function usePreset(
       onImageError: options.onImageError,
       imageLoading: options.imageLoading,
       webglFallbackOnImageLoadError: options.webglFallbackOnImageLoadError,
+      webglReadiness: options.webglReadiness,
       ...(presetArgs || {}),
     });
 
@@ -86,6 +88,7 @@ export function usePreset(
     options.onImageError,
     options.imageLoading,
     options.webglFallbackOnImageLoadError,
+    options.webglReadiness,
   ]);
 
   const refs = useMemo(

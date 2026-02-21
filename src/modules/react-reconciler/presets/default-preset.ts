@@ -42,6 +42,7 @@ export function defaultPreset({
   onImageError,
   imageLoading,
   webglFallbackOnImageLoadError,
+  webglReadiness,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -70,6 +71,7 @@ export function defaultPreset({
         onImageError,
         imageLoading,
         fallbackOnImageLoadError: webglFallbackOnImageLoadError,
+        readiness: webglReadiness,
       });
     } catch (error) {
       baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, imageLoading, onImageError });

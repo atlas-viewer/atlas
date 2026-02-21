@@ -18,6 +18,25 @@ import { registerAtlasRuntime } from './devtools/registry';
 import { AtlasWebGLFallbackEvent } from '../webgl-renderer/types';
 import { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
 import { ImageLoadingConfig } from '../shared/image-loading-config';
+import type { AtlasReadyEvent, AtlasReadyRenderer } from '../shared/ready-events';
+
+function getReadyRenderer(renderer: unknown): AtlasReadyRenderer {
+  const maybeRenderer = renderer as { renderers?: unknown[]; constructor?: { name?: string } };
+  if (Array.isArray(maybeRenderer?.renderers)) {
+    return 'composite';
+  }
+  const constructorName = maybeRenderer?.constructor?.name || '';
+  if (constructorName === 'CanvasRenderer') {
+    return 'canvas';
+  }
+  if (constructorName === 'WebGLRenderer') {
+    return 'webgl';
+  }
+  if (constructorName === 'StaticRenderer') {
+    return 'static';
+  }
+  return 'unknown';
+}
 
 export type AtlasProps = {
   debug?: boolean;
@@ -26,8 +45,11 @@ export type AtlasProps = {
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
   onWebGLFallback?: (event: AtlasWebGLFallbackEvent) => void;
+  onReady?: (event: AtlasReadyEvent) => void;
   onImageError?: (event: AtlasImageLoadErrorEvent) => void;
+  readyResetKey?: string | number;
   webglFallbackOnImageLoadError?: boolean;
+  webglReadiness?: 'first-meaningful-paint' | 'immediate';
   imageLoading?: Partial<ImageLoadingConfig>;
   unstable_noReconciler?: boolean;
   overlayStyle?: any;
@@ -80,8 +102,11 @@ export const Atlas: React.FC<
     // eslint-disable-next-line
     unstable_webglRenderer = false,
     onWebGLFallback,
+    onReady,
     onImageError,
+    readyResetKey,
     webglFallbackOnImageLoadError = false,
+    webglReadiness,
     imageLoading,
     // eslint-disable-next-line
     unstable_noReconciler = false,
@@ -112,6 +137,8 @@ export const Atlas: React.FC<
   const fallbackLockedRef = useRef(false);
   const pendingRestoreViewportRef = useRef<Projection | null>(null);
   const currentRuntimeRef = useRef<Runtime | null>(null);
+  const readyResetBaselineRef = useRef<string | number | undefined>(undefined);
+  const lastReadyNotifiedCycleRef = useRef<number | undefined>(undefined);
   // Reference to the current HTML Canvas element
   // Set by React by passing <canvas ref={...} />
   // Used to instantiate the controller and viewer with the correct HTML element.
@@ -185,6 +212,7 @@ export const Atlas: React.FC<
     onWebGLFallback: handleWebGLFallback,
     onImageError,
     webglFallbackOnImageLoadError,
+    webglReadiness,
     imageLoading,
   });
 
@@ -205,6 +233,8 @@ export const Atlas: React.FC<
 
   useEffect(() => {
     currentRuntimeRef.current = preset ? preset.runtime : null;
+    readyResetBaselineRef.current = undefined;
+    lastReadyNotifiedCycleRef.current = undefined;
   }, [preset]);
 
   useEffect(() => {
@@ -217,6 +247,56 @@ export const Atlas: React.FC<
       setActiveWebGL(true);
     }
   }, [unstable_webglRenderer]);
+
+  useEffect(() => {
+    if (!preset || !onReady) {
+      return;
+    }
+
+    const runtime = preset.runtime;
+    return runtime.world.addLayoutSubscriber((type) => {
+      if (type !== 'ready') {
+        return;
+      }
+
+      const readyState = runtime.getReadyState();
+      if (lastReadyNotifiedCycleRef.current === readyState.cycle) {
+        return;
+      }
+      lastReadyNotifiedCycleRef.current = readyState.cycle;
+      if (!readyState.timestamp) {
+        return;
+      }
+      onReady({
+        runtimeId: runtime.id,
+        cycle: readyState.cycle,
+        reason: readyState.reason,
+        renderer: getReadyRenderer(runtime.renderer),
+        timestamp: readyState.timestamp,
+      });
+    });
+  }, [preset, onReady]);
+
+  useEffect(() => {
+    if (!preset) {
+      return;
+    }
+    if (typeof readyResetKey === 'undefined') {
+      readyResetBaselineRef.current = undefined;
+      return;
+    }
+
+    if (typeof readyResetBaselineRef.current === 'undefined') {
+      readyResetBaselineRef.current = readyResetKey;
+      return;
+    }
+
+    if (readyResetBaselineRef.current !== readyResetKey) {
+      readyResetBaselineRef.current = readyResetKey;
+      lastReadyNotifiedCycleRef.current = undefined;
+      preset.runtime.resetReadyState('ready-reset-key-change');
+    }
+  }, [preset, readyResetKey]);
 
   // This changes the mutable state object with the position (top/left/width/height) of the
   // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing

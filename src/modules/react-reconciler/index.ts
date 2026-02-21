@@ -33,3 +33,4 @@ export * from './types';
 export * from './devtools/types';
 export * from '../shared/image-loading-config';
 export * from '../shared/image-load-events';
+export * from '../shared/ready-events';

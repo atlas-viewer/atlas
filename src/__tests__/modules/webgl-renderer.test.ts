@@ -529,4 +529,89 @@ describe('WebGLRenderer fallback events', () => {
     const alphaArg = gl.uniform1f.mock.calls[gl.uniform1f.mock.calls.length - 1][1];
     expect(alphaArg).toBe(1);
   });
+
+  test('default readiness waits for first meaningful fast-path paint', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'ready-default',
+      uri: 'https://example.com/ready-default.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+    } as any);
+
+    renderer.prepareLayer(image);
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect(renderer.isReady()).toBe(false);
+
+    image.__host.webgl.textures[0] = {};
+    (renderer as any).tileRequestQueue = [];
+    (renderer as any).loadingCount = 0;
+    (renderer as any).inFlightImageLoads.clear();
+    (renderer as any).pendingTileReveals.clear();
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect(renderer.isReady()).toBe(true);
+  });
+
+  test('resetReadyState re-arms meaningful-ready transition for webgl images', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'ready-reset',
+      uri: 'https://example.com/ready-reset.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+    } as any);
+    renderer.prepareLayer(image);
+
+    image.__host.webgl.textures[0] = {};
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect(renderer.isReady()).toBe(true);
+
+    renderer.resetReadyState();
+    image.__host.webgl.textures[0] = undefined;
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect(renderer.isReady()).toBe(false);
+  });
+
+  test('immediate readiness mode remains ready before image draw and after reset', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1, readiness: 'immediate' });
+    expect(renderer.isReady()).toBe(true);
+
+    renderer.resetReadyState();
+    expect(renderer.isReady()).toBe(true);
+  });
 });

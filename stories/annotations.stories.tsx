@@ -120,6 +120,7 @@ export const SelectionDemo = () => {
 	});
 	const [rotation, setRotation] = useState(0);
 	const [scale, setScale] = useState(100);
+	const [isImageLoading, setIsImageLoading] = useState(true);
 
 	const [renderPreset, setRenderPreset] = useState<any>([
 		"default-preset",
@@ -191,7 +192,11 @@ export const SelectionDemo = () => {
 						Change renderer (current: {isWebGL ? "WebGL" : "canvas"})
 					</button>
 					<button
-						onClick={() => setTileIndex((i) => (i + 1) % staticTiles.length)}
+						onClick={() => {
+							setIsImageLoading(true);
+							runtime.current?.resetReadyState();
+							setTileIndex((i) => (i + 1) % staticTiles.length);
+						}}
 					>
 						Change image
 					</button>
@@ -225,77 +230,101 @@ export const SelectionDemo = () => {
 					/>
 					<div style={{ display: "flex" }}>
 						<div style={{ flex: "1 1 0px", minWidth: 0 }}>
-							<AtlasAuto
-								devTools
-								unstable_webglRenderer={isWebGL && tileIndex !== 0}
-								key={isWebGL ? "webgl" : "canvas"}
-								onCreated={(rt) => {
-									runtime.current = rt.runtime;
-								}}
-								runtimeOptions={{ maxOverZoom: scale / 100 }}
-								mode={isEditing ? "sketch" : "explore"}
-								renderPreset={renderPreset}
-								width={size.width}
-								height={size.height}
-								enableNavigator
-							>
-								<world onClick={onDeselect}>
-									<ImageService
-										key={`tile-${tileIndex}`}
-										{...staticTiles[tileIndex]}
-										rotation={rotation}
-									/>
-									{isEditing && !selectedAnnotation ? (
-										<DrawBox onCreate={onCreateNewAnnotation} />
-									) : null}
-									<world-object height={351} width={516} x={500} y={1000}>
-										<shape
-											id="a-box"
-											style={{
-												backgroundColor: "rgba(255, 0, 0, .6)",
-												":hover": {
-													backgroundColor: "rgba(20, 50, 200, .7)",
-												},
-											}}
-											target={{ x: 0, y: 0, width: 516, height: 351 }}
-											points={[
-												[260, 0],
-												[516, 351],
-												[0, 351],
-												[260, 0],
-											]}
+							<div style={{ position: "relative" }}>
+								<AtlasAuto
+									devTools
+									unstable_webglRenderer={isWebGL && tileIndex !== 0}
+									key={isWebGL ? "webgl" : "canvas"}
+									readyResetKey={tileIndex}
+									onReady={() => {
+										setIsImageLoading(false);
+									}}
+									onCreated={(rt) => {
+										runtime.current = rt.runtime;
+									}}
+									runtimeOptions={{ maxOverZoom: scale / 100 }}
+									mode={isEditing ? "sketch" : "explore"}
+									renderPreset={renderPreset}
+									width={size.width}
+									height={size.height}
+									enableNavigator
+								>
+									<world onClick={onDeselect}>
+										<ImageService
+											key={`tile-${tileIndex}`}
+											{...staticTiles[tileIndex]}
+											rotation={rotation}
 										/>
-									</world-object>
-									{annotations.map((annotation, k) => (
-										<RegionHighlight
-											key={annotation.id}
-											rotation={k === 2 ? 45 : 0}
-											region={annotation}
-											disableCardinalControls={k === 1}
-											maintainAspectRatio={k === 2}
-											isEditing={selectedAnnotation === annotation.id}
-											onSave={onUpdateAnnotation}
-											onClick={(anno) => {
-												console.log("click annotation");
-												setIsEditing(true);
-												setSelectedAnnotation(anno.id);
-											}}
-											style={{
-												backgroundColor:
-													selectedAnnotation === annotation.id
-														? "rgba(0, 150, 30, 0.6)"
-														: "rgba(255, 0, 0, .6)",
-												":hover": {
+										{isEditing && !selectedAnnotation ? (
+											<DrawBox onCreate={onCreateNewAnnotation} />
+										) : null}
+										<world-object height={351} width={516} x={500} y={1000}>
+											<shape
+												id="a-box"
+												style={{
+													backgroundColor: "rgba(255, 0, 0, .6)",
+													":hover": {
+														backgroundColor: "rgba(20, 50, 200, .7)",
+													},
+												}}
+												target={{ x: 0, y: 0, width: 516, height: 351 }}
+												points={[
+													[260, 0],
+													[516, 351],
+													[0, 351],
+													[260, 0],
+												]}
+											/>
+										</world-object>
+										{annotations.map((annotation, k) => (
+											<RegionHighlight
+												key={annotation.id}
+												rotation={k === 2 ? 45 : 0}
+												region={annotation}
+												disableCardinalControls={k === 1}
+												maintainAspectRatio={k === 2}
+												isEditing={selectedAnnotation === annotation.id}
+												onSave={onUpdateAnnotation}
+												onClick={(anno) => {
+													console.log("click annotation");
+													setIsEditing(true);
+													setSelectedAnnotation(anno.id);
+												}}
+												style={{
 													backgroundColor:
 														selectedAnnotation === annotation.id
 															? "rgba(0, 150, 30, 0.6)"
-															: "rgba(20, 50, 200, .7)",
-												},
-											}}
-										/>
-									))}
-								</world>
-							</AtlasAuto>
+															: "rgba(255, 0, 0, .6)",
+													":hover": {
+														backgroundColor:
+															selectedAnnotation === annotation.id
+																? "rgba(0, 150, 30, 0.6)"
+																: "rgba(20, 50, 200, .7)",
+													},
+												}}
+											/>
+										))}
+									</world>
+								</AtlasAuto>
+								{isImageLoading ? (
+									<div
+										style={{
+											position: "absolute",
+											top: 12,
+											left: 12,
+											padding: "6px 10px",
+											borderRadius: 4,
+											background: "rgba(0, 0, 0, 0.7)",
+											color: "#fff",
+											fontSize: 12,
+											fontWeight: 600,
+											pointerEvents: "none",
+										}}
+									>
+										Loading image...
+									</div>
+								) : null}
+							</div>
 						</div>
 						<div style={{ width: 300 }}>
 							<button onClick={goHome}>Go home</button>

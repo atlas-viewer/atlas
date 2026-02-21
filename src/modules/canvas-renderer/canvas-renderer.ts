@@ -1322,6 +1322,17 @@ export class CanvasRenderer implements Renderer {
     return this.rendererPosition;
   }
 
+  resetReadyState() {
+    if (this.options.readiness === 'immediate') {
+      return;
+    }
+    this.firstMeaningfulPaint = false;
+    if (this.fallbackRevealTimeout) {
+      clearTimeout(this.fallbackRevealTimeout);
+      this.fallbackRevealTimeout = null;
+    }
+  }
+
   reset() {
     this.loadingQueue = [];
     this.drawCalls = [];

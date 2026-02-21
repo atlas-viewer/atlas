@@ -39,4 +39,5 @@ export type PresetArgs = {
   onImageError?: (event: AtlasImageLoadErrorEvent) => void;
   imageLoading?: Partial<ImageLoadingConfig>;
   webglFallbackOnImageLoadError?: boolean;
+  webglReadiness?: 'first-meaningful-paint' | 'immediate';
 };
