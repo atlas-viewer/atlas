@@ -77,6 +77,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let dragStartViewportY = 0;
       let isDragging = false;
       let scrollViewY = 0;
+      let scrollBaseViewportCache: ScrollViewport | undefined;
+      let scrollBaseViewportDirty = true;
+      let scrollBaseViewportWorldWidth = -1;
+      let scrollBaseViewportWorldHeight = -1;
+      let scrollBaseViewportScreenWidth = -1;
+      let scrollBaseViewportScreenHeight = -1;
+      let scrollBaseViewportZoneCount = -1;
 
       const popmotion = popmotionController({
         ...config,
@@ -94,6 +101,35 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         mode = nextMode;
         runtime.mode = nextMode === 'zone-active' ? 'explore' : 'sketch';
       };
+      const invalidateScrollBaseViewport = () => {
+        scrollBaseViewportDirty = true;
+      };
+      const hasViewportChanged = (
+        from: { x: number; y: number; width: number; height: number },
+        to: { x: number; y: number; width: number; height: number }
+      ) => {
+        return (
+          Math.abs(from.x - to.x) > 0.01 ||
+          Math.abs(from.y - to.y) > 0.01 ||
+          Math.abs(from.width - to.width) > 0.01 ||
+          Math.abs(from.height - to.height) > 0.01
+        );
+      };
+      const getTopVisibleZone = () => {
+        let topZone: ZoneInterface | undefined;
+        let topY = 0;
+        for (const zone of runtime.world.zones) {
+          zone.recalculateBounds();
+          if (zone.points[0] === 0) {
+            continue;
+          }
+          if (!topZone || zone.points[2] < topY) {
+            topZone = zone;
+            topY = zone.points[2];
+          }
+        }
+        return topZone;
+      };
       const getZoneViewportPaddingPx = () => {
         const screen = runtime.getRendererScreenPosition();
         const screenHeight = Math.max(0, screen?.height || 0);
@@ -108,24 +144,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const getDocumentStartY = () => {
+        const topZone = getTopVisibleZone();
+        if (topZone) {
+          return topZone.points[2];
+        }
+
         let didFind = false;
         let topY = 0;
-
-        for (const zone of runtime.world.zones) {
-          zone.recalculateBounds();
-          if (zone.points[0] === 0) {
-            continue;
-          }
-          if (!didFind || zone.points[2] < topY) {
-            topY = zone.points[2];
-            didFind = true;
-          }
-        }
-
-        if (didFind) {
-          return topY;
-        }
-
         for (const worldObject of runtime.world.getObjects()) {
           if (!worldObject || worldObject.points[0] === 0) {
             continue;
@@ -143,16 +168,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         const screenWidth = Math.round((rendererScreen?.width || runtime.width || 0) * 100) / 100;
         const screenHeight = Math.round((rendererScreen?.height || runtime.height || 0) * 100) / 100;
         const screenSource = rendererScreen?.width && rendererScreen?.height ? 'renderer' : 'runtime';
-        let topZone: ZoneInterface | undefined;
-        for (const zone of runtime.world.zones) {
-          zone.recalculateBounds();
-          if (zone.points[0] === 0) {
-            continue;
-          }
-          if (!topZone || zone.points[2] < topZone.points[2]) {
-            topZone = zone;
-          }
-        }
+        const topZone = getTopVisibleZone();
         if (topZone) {
           return [
             'zone',
@@ -223,44 +239,60 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const getScrollBaseViewport = (): ScrollViewport | undefined => {
-        const firstZone = runtime.world.zones
-          .filter((zone) => {
-            zone.recalculateBounds();
-            return zone.points[0] !== 0;
-          })
-          .sort((a, b) => a.points[2] - b.points[2])[0];
+        const worldWidth = runtime.world.width;
+        const worldHeight = runtime.world.height;
+        const screen = runtime.getRendererScreenPosition();
+        const screenWidth = Math.max(1, screen?.width || runtime.width);
+        const screenHeight = Math.max(1, screen?.height || runtime.height);
+        const zoneCount = runtime.world.zones.length;
+
+        if (
+          !scrollBaseViewportDirty &&
+          scrollBaseViewportCache &&
+          scrollBaseViewportWorldWidth === worldWidth &&
+          scrollBaseViewportWorldHeight === worldHeight &&
+          scrollBaseViewportScreenWidth === screenWidth &&
+          scrollBaseViewportScreenHeight === screenHeight &&
+          scrollBaseViewportZoneCount === zoneCount
+        ) {
+          return scrollBaseViewportCache;
+        }
+
+        const firstZone = getTopVisibleZone();
+        let nextBaseViewport: ScrollViewport | undefined;
 
         if (firstZone) {
           const fitted = runtime.getHomeTarget({
             position: firstZone.points,
             paddingPx: getZoneViewportPaddingPx(),
           });
-          return {
+          nextBaseViewport = {
             x: fitted.x,
             y: fitted.y,
             width: fitted.width,
             height: fitted.height,
           };
+        } else if (worldWidth > 0 && worldHeight > 0) {
+          const visibleHeight = (worldWidth / screenWidth) * screenHeight;
+          nextBaseViewport = {
+            x: 0,
+            y: 0,
+            width: worldWidth,
+            height: visibleHeight,
+          };
+        } else {
+          nextBaseViewport = undefined;
         }
 
-        const worldWidth = runtime.world.width;
-        const worldHeight = runtime.world.height;
-        if (worldWidth <= 0 || worldHeight <= 0) {
-          return undefined;
-        }
-        const screen = runtime.getRendererScreenPosition();
-        const screenWidth = Math.max(1, screen?.width || runtime.width);
-        const screenHeight = Math.max(1, screen?.height || runtime.height);
-        const visibleHeight = (worldWidth / screenWidth) * screenHeight;
-        const minY = Math.min(0, worldHeight - visibleHeight);
-        const maxY = Math.max(0, worldHeight - visibleHeight);
+        scrollBaseViewportCache = nextBaseViewport;
+        scrollBaseViewportDirty = false;
+        scrollBaseViewportWorldWidth = worldWidth;
+        scrollBaseViewportWorldHeight = worldHeight;
+        scrollBaseViewportScreenWidth = screenWidth;
+        scrollBaseViewportScreenHeight = screenHeight;
+        scrollBaseViewportZoneCount = zoneCount;
 
-        return {
-          x: 0,
-          y: 0,
-          width: worldWidth,
-          height: visibleHeight,
-        };
+        return scrollBaseViewportCache;
       };
 
       const getScrollViewport = (preferredY: number): ScrollViewport | undefined => {
@@ -298,7 +330,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return;
         }
         scrollViewY = nextViewport.y;
-        runtime.transitionManager.stopTransition();
+        const currentViewport = runtime.getViewport();
+        if (!runtime.transitionManager.hasPending() && !hasViewportChanged(currentViewport, nextViewport)) {
+          return;
+        }
+        if (runtime.transitionManager.hasPending()) {
+          runtime.transitionManager.stopTransition();
+        }
         runtime.setViewport(nextViewport);
         runtime.updateNextFrame();
       };
@@ -532,6 +570,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       const removeLayout = runtime.world.addLayoutSubscriber((type) => {
         if (!isActiveSession()) {
           return;
+        }
+        if (type === 'recalculate-world-size' || type === 'zone-changed') {
+          invalidateScrollBaseViewport();
         }
         if (type === 'goto-region') {
           restoringViewport = false;

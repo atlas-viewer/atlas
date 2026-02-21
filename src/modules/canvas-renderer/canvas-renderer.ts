@@ -268,6 +268,7 @@ export class CanvasRenderer implements Renderer {
       });
       this.loadingQueueOrdered = true;
     }
+    this.scheduleSingleImageLookahead(world);
     // Set them.
     this.previousVisible = this.visible;
     this.pruneStaleTileWork();
@@ -777,6 +778,105 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
+  private scheduleSingleImageLookahead(world: World) {
+    if (this.maxPrefetchPerFrame <= 0 || this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+      return;
+    }
+    if (world.hasActiveZone()) {
+      return;
+    }
+
+    let viewportTop = Number.POSITIVE_INFINITY;
+    let viewportBottom = Number.NEGATIVE_INFINITY;
+    const visibleOwners = new Set<WorldObject>();
+    for (let i = 0; i < this.visible.length; i++) {
+      const owner = this.visible[i].__owner?.value;
+      if (!owner || owner.type !== 'world-object' || owner.points[0] === 0) {
+        continue;
+      }
+      visibleOwners.add(owner as WorldObject);
+      viewportTop = Math.min(viewportTop, owner.points[2]);
+      viewportBottom = Math.max(viewportBottom, owner.points[4]);
+    }
+
+    if (!Number.isFinite(viewportTop) || !Number.isFinite(viewportBottom)) {
+      return;
+    }
+    const viewportHeight = viewportBottom - viewportTop;
+    if (viewportHeight <= 0) {
+      return;
+    }
+
+    const lookaheadDistance = viewportHeight * 1.5;
+    const aheadLimit = viewportBottom + lookaheadDistance;
+    const behindLimit = viewportTop - lookaheadDistance;
+
+    let nearestAhead: { image: SingleImage; distance: number } | undefined;
+    let nearestBehind: { image: SingleImage; distance: number } | undefined;
+
+    const objects = world.getObjects() as Array<WorldObject | undefined>;
+    for (let i = 0; i < objects.length; i++) {
+      const object = objects[i];
+      if (!object || object.type !== 'world-object' || object.points[0] === 0) {
+        continue;
+      }
+      if (visibleOwners.has(object)) {
+        continue;
+      }
+
+      const objectTop = object.points[2];
+      const objectBottom = object.points[4];
+
+      const isAhead = objectTop >= viewportBottom && objectTop <= aheadLimit;
+      const isBehind = objectBottom <= viewportTop && objectBottom >= behindLimit;
+
+      if (!isAhead && !isBehind) {
+        continue;
+      }
+
+      let singleImageLayer: SingleImage | undefined;
+      for (let j = 0; j < object.layers.length; j++) {
+        const layer = object.layers[j];
+        if (layer instanceof SingleImage) {
+          singleImageLayer = layer;
+          break;
+        }
+      }
+
+      if (!singleImageLayer) {
+        continue;
+      }
+
+      if (isAhead) {
+        const distance = objectTop - viewportBottom;
+        if (!nearestAhead || distance < nearestAhead.distance) {
+          nearestAhead = { image: singleImageLayer, distance };
+        }
+      }
+      if (isBehind) {
+        const distance = viewportTop - objectBottom;
+        if (!nearestBehind || distance < nearestBehind.distance) {
+          nearestBehind = { image: singleImageLayer, distance };
+        }
+      }
+    }
+
+    const prefetchCandidates = [nearestAhead, nearestBehind].filter(Boolean) as Array<{
+      image: SingleImage;
+      distance: number;
+    }>;
+
+    for (const candidate of prefetchCandidates) {
+      if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+        break;
+      }
+      const imageBuffer = this.ensureImageBuffer(candidate.image);
+      if (this.schedulePaintToCanvas(imageBuffer, candidate.image, 0, 10000 + candidate.distance, true)) {
+        this.framePrefetchCount++;
+      }
+    }
+  }
+
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
     const ga = this.ctx.globalAlpha;
     const zoneVisibilityAlpha =
@@ -1091,7 +1191,9 @@ export class CanvasRenderer implements Renderer {
         if (state.state !== 'queued' && state.state !== 'loading') {
           return;
         }
-        if (this.visible.indexOf(paint) === -1) {
+        const isCurrentlyVisible = this.visible.indexOf(paint) !== -1;
+        const wasVisibleLastFrame = this.previousVisible.indexOf(paint) !== -1;
+        if (!prefetch && !isCurrentlyVisible && !wasVisibleLastFrame) {
           this.setTileState(imageBuffer, index, {
             ...state,
             state: 'idle',
