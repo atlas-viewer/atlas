@@ -310,6 +310,15 @@ export class NavigatorRenderer extends DebugRenderer {
   private getLoadedPreviewImage(imageUrl: string): HTMLImageElement | undefined {
     const cached = this.previewImageCache.get(imageUrl);
     if (cached) {
+      if (cached.status === 'loading' && cached.image.complete) {
+        if (cached.image.naturalWidth > 0 && cached.image.naturalHeight > 0) {
+          cached.status = 'loaded';
+          this.invalidateWorldLayer();
+          return cached.image;
+        }
+        cached.status = 'error';
+        return undefined;
+      }
       return cached.status === 'loaded' ? cached.image : undefined;
     }
 
