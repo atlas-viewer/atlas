@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebGLRenderer } from '../../modules/webgl-renderer/webgl-renderer';
 import { SingleImage } from '../../spacial-content/single-image';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { TiledImage } from '../../spacial-content/tiled-image';
 
 function createMockCanvas() {
   return {
@@ -40,6 +41,9 @@ function createMockGL(canvas: HTMLCanvasElement) {
     CLAMP_TO_EDGE: 17,
     FLOAT: 18,
     TRIANGLES: 19,
+    BLEND: 20,
+    SRC_ALPHA: 21,
+    ONE_MINUS_SRC_ALPHA: 22,
     canvas,
     createShader: vi.fn(() => ({})),
     shaderSource: vi.fn(),
@@ -62,9 +66,12 @@ function createMockGL(canvas: HTMLCanvasElement) {
     clearColor: vi.fn(),
     clear: vi.fn(),
     useProgram: vi.fn(),
+    enable: vi.fn(),
+    blendFunc: vi.fn(),
     enableVertexAttribArray: vi.fn(),
     vertexAttribPointer: vi.fn(),
     uniform2f: vi.fn(),
+    uniform1f: vi.fn(),
     createTexture: vi.fn(() => ({})),
     bindTexture: vi.fn(),
     pixelStorei: vi.fn(),
@@ -74,6 +81,20 @@ function createMockGL(canvas: HTMLCanvasElement) {
     drawArrays: vi.fn(),
   } as any;
 }
+
+const defaultHookOptions = {
+  filters: {
+    grayscale: 0,
+    contrast: 0,
+    brightness: 0,
+    saturate: 0,
+    sepia: 0,
+    invert: 0,
+    hueRotate: 0,
+    blur: 0,
+  },
+  enableFilters: false,
+};
 
 describe('WebGLRenderer fallback events', () => {
   afterEach(() => {
@@ -98,7 +119,7 @@ describe('WebGLRenderer fallback events', () => {
     expect(onFatalImageError.mock.calls[0][0].reason).toBe('webgl-context-unavailable');
   });
 
-  test('emits image-cors-or-load from image onerror path', () => {
+  test('emits image-cors-or-load when image request fails', async () => {
     const canvas = createMockCanvas();
     const gl = createMockGL(canvas);
     canvas.getContext = vi.fn((type) => {
@@ -108,18 +129,9 @@ describe('WebGLRenderer fallback events', () => {
       return null as any;
     });
 
-    const originalCreateElement = document.createElement.bind(document);
-    let createdImg: HTMLImageElement | null = null;
-    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
-      const el = originalCreateElement(tagName as any) as any;
-      if (tagName.toLowerCase() === 'img') {
-        createdImg = el;
-      }
-      return el;
-    }) as any);
-
     const onFatalImageError = vi.fn();
     const renderer = new WebGLRenderer(canvas, { onFatalImageError });
+    vi.spyOn(renderer as any, 'requestImage').mockRejectedValue(new Error('load failed'));
     const image = new SingleImage();
     image.applyProps({
       uri: 'https://example.com/no-cors.jpg',
@@ -129,8 +141,9 @@ describe('WebGLRenderer fallback events', () => {
 
     renderer.prepareLayer(image);
     renderer.paint(image, 0, 0, 0, 100, 100);
-    expect(createdImg).toBeTruthy();
-    createdImg!.onerror?.(new Event('error') as any);
+    renderer.afterFrame();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(onFatalImageError).toHaveBeenCalledTimes(1);
     expect(onFatalImageError.mock.calls[0][0].reason).toBe('image-cors-or-load');
@@ -183,19 +196,132 @@ describe('WebGLRenderer fallback events', () => {
     expect(canvas.height).toBe(160);
 
     renderer.beforeFrame({} as any, 16, {} as any, {
-      filters: {
-        grayscale: 0,
-        contrast: 0,
-        brightness: 0,
-        saturate: 0,
-        sepia: 0,
-        invert: 0,
-        hueRotate: 0,
-        blur: 0,
-      },
-      enableFilters: false,
+      ...defaultHookOptions,
     });
 
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.resolution, 120, 80);
+  });
+
+  test('keeps pending update while tile alpha fade is in progress', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'fade-image',
+      uri: 'https://example.com/fade.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+        fadeInMs: 1000,
+        fadeFallbackTiles: false,
+      },
+      isImageActive: () => true,
+    } as any;
+
+    renderer.prepareLayer(image);
+    image.__host.webgl.textures[0] = {};
+    image.__host.webgl.loadedAt[0] = performance.now() - 10;
+
+    renderer.beforeFrame({} as any, 16, {} as any, {
+      ...defaultHookOptions,
+    });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+
+    expect(gl.uniform1f).toHaveBeenCalled();
+    const alphaArg = gl.uniform1f.mock.calls[gl.uniform1f.mock.calls.length - 1][1];
+    expect(alphaArg).toBeLessThan(1);
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('does not request inactive layers but still draws cached fallback textures', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const requestImage = vi.spyOn(renderer as any, 'requestImage');
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'inactive-image',
+      uri: 'https://example.com/inactive.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+      },
+      isImageActive: () => false,
+    } as any;
+
+    renderer.prepareLayer(image);
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.afterFrame();
+
+    expect(requestImage).not.toHaveBeenCalled();
+    expect(gl.drawArrays).not.toHaveBeenCalled();
+
+    image.__host.webgl.textures[0] = {};
+    renderer.paint(image, 0, 0, 0, 100, 100);
+
+    expect(gl.drawArrays).toHaveBeenCalledTimes(1);
+  });
+
+  test('caps prefetch and concurrent active tile requests', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const requestImage = vi.spyOn(renderer as any, 'requestImage').mockImplementation(() => new Promise(() => {}));
+    const image = TiledImage.fromTile(
+      'https://example.org/tiled-image',
+      { width: 512, height: 512 },
+      { width: 128, height: 128 },
+      1
+    );
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+        loadingBias: 'speed',
+        prefetchRadius: 2,
+      },
+      isImageActive: () => true,
+    } as any;
+
+    renderer.prepareLayer(image);
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 5, 0, 0, 100, 100);
+
+    expect((renderer as any).tileRequestQueue.length).toBe(9);
+
+    renderer.afterFrame();
+    expect(requestImage).toHaveBeenCalledTimes(6);
+    expect((renderer as any).loadingCount).toBe(6);
+    expect((renderer as any).tileRequestQueue.length).toBe(3);
   });
 });

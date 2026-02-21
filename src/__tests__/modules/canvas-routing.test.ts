@@ -51,9 +51,7 @@ describe('CanvasRenderer routing controls', () => {
       paintImages: true,
       shouldPaintImage: (paint, index) => !isWebGLImageFastPathCandidate(paint, index),
     });
-    const scheduleSpy = vi.spyOn(renderer, 'schedulePaintToCanvas').mockImplementation(() => {
-      // no-op
-    });
+    const scheduleSpy = vi.spyOn(renderer, 'schedulePaintToCanvas').mockImplementation(() => false);
 
     const delegatedToWebGL = createImage('fast-path');
     const forcedToCanvas = createImage('cropped', { crop: { x: 1, y: 1, width: 50, height: 50 } });

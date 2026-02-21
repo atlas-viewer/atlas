@@ -26,6 +26,9 @@ export class TiledImage extends BaseObject implements SpacialContent {
   readonly type = 'spacial-content';
   readonly display: DisplayData;
   tileWidth: number;
+  tileHeight: number;
+  columns: number;
+  rows: number;
   style: { opacity: number } = { opacity: 1 };
   points: Strand;
   service?: ImageService;
@@ -40,17 +43,23 @@ export class TiledImage extends BaseObject implements SpacialContent {
     points: Strand;
     displayPoints?: Strand;
     tileWidth: number;
+    tileHeight: number;
     width: number;
     height: number;
+    columns: number;
+    rows: number;
     format?: string;
     id?: string;
     version3?: boolean;
   }) {
     super();
     this.tileUrl = stripInfoJson(data.url);
-    this.id = data.id || `${this.tileUrl}--${data.scaleFactor}`;
+    this.id = data.id || `${this.tileUrl}--${data.scaleFactor}--${data.tileWidth}x${data.tileHeight}`;
     this.points = data.displayPoints ? data.displayPoints : transform(data.points, scale(data.scaleFactor));
     this.tileWidth = data.tileWidth;
+    this.tileHeight = data.tileHeight;
+    this.columns = data.columns;
+    this.rows = data.rows;
     this.version3 = data.version3;
     this.display = {
       x: 0,
@@ -130,15 +139,14 @@ export class TiledImage extends BaseObject implements SpacialContent {
     useFloorCalc?: boolean,
     version3?: boolean
   ): TiledImage {
-    // Always set a height.
-    tile.height = tile.height ? tile.height : tile.width;
+    const tileHeight = tile.height ? tile.height : tile.width;
     // Dimensions of full image (scaled).
     const fullWidth = useFloorCalc ? Math.floor(canvas.width / scaleFactor) : Math.ceil(canvas.width / scaleFactor);
     const fullHeight = useFloorCalc ? Math.floor(canvas.height / scaleFactor) : Math.ceil(canvas.height / scaleFactor);
     // number of points in the x direction.
     const mWidth = Math.ceil(fullWidth / tile.width);
     // number of points in the y direction
-    const mHeight = Math.ceil(fullHeight / tile.height);
+    const mHeight = Math.ceil(fullHeight / tileHeight);
 
     const pointsFactory = DnaFactory.grid(mWidth, mHeight);
     const displayPoints = DnaFactory.grid(mWidth, mHeight);
@@ -154,20 +162,20 @@ export class TiledImage extends BaseObject implements SpacialContent {
     for (let y = 0; y < mHeight; y++) {
       for (let x = 0; x < mWidth; x++) {
         const rx = x * tile.width;
-        const ry = y * tile.height;
+        const ry = y * tileHeight;
 
         displayPoints.addPoints(
           rx * scaleFactor,
           ry * scaleFactor,
           x === mWidth - 1 ? canvas.width : (rx + tile.width) * scaleFactor,
-          y === mHeight - 1 ? canvas.height : (ry + tile.height) * scaleFactor
+          y === mHeight - 1 ? canvas.height : (ry + tileHeight) * scaleFactor
         );
 
         pointsFactory.addPoints(
           rx,
           ry,
           x === mWidth - 1 ? fullWidth : rx + tile.width,
-          y === mHeight - 1 ? fullHeight : ry + tile.height
+          y === mHeight - 1 ? fullHeight : ry + tileHeight
         );
       }
     }
@@ -180,6 +188,9 @@ export class TiledImage extends BaseObject implements SpacialContent {
       width: canvas.width,
       height: canvas.height,
       tileWidth: tile.width,
+      tileHeight,
+      columns: mWidth,
+      rows: mHeight,
       format,
       version3: isV3,
     });
@@ -205,7 +216,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
     let widthString = `${w > this.tileWidth ? this.tileWidth : w},`;
 
     if (this.version3) {
-      widthString += `${h > this.tileWidth ? this.tileWidth : h}`;
+      widthString += `${h > this.tileHeight ? this.tileHeight : h}`;
     }
 
     return `${this.tileUrl}/${im[1]},${im[2]},${x2},${y2}/${widthString}/0/default.${this.format || 'jpg'

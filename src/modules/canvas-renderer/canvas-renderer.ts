@@ -35,12 +35,34 @@ export type CanvasRendererOptions = {
 };
 
 export type ImageBuffer = {
-  canvas: HTMLCanvasElement;
+  canvas?: HTMLCanvasElement;
   canvases: string[];
+  tiles?: Record<number, TileLoadingState>;
   indices: number[];
   loaded: number[];
   fallback?: ImageBuffer;
   loading: boolean;
+};
+
+export type TileLoadingState = {
+  state: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
+  requestedAt?: number;
+  loadedAt?: number;
+  lastUsedAt?: number;
+  url?: string;
+  error?: unknown;
+};
+
+type QueueTask = {
+  id: string;
+  scale: number;
+  network?: boolean;
+  distance: number;
+  shifted?: boolean;
+  paint?: SingleImage | TiledImage;
+  index?: number;
+  prefetch?: boolean;
+  task: () => Promise<any>;
 };
 
 // @todo be smarter.
@@ -84,19 +106,14 @@ export class CanvasRenderer implements Renderer {
   frameIsRendering = false;
   pendingDrawCall = false;
   firstMeaningfulPaint = false;
-  parallelTasks = 8; // @todo configuration.
+  parallelTasks = 6;
+  maxPrefetchPerFrame = 8;
   frameTasks = 0;
   loadingQueueOrdered = true;
-  loadingQueue: Array<{
-    id: string;
-    scale: number;
-    network?: boolean;
-    distance: number;
-    shifted?: boolean;
-    task: () => Promise<any>;
-  }> = [];
+  loadingQueue: QueueTask[] = [];
   currentTask: Promise<any> = Promise.resolve();
   tasksRunning = 0;
+  inFlightImageLoads = new Map<string, Promise<HTMLImageElement>>();
   stats?: any;
   averageJobTime = 64; // ms
   lastKnownScale = 1;
@@ -108,6 +125,9 @@ export class CanvasRenderer implements Renderer {
   lastPaintedObject?: WorldObject;
   hostCache: LRUCache<string, HTMLCanvasElement>;
   invalidated: string[] = [];
+  fallbackRevealTimeout: ReturnType<typeof setTimeout> | null = null;
+  framePrefetchCount = 0;
+  hasTilesFading = false;
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
@@ -181,8 +201,7 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
-    // After we've rendered, we'll set the pending and loading to correct values.
-    this.imagesPending = Math.max(0, this.imagesPending - this.imagesLoaded);
+    this.imagesPending = this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size;
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
@@ -221,7 +240,7 @@ export class CanvasRenderer implements Renderer {
     if (this.loadingQueue.length) {
       // First call immediately.
       this._worker();
-      if (this.loadingQueue.length /*&& this.tasksRunning < this.parallelTasks*/) {
+      if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
         // Here's our clock for scheduling tasks, every 1ms it will try to call.
         if (!this._scheduled) {
           this._scheduled = setInterval(this._doWork, 0);
@@ -233,9 +252,9 @@ export class CanvasRenderer implements Renderer {
   _worker = () => {
     if (
       // First we check if there is work to do.
-      this.loadingQueue.length /*&&
+      this.loadingQueue.length &&
       this.tasksRunning < this.parallelTasks &&
-      this.frameTasks < this.parallelTasks*/
+      this.frameTasks < this.parallelTasks
     ) {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
@@ -279,7 +298,7 @@ export class CanvasRenderer implements Renderer {
     }
     // And here's our working being called. Since JS is blocking, this will complete
     // before the next tick, so its possible that this could be more than 1ms.
-    for (let i = 0; i <= parallel; i++) {
+    for (let i = 0; i < parallel; i++) {
       this._worker();
     }
   };
@@ -312,6 +331,8 @@ export class CanvasRenderer implements Renderer {
     }
     this.frameIsRendering = true;
     this.visible = [];
+    this.framePrefetchCount = 0;
+    this.hasTilesFading = false;
     // User-facing hook for before frame, contains timing information for
     // animations that might be happening, such as pan/drag.
     if (this.options.beforeFrame) {
@@ -360,6 +381,182 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
+  private ensureImageBuffer(paint: SingleImage | TiledImage): ImageBuffer {
+    if (!paint.__host || !paint.__host.canvas) {
+      this.createImageHost(paint);
+    }
+
+    const imageBuffer = paint.__host.canvas as ImageBuffer;
+    if (!imageBuffer.tiles) {
+      imageBuffer.tiles = {};
+    }
+    if (!imageBuffer.indices) {
+      imageBuffer.indices = [];
+    }
+    if (!imageBuffer.loaded) {
+      imageBuffer.loaded = [];
+    }
+    if (!imageBuffer.canvases) {
+      imageBuffer.canvases = [];
+    }
+
+    return imageBuffer;
+  }
+
+  private getTileState(imageBuffer: ImageBuffer, index: number): TileLoadingState {
+    if (!imageBuffer.tiles) {
+      imageBuffer.tiles = {};
+    }
+    if (!imageBuffer.tiles[index]) {
+      imageBuffer.tiles[index] = { state: 'idle' };
+      this.syncBufferState(imageBuffer);
+    }
+    return imageBuffer.tiles[index];
+  }
+
+  private setTileState(imageBuffer: ImageBuffer, index: number, state: TileLoadingState) {
+    if (!imageBuffer.tiles) {
+      imageBuffer.tiles = {};
+    }
+    imageBuffer.tiles[index] = state;
+    this.syncBufferState(imageBuffer);
+  }
+
+  private syncBufferState(imageBuffer: ImageBuffer) {
+    const indices: number[] = [];
+    const loaded: number[] = [];
+    const tiles = imageBuffer.tiles || {};
+    const keys = Object.keys(tiles);
+    for (let i = 0; i < keys.length; i++) {
+      const index = parseInt(keys[i], 10);
+      const state = tiles[index].state;
+      if (state === 'queued' || state === 'loading') {
+        indices.push(index);
+      }
+      if (state === 'decoded') {
+        loaded.push(index);
+      }
+    }
+    imageBuffer.indices = indices;
+    imageBuffer.loaded = loaded;
+    imageBuffer.loading = indices.length > 0;
+  }
+
+  private getCompositeRenderOptions(paint: SingleImage | TiledImage) {
+    return paint.__parent?.renderOptions;
+  }
+
+  private getLayerPolicy(paint: SingleImage | TiledImage) {
+    return this.getCompositeRenderOptions(paint)?.layerPolicy || 'fallback-only';
+  }
+
+  private isLayerActive(paint: SingleImage | TiledImage): boolean {
+    const parent = paint.__parent as any;
+    if (!parent) {
+      return true;
+    }
+    const policy = this.getLayerPolicy(paint);
+    if (policy === 'always-blend') {
+      return true;
+    }
+    if (typeof parent.isImageActive === 'function') {
+      return !!parent.isImageActive(paint);
+    }
+    return true;
+  }
+
+  private getPrefetchRadius(paint: SingleImage | TiledImage): number {
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options) {
+      return 0;
+    }
+    if (typeof options.prefetchRadius === 'number') {
+      return Math.max(0, options.prefetchRadius);
+    }
+    if (options.loadingBias === 'speed') {
+      return 2;
+    }
+    if (options.loadingBias === 'data') {
+      return 0;
+    }
+    return 1;
+  }
+
+  private getFadeAlpha(
+    paint: SingleImage | TiledImage,
+    tileState: TileLoadingState | undefined,
+    isActiveLayer: boolean
+  ): number {
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
+      return 1;
+    }
+    if (!tileState?.loadedAt) {
+      return 1;
+    }
+    if (!isActiveLayer && !options.fadeFallbackTiles) {
+      return 1;
+    }
+    const elapsed = performance.now() - tileState.loadedAt;
+    return Math.max(0, Math.min(1, elapsed / options.fadeInMs));
+  }
+
+  private schedulePrefetchNeighbours(
+    imageBuffer: ImageBuffer,
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number
+  ) {
+    if (!(paint instanceof TiledImage)) {
+      return;
+    }
+    if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+      return;
+    }
+
+    const options = this.getCompositeRenderOptions(paint);
+    if (options?.loadingBias === 'data') {
+      return;
+    }
+
+    const radius = this.getPrefetchRadius(paint);
+    if (radius <= 0) {
+      return;
+    }
+
+    const columns = paint.columns;
+    const rows = paint.rows;
+    if (!columns || !rows) {
+      return;
+    }
+
+    const x = index % columns;
+    const y = Math.floor(index / columns);
+
+    for (let distance = 1; distance <= radius; distance++) {
+      for (let dy = -distance; dy <= distance; dy++) {
+        for (let dx = -distance; dx <= distance; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== distance) {
+            continue;
+          }
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= columns || ny >= rows) {
+            continue;
+          }
+
+          const neighbourIndex = ny * columns + nx;
+          if (this.schedulePaintToCanvas(imageBuffer, paint, neighbourIndex, priority + distance * 1000, true)) {
+            this.framePrefetchCount++;
+            if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+              return;
+            }
+          }
+        }
+      }
+    }
+  }
+
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
     const ga = this.ctx.globalAlpha;
 
@@ -367,69 +564,69 @@ export class CanvasRenderer implements Renderer {
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
       const rotation = paint.display.rotation || 0;
       const didRotate = rotation !== 0;
-      if (didRotate) {
-        this.ctx.save();
-        let moveX = x + width / 2;
-        let moveY = y + height / 2;
-        if (paint.crop) {
-          moveX -= paint.crop[index * 5 + 1];
-          moveY -= paint.crop[index * 5 + 2];
-        }
-        this.ctx.translate(moveX, moveY);
-        this.ctx.rotate((rotation * Math.PI) / 180);
-        this.ctx.translate(-moveX, -moveY);
-      }
-
-      const shouldPaintImages = this.options.paintImages !== false;
-      const shouldPaintImage = this.options.shouldPaintImage ? this.options.shouldPaintImage(paint, index) : true;
-      if (!shouldPaintImages || !shouldPaintImage) {
-        if (didRotate) {
-          this.ctx.restore();
-        }
-        this.ctx.globalAlpha = ga;
-        return;
-      }
-
-      this.visible.push(paint);
-      if (typeof paint.style && (paint.style as any).opacity !== 'undefined') {
-        if (!paint.style.opacity) {
-          if (didRotate) {
-            this.ctx.restore();
-          }
-          this.ctx.globalAlpha = ga;
-          return;
-        }
-        this.ctx.globalAlpha = paint.style.opacity;
-      }
 
       try {
-        // 1) Find cached image buffer.
-        const imageBuffer: ImageBuffer = paint.__host.canvas;
-        const canvas = this.getCanvasDims();
+        if (didRotate) {
+          this.ctx.save();
+          let moveX = x + width / 2;
+          let moveY = y + height / 2;
+          if (paint.crop) {
+            moveX -= paint.crop[index * 5 + 1];
+            moveY -= paint.crop[index * 5 + 2];
+          }
+          this.ctx.translate(moveX, moveY);
+          this.ctx.rotate((rotation * Math.PI) / 180);
+          this.ctx.translate(-moveX, -moveY);
+        }
 
-        // 2) Schedule paint onto local buffer (async, yay!)
-        if (imageBuffer.indices.indexOf(index) === -1 || this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1) {
-          // we need to schedule a paint.
-          this.schedulePaintToCanvas(
-            imageBuffer,
-            paint,
-            index,
-            distance({ x: x + width / 2, y: y + width / 2 }, { x: canvas.width / 2, y: canvas.height / 2 })
-          );
+        const shouldPaintImages = this.options.paintImages !== false;
+        const shouldPaintImage = this.options.shouldPaintImage ? this.options.shouldPaintImage(paint, index) : true;
+        if (!shouldPaintImages || !shouldPaintImage) {
+          return;
+        }
+
+        this.visible.push(paint);
+
+        const baseOpacity = typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1;
+        if (!baseOpacity) {
+          return;
+        }
+        this.ctx.globalAlpha = ga * baseOpacity;
+
+        const imageBuffer = this.ensureImageBuffer(paint);
+        const tileState = this.getTileState(imageBuffer, index);
+        tileState.lastUsedAt = performance.now();
+        this.setTileState(imageBuffer, index, tileState);
+
+        const isActiveLayer = this.isLayerActive(paint);
+        const canvas = this.getCanvasDims();
+        const priority = distance({ x: x + width / 2, y: y + height / 2 }, { x: canvas.width / 2, y: canvas.height / 2 });
+        const isInvalidated = this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1;
+        const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
+        const hasImage = !!canvasToPaint && !isInvalidated;
+
+        if (isInvalidated) {
+          this.setTileState(imageBuffer, index, { ...tileState, state: 'idle' });
+        }
+
+        if ((isInvalidated || !hasImage || tileState.state === 'idle' || tileState.state === 'error') && isActiveLayer) {
+          this.schedulePaintToCanvas(imageBuffer, paint, index, priority, false);
+          this.schedulePrefetchNeighbours(imageBuffer, paint, index, priority);
         }
 
         // If we've not prepared an initial "meaningful paint", then skip the
-        // rendering to avoid tiles loading in, breaking the illusion a bit!
+        // rendering to avoid tiles loading in, breaking the illusion a bit.
         if (!this.firstMeaningfulPaint) {
-          if (didRotate) {
-            this.ctx.restore();
-          }
-          this.ctx.globalAlpha = ga;
           return;
         }
 
-        const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
-        if (canvasToPaint) {
+        if (canvasToPaint && !isInvalidated) {
+          const fadeAlpha = this.getFadeAlpha(paint, tileState, isActiveLayer);
+          if (fadeAlpha < 1) {
+            this.hasTilesFading = true;
+          }
+          this.ctx.globalAlpha = ga * baseOpacity * fadeAlpha;
+
           if (paint.crop && paint.cropData) {
             if (paint.crop[index * 5]) {
               const source = [
@@ -446,8 +643,6 @@ export class CanvasRenderer implements Renderer {
               const translationDeltaY = paint.y * this.lastKnownScale;
 
               const target = [x + translationDeltaX, y + translationDeltaY, width, height];
-
-              // What we need?
               target[0] += translationDeltaX;
               target[1] += translationDeltaY;
 
@@ -457,7 +652,6 @@ export class CanvasRenderer implements Renderer {
                 source[1],
                 source[2],
                 source[3],
-                //
                 target[0],
                 target[1],
                 target[2] + 1,
@@ -468,8 +662,8 @@ export class CanvasRenderer implements Renderer {
             if (isFirefox) {
               this.ctx.drawImage(
                 canvasToPaint,
-                0, // paint.display.points[index * 5 + 1],
-                0, // paint.display.points[index * 5 + 2],
+                0,
+                0,
                 paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
                 paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
                 x,
@@ -480,8 +674,8 @@ export class CanvasRenderer implements Renderer {
             } else {
               this.ctx.drawImage(
                 canvasToPaint,
-                0, // paint.display.points[index * 5 + 1],
-                0, // paint.display.points[index * 5 + 2],
+                0,
+                0,
                 paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
                 paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
                 x,
@@ -494,10 +688,11 @@ export class CanvasRenderer implements Renderer {
         }
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
-      }
-
-      if (didRotate) {
-        this.ctx.restore();
+      } finally {
+        if (didRotate) {
+          this.ctx.restore();
+        }
+        this.ctx.globalAlpha = ga;
       }
     }
 
@@ -605,127 +800,176 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void, retry = false): void {
-    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
-      callback(imageCache[url]);
-      return;
-    }
-
-    try {
-      let loaded = false;
-
-      if (!retry) {
-        setTimeout(() => {
-          if (!loaded) {
-            this.loadImage(url, callback, err, true);
-          }
-        }, 3000);
-      }
+  private loadImageOnce(url: string): Promise<HTMLImageElement> {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
       const image = document.createElement('img');
       image.decoding = 'auto';
-      image.onload = function () {
-        loaded = true;
-        callback(image);
-        imageCache[url] = image;
-        image.onload = null;
-      };
       if (this.options.crossOrigin) {
         image.crossOrigin = 'anonymous';
       }
+
+      const timeout = setTimeout(() => {
+        image.onload = null;
+        image.onerror = null;
+        reject(new Error(`Image load timeout: ${url}`));
+      }, 3000);
+
+      image.onload = () => {
+        clearTimeout(timeout);
+        image.onload = null;
+        image.onerror = null;
+        resolve(image);
+      };
+      image.onerror = (err) => {
+        clearTimeout(timeout);
+        image.onload = null;
+        image.onerror = null;
+        reject(err);
+      };
       image.src = url;
-      if (image.complete) {
-        image.onload({} as any);
+
+      if (image.complete && image.naturalWidth > 0) {
+        clearTimeout(timeout);
+        image.onload = null;
+        image.onerror = null;
+        resolve(image);
       }
-      if (image.width === 0) {
-        // no-op, just want to query width. (possibly bug with browsers)
-      }
+    });
+  }
+
+  private async loadImage(url: string, retry = false): Promise<HTMLImageElement> {
+    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
+      return imageCache[url];
+    }
+
+    try {
+      const image = await this.loadImageOnce(url);
+      imageCache[url] = image;
+      return image;
     } catch (e) {
-      console.log('image error', e);
-      err(e);
+      if (!retry) {
+        return this.loadImage(url, true);
+      }
+      throw e;
     }
   }
 
-  schedulePaintToCanvas(imageBuffer: ImageBuffer, paint: SingleImage | TiledImage, index: number, priority: number) {
-    // This happens during a frame render, and these are most likely to happen in batches,
-    // so it has to be quick.
-    // We increment the images pending, so that we continue getting renders.
-    this.imagesPending++;
-    // We push the index we want to load onto the image buffer.
-    imageBuffer.indices.push(index);
-    // Unique id for paint.
-    const id = `${paint.id}--${paint.display.scale}-${index}`;
+  private requestImage(url: string): Promise<HTMLImageElement> {
+    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
+      return Promise.resolve(imageCache[url]);
+    }
 
+    const inFlight = this.inFlightImageLoads.get(url);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    let request: Promise<HTMLImageElement>;
+    request = this.loadImage(url).finally(() => {
+      if (this.inFlightImageLoads.get(url) === request) {
+        this.inFlightImageLoads.delete(url);
+      }
+    });
+    this.inFlightImageLoads.set(url, request);
+    return request;
+  }
+
+  schedulePaintToCanvas(
+    imageBuffer: ImageBuffer,
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number,
+    prefetch = false
+  ): boolean {
+    const tileState = this.getTileState(imageBuffer, index);
+    if (tileState.state === 'queued' || tileState.state === 'loading' || tileState.state === 'decoded') {
+      return false;
+    }
+
+    const id = `${paint.id}--${paint.display.scale}-${index}`;
+    imageBuffer.canvases[index] = id;
     const idx = this.invalidated.indexOf(id);
     if (idx !== -1) {
       this.invalidated.splice(idx, 1);
     }
 
-    imageBuffer.canvases[index] = id;
-    // Mark as loading.
-    paint.__host.canvas.loading = true;
-    // Set loading queue ordering to false to trigger re-order.
+    this.setTileState(imageBuffer, index, {
+      ...tileState,
+      state: 'queued',
+      requestedAt: performance.now(),
+      error: undefined,
+    });
+
     this.loadingQueueOrdered = false;
-    // And we push a "unit of work" to perform between frame renders.
     this.loadingQueue.push({
       id,
       scale: paint.display.scale,
       network: true,
       distance: priority,
-      task: () =>
-        // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
-        new Promise<void>((resolve) => {
-          // @todo this is a little slow.
-          if (this.visible.indexOf(paint) === -1) {
-            this.imagesPending--;
-            imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
-            resolve();
-            return;
-          }
-          // When this is task is finally chosen to be done, we
-          const url = paint.getImageUrl(index);
-          // Load our image.
-          this.loadImage(
-            url,
-            (image) => {
-              this.loadingQueue.push({
-                id,
-                scale: paint.display.scale,
-                distance: priority,
-                task: () => {
-                  return new Promise<void>((innerResolve) => {
-                    if (!this.imageIdsLoaded.includes(id)) {
-                      this.imagesLoaded++;
-                      this.imageIdsLoaded.push(id);
-                    }
-                    imageBuffer.loaded.push(index);
-                    if (imageBuffer.loaded.length === imageBuffer.indices.length) {
-                      imageBuffer.loading = false;
-                    }
-                    const points = paint.display.points.slice(index * 5, index * 5 + 5);
+      paint,
+      index,
+      prefetch,
+      task: async () => {
+        const state = this.getTileState(imageBuffer, index);
+        if (state.state !== 'queued' && state.state !== 'loading') {
+          return;
+        }
+        if (this.visible.indexOf(paint) === -1) {
+          this.setTileState(imageBuffer, index, { ...state, state: 'idle' });
+          return;
+        }
 
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-                    canvas.width = points[3] - points[1];
-                    canvas.height = points[4] - points[2];
-                    // document.body.append(canvas);
-                    this.hostCache.set(imageBuffer.canvases[index], canvas);
-                    this.drawCalls.push(() => {
-                      ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
-                      innerResolve();
-                    });
+        const url = paint.getImageUrl(index);
+        this.setTileState(imageBuffer, index, {
+          ...state,
+          state: 'loading',
+          url,
+          requestedAt: state.requestedAt || performance.now(),
+          error: undefined,
+        });
+
+        try {
+          const image = await this.requestImage(url);
+          this.loadingQueueOrdered = false;
+          this.loadingQueue.push({
+            id: `${id}--decode`,
+            scale: paint.display.scale,
+            distance: priority,
+            paint,
+            index,
+            prefetch,
+            task: () =>
+              new Promise<void>((resolve) => {
+                const points = paint.display.points.slice(index * 5, index * 5 + 5);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+                canvas.width = points[3] - points[1];
+                canvas.height = points[4] - points[2];
+                this.hostCache.set(imageBuffer.canvases[index], canvas);
+                this.drawCalls.push(() => {
+                  ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
+                  const finalState = this.getTileState(imageBuffer, index);
+                  this.setTileState(imageBuffer, index, {
+                    ...finalState,
+                    state: 'decoded',
+                    loadedAt: performance.now(),
+                    error: undefined,
                   });
-                },
-              });
-              resolve();
-            },
-            (err) => {
-              this.imagesPending--;
-              imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
-              resolve();
-            }
-          );
-        }),
+                  this.imagesLoaded++;
+                  resolve();
+                });
+              }),
+          });
+        } catch (error) {
+          this.setTileState(imageBuffer, index, {
+            ...this.getTileState(imageBuffer, index),
+            state: 'error',
+            error,
+          });
+        }
+      },
     });
+    return true;
   }
 
   afterPaintLayer(paint: SpacialContent, transform: Strand): void {
@@ -769,7 +1013,7 @@ export class CanvasRenderer implements Renderer {
     // canvas.height = paint.display.height;
     // canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
-    paint.__host.canvas = { canvas: undefined, canvases: [], indices: [], loaded: [], loading: false };
+    paint.__host.canvas = { canvas: undefined, canvases: [], tiles: {}, indices: [], loaded: [], loading: false };
     // hostCache[paint.id] = paint.__host;
   }
 
@@ -802,22 +1046,24 @@ export class CanvasRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
+    this.imagesPending = this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size;
     const ready =
       !this.pendingDrawCall &&
       this.drawCalls.length === 0 &&
-      this.imagesPending === 0 &&
       this.loadingQueue.length === 0 &&
-      this.tasksRunning === 0; /*&& this.visible.length > 0*/
+      this.tasksRunning === 0 &&
+      this.inFlightImageLoads.size === 0;
 
-    if (!ready && this.visible.length === 0) {
+    if (!ready && this.visible.length === 0 && this.options.readiness !== 'immediate' && this.fallbackRevealTimeout === null) {
       // If its still not ready by 500ms, force it to be.
-      setTimeout(() => {
+      this.fallbackRevealTimeout = setTimeout(() => {
         this.canvas.style.opacity = '1';
         this.firstMeaningfulPaint = true;
+        this.fallbackRevealTimeout = null;
       }, 500);
     }
 
-    if (!this.firstMeaningfulPaint && ready && this.visible.length) {
+    if (!this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
       // We've not rendered yet, can we render this  frame?
@@ -827,6 +1073,10 @@ export class CanvasRenderer implements Renderer {
     }
 
     if (this.options.debug) {
+      return true;
+    }
+
+    if (this.hasTilesFading) {
       return true;
     }
 
@@ -840,5 +1090,13 @@ export class CanvasRenderer implements Renderer {
   reset() {
     this.loadingQueue = [];
     this.drawCalls = [];
+    this.inFlightImageLoads.clear();
+    if (this.fallbackRevealTimeout) {
+      clearTimeout(this.fallbackRevealTimeout);
+      this.fallbackRevealTimeout = null;
+    }
+    this.imagesPending = 0;
+    this.imagesLoaded = 0;
+    this.hasTilesFading = false;
   }
 }

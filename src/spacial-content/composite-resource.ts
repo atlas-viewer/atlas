@@ -1,11 +1,11 @@
-import { SpacialContent } from './spacial-content';
-import { compose, dna, DnaFactory, Strand, translate } from '@atlas-viewer/dna';
-import { DisplayData } from '../types';
-import { Paint } from '../world-objects';
+import { compose, DnaFactory, dna, type Strand, translate } from '@atlas-viewer/dna';
+import type { AtlasObjectModel } from '../aom';
+import type { DisplayData } from '../types';
 import { bestResourceIndexAtRatio } from '../utils';
+import type { Paint } from '../world-objects';
 import { AbstractContent } from './abstract-content';
-import { AtlasObjectModel } from '../aom';
 import { SingleImage } from './single-image';
+import type { SpacialContent } from './spacial-content';
 
 type RenderOptions = {
   renderSmallestFallback: boolean;
@@ -13,13 +13,19 @@ type RenderOptions = {
   minSize: number;
   maxImageSize: number;
   quality: number;
+  layerPolicy: 'fallback-only' | 'always-blend' | 'active-only';
+  loadingBias: 'balanced' | 'speed' | 'data';
+  prefetchRadius?: number;
+  fadeInMs: number;
+  fadeFallbackTiles: boolean;
 };
 
-export type CompositeResourceProps = RenderOptions;
+export type CompositeResourceProps = Partial<RenderOptions>;
 
 export class CompositeResource
   extends AbstractContent
-  implements SpacialContent, AtlasObjectModel<CompositeResourceProps, SpacialContent> {
+  implements SpacialContent, AtlasObjectModel<CompositeResourceProps, SpacialContent>
+{
   readonly id: string;
   readonly display: DisplayData;
   points: Strand;
@@ -29,7 +35,10 @@ export class CompositeResource
   aggregateBuffer = dna(9);
   lazyLoader?: () => Promise<SpacialContent[]>;
   isFullyLoaded = false;
+  isLoadingFullResource = false;
   maxScaleFactor = 0;
+  private layerSelection = new WeakMap<SpacialContent, { active: boolean; frame: number }>();
+  private layerSelectionFrame = 0;
 
   renderOptions: RenderOptions;
 
@@ -39,7 +48,7 @@ export class CompositeResource
     height: number;
     images: SpacialContent[];
     loadFullImages?: () => Promise<SpacialContent[]>;
-    renderOptions?: RenderOptions;
+    renderOptions?: CompositeResourceProps;
   }) {
     super();
     this.id = data.id;
@@ -58,10 +67,15 @@ export class CompositeResource
     };
     this.renderOptions = {
       renderSmallestFallback: true,
-      renderLayers: 3,
+      renderLayers: 2,
       minSize: 255,
       maxImageSize: 2048,
-      quality: 1.5,
+      quality: 1.3,
+      layerPolicy: 'always-blend',
+      loadingBias: 'speed',
+      prefetchRadius: 1,
+      fadeInMs: 300,
+      fadeFallbackTiles: false,
       ...(data.renderOptions || {}),
     };
 
@@ -69,6 +83,7 @@ export class CompositeResource
   }
 
   applyProps(props: CompositeResourceProps) {
+    let shouldResort = false;
     if (
       typeof props.renderSmallestFallback !== 'undefined' &&
       props.renderSmallestFallback !== this.renderOptions.renderSmallestFallback
@@ -80,12 +95,36 @@ export class CompositeResource
     }
     if (typeof props.minSize !== 'undefined' && props.minSize !== this.renderOptions.minSize) {
       this.renderOptions.minSize = props.minSize;
+      shouldResort = true;
     }
     if (typeof props.maxImageSize !== 'undefined' && props.maxImageSize !== this.renderOptions.maxImageSize) {
       this.renderOptions.maxImageSize = props.maxImageSize;
+      shouldResort = true;
     }
     if (typeof props.quality !== 'undefined' && props.quality !== this.renderOptions.quality) {
       this.renderOptions.quality = props.quality;
+    }
+    if (typeof props.layerPolicy !== 'undefined' && props.layerPolicy !== this.renderOptions.layerPolicy) {
+      this.renderOptions.layerPolicy = props.layerPolicy;
+    }
+    if (typeof props.loadingBias !== 'undefined' && props.loadingBias !== this.renderOptions.loadingBias) {
+      this.renderOptions.loadingBias = props.loadingBias;
+    }
+    if (typeof props.prefetchRadius !== 'undefined' && props.prefetchRadius !== this.renderOptions.prefetchRadius) {
+      this.renderOptions.prefetchRadius = props.prefetchRadius;
+    }
+    if (typeof props.fadeInMs !== 'undefined' && props.fadeInMs !== this.renderOptions.fadeInMs) {
+      this.renderOptions.fadeInMs = props.fadeInMs;
+    }
+    if (
+      typeof props.fadeFallbackTiles !== 'undefined' &&
+      props.fadeFallbackTiles !== this.renderOptions.fadeFallbackTiles
+    ) {
+      this.renderOptions.fadeFallbackTiles = props.fadeFallbackTiles;
+    }
+
+    if (shouldResort) {
+      this.sortByScales();
     }
   }
 
@@ -94,11 +133,13 @@ export class CompositeResource
   }
 
   removeChild(item: SpacialContent) {
-    if (this.images.indexOf(item) === -1) {
+    if (this.images.indexOf(item) === -1 && this.allImages.indexOf(item) === -1) {
       return;
     }
 
-    this.images = this.images.filter((image) => image !== item);
+    const key = this.getImageDedupeKey(item);
+    this.images = this.images.filter((image) => image !== item && this.getImageDedupeKey(image) !== key);
+    this.allImages = this.allImages.filter((image) => image !== item && this.getImageDedupeKey(image) !== key);
     this.sortByScales();
   }
 
@@ -113,12 +154,27 @@ export class CompositeResource
   }
 
   addImages(images: SpacialContent[]) {
+    const existingObjects = new Set(this.allImages);
+    const existingKeys = new Set(this.allImages.map((image) => this.getImageDedupeKey(image)));
     for (const image of images) {
+      if (!image || existingObjects.has(image)) {
+        continue;
+      }
+      const key = this.getImageDedupeKey(image);
+      if (existingKeys.has(key)) {
+        continue;
+      }
       image.__parent = this;
       image.__owner = this.__owner;
+      this.allImages.push(image);
+      existingObjects.add(image);
+      existingKeys.add(key);
     }
-    this.allImages.push(...images.filter(Boolean));
     this.sortByScales();
+  }
+
+  private getImageDedupeKey(image: SpacialContent) {
+    return `${image.id}::${image.display.scale}`;
   }
 
   sortByScales() {
@@ -177,18 +233,22 @@ export class CompositeResource
     }
 
     this.scaleFactors = this.images.map((singleImage) => singleImage.display.scale);
-    this.maxScaleFactor = Math.max(...this.scaleFactors);
+    this.maxScaleFactor = this.scaleFactors.length ? Math.max(...this.scaleFactors) : 0;
   };
 
   loadFullResource = async () => {
-    if (this.isFullyLoaded) {
+    if (this.isFullyLoaded || this.isLoadingFullResource) {
       return;
     }
     if (this.lazyLoader) {
-      // Reads: resource has already been requested.
-      this.isFullyLoaded = true;
-      const newImages = await this.lazyLoader();
-      this.addImages(newImages);
+      this.isLoadingFullResource = true;
+      try {
+        const newImages = await this.lazyLoader();
+        this.addImages(newImages || []);
+        this.isFullyLoaded = true;
+      } finally {
+        this.isLoadingFullResource = false;
+      }
     }
   };
 
@@ -221,8 +281,9 @@ export class CompositeResource
     const len = this.images.length;
     const newAggregate = aggregate ? compose(aggregate, translate(this.x, this.y)) : translate(this.x, this.y);
 
+    let toPaintIdx: number[] = [bestIndex];
     if (bestIndex !== this.images.length - 1 && this.images[bestIndex + 1]) {
-      let toPaintIdx = [];
+      toPaintIdx = [];
       for (let i = len - 1; i >= bestIndex; i--) {
         toPaintIdx.push(i);
       }
@@ -234,14 +295,52 @@ export class CompositeResource
       if (this.renderOptions.renderSmallestFallback && toPaintIdx.indexOf(smallestIdx) === -1) {
         toPaintIdx.unshift(smallestIdx);
       }
-
-      const toPaint = [];
-      for (let i = 0; i < toPaintIdx.length; i++) {
-        toPaint.push(...this.images[toPaintIdx[i]].getAllPointsAt(target, newAggregate, scale));
-      }
-
-      return toPaint;
     }
-    return this.images[bestIndex].getAllPointsAt(target, newAggregate, scale);
+
+    const active = new Set<number>();
+    switch (this.renderOptions.layerPolicy) {
+      case 'always-blend':
+        for (const idx of toPaintIdx) {
+          active.add(idx);
+        }
+        break;
+      case 'active-only':
+        active.add(bestIndex);
+        toPaintIdx = [bestIndex];
+        break;
+      case 'fallback-only':
+      default:
+        active.add(bestIndex);
+        if (this.renderOptions.renderSmallestFallback && toPaintIdx.length) {
+          active.add(toPaintIdx[0]);
+        }
+        break;
+    }
+
+    this.layerSelectionFrame += 1;
+    for (const image of this.allImages) {
+      this.layerSelection.set(image, {
+        active: false,
+        frame: this.layerSelectionFrame,
+      });
+    }
+
+    const toPaint = [];
+    for (let i = 0; i < toPaintIdx.length; i++) {
+      const idx = toPaintIdx[i];
+      const image = this.images[idx];
+      this.layerSelection.set(image, {
+        active: active.has(idx),
+        frame: this.layerSelectionFrame,
+      });
+      toPaint.push(...image.getAllPointsAt(target, newAggregate, scale));
+    }
+
+    return toPaint;
+  }
+
+  isImageActive(image: SpacialContent): boolean {
+    const selected = this.layerSelection.get(image);
+    return !!selected && selected.frame === this.layerSelectionFrame && selected.active;
   }
 }

@@ -379,10 +379,7 @@ export const flexbox = () => {
         }
       `}</style>
 			<div className="atlas-flex">
-				<AtlasAuto
-					unstable_webglRenderer
-					renderPreset={["default-preset", { canvasBox: true }]}
-				>
+				<AtlasAuto renderPreset={["default-preset", { canvasBox: true }]}>
 					<world>
 						<ImageService key="wunder" {...staticTiles[1]} />
 					</world>

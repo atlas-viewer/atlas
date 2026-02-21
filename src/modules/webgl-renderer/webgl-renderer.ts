@@ -20,6 +20,17 @@ export type WebGLRendererOptions = {
   onFatalImageError?: (event: AtlasWebGLFallbackEvent) => void;
 };
 
+type WebGLTileRequest = {
+  key: string;
+  paint: SingleImage | TiledImage;
+  index: number;
+  url: string;
+  priority: number;
+  prefetch: boolean;
+};
+
+const imageCache: { [id: string]: HTMLImageElement } = {};
+
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
@@ -37,10 +48,12 @@ export class WebGLRenderer implements Renderer {
     precision mediump float;
 
     uniform sampler2D u_image;
+    uniform float u_alpha;
     varying vec2 v_texCoord;
 
     void main() {
-        gl_FragColor = texture2D(u_image, v_texCoord);
+        vec4 color = texture2D(u_image, v_texCoord);
+        gl_FragColor = vec4(color.rgb, color.a * u_alpha);
     }
   `;
 
@@ -78,6 +91,7 @@ export class WebGLRenderer implements Renderer {
   uniforms: {
     resolution: WebGLUniformLocation | null;
     texture: WebGLUniformLocation | null;
+    alpha: WebGLUniformLocation | null;
   };
   buffers: {
     position: WebGLBuffer;
@@ -85,6 +99,15 @@ export class WebGLRenderer implements Renderer {
   };
   rendererPosition: DOMRect;
   dpi: number;
+  maxConcurrentTasks = 6;
+  maxPrefetchPerFrame = 8;
+  framePrefetchCount = 0;
+  loadingCount = 0;
+  hasTilesFading = false;
+  requiresRepaint = true;
+  tileRequestQueue: WebGLTileRequest[] = [];
+  queuedTileRequestKeys = new Set<string>();
+  inFlightImageLoads = new Map<string, Promise<HTMLImageElement>>();
   onContextLost = (event: Event) => {
     event.preventDefault();
     this.emitFatalImageError({
@@ -122,6 +145,7 @@ export class WebGLRenderer implements Renderer {
     this.uniforms = {
       resolution: this.gl.getUniformLocation(this.program, 'u_resolution'),
       texture: this.gl.getUniformLocation(this.program, 'u_texture'),
+      alpha: this.gl.getUniformLocation(this.program, 'u_alpha'),
     };
 
     this.buffers = {
@@ -140,6 +164,8 @@ export class WebGLRenderer implements Renderer {
 
     this.gl.useProgram(this.program);
     this.gl.enableVertexAttribArray(this.attributes.position);
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
   }
 
   emitFatalImageError(event: Omit<AtlasWebGLFallbackEvent, 'from' | 'to'>) {
@@ -168,6 +194,10 @@ export class WebGLRenderer implements Renderer {
   }
 
   beforeFrame(world: World, delta: number, target: Strand, options: HookOptions) {
+    this.hasTilesFading = false;
+    this.requiresRepaint = false;
+    this.framePrefetchCount = 0;
+
     const filter = buildCssFilter(options);
     if (this.canvas.style.filter !== filter) {
       this.canvas.style.filter = filter;
@@ -249,6 +279,7 @@ export class WebGLRenderer implements Renderer {
       textures,
       loading: [],
       loaded: [],
+      loadedAt: [],
       lastLevelRendered: -1,
       onLoad: (index: number, image: any) => {
         const gl = this.gl;
@@ -275,6 +306,8 @@ export class WebGLRenderer implements Renderer {
         gl.bindTexture(gl.TEXTURE_2D, null);
         paint.__host.webgl.textures[index] = texture;
         paint.__host.webgl.loaded.push(index);
+        paint.__host.webgl.loadedAt[index] = performance.now();
+        this.requiresRepaint = true;
         this.removeLoadingIndex(paint, index);
       },
     };
@@ -287,6 +320,250 @@ export class WebGLRenderer implements Renderer {
     const loadingIndex = paint.__host.webgl.loading.indexOf(index);
     if (loadingIndex !== -1) {
       paint.__host.webgl.loading.splice(loadingIndex, 1);
+      this.loadingCount = Math.max(0, this.loadingCount - 1);
+      this.requiresRepaint = true;
+    }
+  }
+
+  private getCompositeRenderOptions(paint: SingleImage | TiledImage) {
+    return paint.__parent?.renderOptions;
+  }
+
+  private getPrefetchRadius(paint: SingleImage | TiledImage): number {
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options) {
+      return 0;
+    }
+    if (typeof options.prefetchRadius === 'number') {
+      return Math.max(0, options.prefetchRadius);
+    }
+    if (options.loadingBias === 'speed') {
+      return 2;
+    }
+    if (options.loadingBias === 'data') {
+      return 0;
+    }
+    return 1;
+  }
+
+  private isLayerActive(paint: SingleImage | TiledImage): boolean {
+    const parent = paint.__parent as any;
+    if (!parent) {
+      return true;
+    }
+    if (typeof parent.isImageActive === 'function') {
+      return !!parent.isImageActive(paint);
+    }
+    return true;
+  }
+
+  private shouldDrawLayer(paint: SingleImage | TiledImage, isActiveLayer: boolean): boolean {
+    const policy = this.getCompositeRenderOptions(paint)?.layerPolicy || 'fallback-only';
+    if (policy === 'active-only') {
+      return isActiveLayer;
+    }
+    return true;
+  }
+
+  private getFadeAlpha(paint: SingleImage | TiledImage, index: number, isActiveLayer: boolean): number {
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
+      return 1;
+    }
+    const loadedAt = paint.__host?.webgl?.loadedAt?.[index];
+    if (!loadedAt) {
+      return 1;
+    }
+    if (!isActiveLayer && !options.fadeFallbackTiles) {
+      return 1;
+    }
+    const elapsed = performance.now() - loadedAt;
+    return Math.max(0, Math.min(1, elapsed / options.fadeInMs));
+  }
+
+  private loadImageOnce(url: string): Promise<HTMLImageElement> {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = document.createElement('img');
+      image.decoding = 'async';
+      image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        image.onload = null;
+        image.onerror = null;
+        resolve(image);
+      };
+      image.onerror = (error) => {
+        image.onload = null;
+        image.onerror = null;
+        reject(error);
+      };
+      image.src = url;
+      if (image.complete && image.naturalWidth > 0) {
+        image.onload = null;
+        image.onerror = null;
+        resolve(image);
+      }
+    });
+  }
+
+  private requestImage(url: string): Promise<HTMLImageElement> {
+    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
+      return Promise.resolve(imageCache[url]);
+    }
+
+    const inFlight = this.inFlightImageLoads.get(url);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    let request: Promise<HTMLImageElement>;
+    request = this.loadImageOnce(url)
+      .then((image) => {
+        imageCache[url] = image;
+        return image;
+      })
+      .finally(() => {
+        if (this.inFlightImageLoads.get(url) === request) {
+          this.inFlightImageLoads.delete(url);
+        }
+      });
+    this.inFlightImageLoads.set(url, request);
+    return request;
+  }
+
+  private getTileRequestKey(paint: SingleImage | TiledImage, index: number): string {
+    return `${paint.id}::${index}`;
+  }
+
+  private enqueueTileRequest(
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number,
+    prefetch: boolean
+  ): boolean {
+    if (!paint.getImageUrl || !paint.__host?.webgl) {
+      return false;
+    }
+
+    const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures?.[index];
+    if (texture) {
+      return false;
+    }
+
+    if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) !== -1) {
+      return false;
+    }
+
+    const key = this.getTileRequestKey(paint, index);
+    if (this.queuedTileRequestKeys.has(key)) {
+      return false;
+    }
+
+    this.tileRequestQueue.push({
+      key,
+      paint,
+      index,
+      url: paint.getImageUrl(index),
+      priority,
+      prefetch,
+    });
+    this.queuedTileRequestKeys.add(key);
+    this.requiresRepaint = true;
+    return true;
+  }
+
+  private schedulePrefetchNeighbours(paint: TiledImage, index: number, priority: number) {
+    if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+      return;
+    }
+
+    const options = this.getCompositeRenderOptions(paint);
+    if (options?.loadingBias === 'data') {
+      return;
+    }
+
+    const radius = this.getPrefetchRadius(paint);
+    if (radius <= 0 || !paint.columns || !paint.rows) {
+      return;
+    }
+
+    const x = index % paint.columns;
+    const y = Math.floor(index / paint.columns);
+
+    for (let ring = 1; ring <= radius; ring++) {
+      for (let dy = -ring; dy <= ring; dy++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) {
+            continue;
+          }
+
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= paint.columns || ny >= paint.rows) {
+            continue;
+          }
+
+          const neighbourIndex = ny * paint.columns + nx;
+          if (this.enqueueTileRequest(paint, neighbourIndex, priority + ring * 1000, true)) {
+            this.framePrefetchCount++;
+            if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+              return;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private processTileQueue() {
+    if (!this.tileRequestQueue.length) {
+      return;
+    }
+
+    this.tileRequestQueue.sort((a, b) => {
+      if (a.prefetch !== b.prefetch) {
+        return a.prefetch ? 1 : -1;
+      }
+      return a.priority - b.priority;
+    });
+
+    while (this.loadingCount < this.maxConcurrentTasks && this.tileRequestQueue.length) {
+      const next = this.tileRequestQueue.shift() as WebGLTileRequest;
+      this.queuedTileRequestKeys.delete(next.key);
+
+      const host = next.paint.__host?.webgl;
+      if (!host || !next.paint.getImageUrl) {
+        continue;
+      }
+
+      const texture = host.texture ? host.texture : host.textures?.[next.index];
+      if (texture) {
+        continue;
+      }
+      if (host.loading && host.loading.indexOf(next.index) !== -1) {
+        continue;
+      }
+
+      host.loading.push(next.index);
+      this.loadingCount++;
+      this.requiresRepaint = true;
+
+      this.requestImage(next.url)
+        .then((image) => {
+          next.paint.__host?.webgl?.onLoad(next.index, image);
+        })
+        .catch((error) => {
+          this.removeLoadingIndex(next.paint, next.index);
+          this.emitFatalImageError({
+            reason: 'image-cors-or-load',
+            imageUrl: next.url,
+            contentId: next.paint.id,
+            tileIndex: next.index,
+            error,
+          });
+        })
+        .finally(() => {
+          this.processTileQueue();
+        });
     }
   }
 
@@ -301,6 +578,8 @@ export class WebGLRenderer implements Renderer {
     if ((paint instanceof SingleImage || paint instanceof TiledImage) && !isWebGLImageFastPathCandidate(paint, index)) {
       return;
     }
+    const imagePaint = paint instanceof SingleImage || paint instanceof TiledImage;
+    const isActiveLayer = imagePaint ? this.isLayerActive(paint) : true;
 
     if (paint.getTexture) {
       const newText = paint.getTexture();
@@ -325,34 +604,37 @@ export class WebGLRenderer implements Renderer {
       }
     }
 
-    if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) === -1 && paint.getImageUrl) {
-      paint.__host.webgl.loading.push(index);
-      const imageUrl = paint.getImageUrl(index);
-      const image = document.createElement('img');
-      image.decoding = 'async';
-      image.crossOrigin = 'anonymous';
-      image.onload = () => {
-        image.onload = null;
-        image.onerror = null;
-        return paint.__host.webgl.onLoad(index, image);
-      };
-      image.onerror = (error) => {
-        image.onload = null;
-        image.onerror = null;
-        this.removeLoadingIndex(paint, index);
-        this.emitFatalImageError({
-          reason: 'image-cors-or-load',
-          imageUrl,
-          contentId: paint.id,
-          tileIndex: index,
-          error,
-        });
-      };
-      image.src = imageUrl;
+    const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
+    if (imagePaint && isActiveLayer) {
+      const canvasCenterX = this.gl.canvas.width / this.dpi / 2;
+      const canvasCenterY = this.gl.canvas.height / this.dpi / 2;
+      const tileCenterX = x + width / 2;
+      const tileCenterY = y + height / 2;
+      const priority = Math.hypot(tileCenterX - canvasCenterX, tileCenterY - canvasCenterY);
+
+      if (!texture) {
+        this.enqueueTileRequest(paint, index, priority, false);
+      }
+      if (paint instanceof TiledImage) {
+        this.schedulePrefetchNeighbours(paint, index, priority);
+      }
     }
 
-    const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
+    if (imagePaint && !this.shouldDrawLayer(paint, isActiveLayer)) {
+      return;
+    }
+
     if (texture) {
+      const baseAlpha = imagePaint ? (typeof paint.style?.opacity === 'number' ? paint.style.opacity : 1) : 1;
+      if (!baseAlpha) {
+        return;
+      }
+      const fadeAlpha = imagePaint ? this.getFadeAlpha(paint, index, isActiveLayer) : 1;
+      if (fadeAlpha < 1) {
+        this.hasTilesFading = true;
+      }
+      const alpha = baseAlpha * fadeAlpha;
+
       this.gl.enableVertexAttribArray(this.attributes.texCoord);
 
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.texCoord);
@@ -365,6 +647,7 @@ export class WebGLRenderer implements Renderer {
 
       this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
       this.gl.uniform1i(this.uniforms.texture, 0);
+      this.gl.uniform1f(this.uniforms.alpha, alpha);
       this.setRectangle(x, y, width, height);
       this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     }
@@ -375,7 +658,13 @@ export class WebGLRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
-    return true;
+    return (
+      this.requiresRepaint ||
+      this.tileRequestQueue.length > 0 ||
+      this.loadingCount > 0 ||
+      this.inFlightImageLoads.size > 0 ||
+      this.hasTilesFading
+    );
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
@@ -383,7 +672,7 @@ export class WebGLRenderer implements Renderer {
   }
 
   afterFrame() {
-    // no-op.
+    this.processTileQueue();
   }
 
   lastKnownScale = 1;
@@ -510,5 +799,12 @@ export class WebGLRenderer implements Renderer {
   reset() {
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost as EventListener);
     this.canvas.style.filter = 'none';
+    this.framePrefetchCount = 0;
+    this.loadingCount = 0;
+    this.hasTilesFading = false;
+    this.requiresRepaint = false;
+    this.tileRequestQueue = [];
+    this.queuedTileRequestKeys.clear();
+    this.inFlightImageLoads.clear();
   }
 }

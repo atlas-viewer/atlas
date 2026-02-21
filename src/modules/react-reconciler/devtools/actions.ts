@@ -79,6 +79,7 @@ export function resetImageLoadingState(runtime: Runtime): ImageRecoveryResult {
     image.__host.canvas = {
       canvas: undefined,
       canvases: [],
+      tiles: {},
       indices: [],
       loaded: [],
       loading: false,
