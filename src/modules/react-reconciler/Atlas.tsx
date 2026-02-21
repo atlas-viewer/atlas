@@ -21,6 +21,7 @@ import {
 	type NavigatorRendererStyle,
 	navigatorToWorldPoint,
 } from "../navigator-renderer/navigator-renderer";
+import type { PdfScrollZoneControllerConfig } from "../pdf-scroll-zone-controller/pdf-scroll-zone-controller";
 import type { PopmotionControllerConfig } from "../popmotion-controller/popmotion-controller";
 import type { AtlasImageLoadErrorEvent } from "../shared/image-load-events";
 import type { ImageLoadingConfig } from "../shared/image-loading-config";
@@ -81,7 +82,8 @@ export type AtlasProps = {
 	overlayStyle?: any;
 	containerStyle?: any;
 	containerProps?: any;
-	controllerConfig?: PopmotionControllerConfig;
+	controllerConfig?: PopmotionControllerConfig | PdfScrollZoneControllerConfig;
+	interactionMode?: "popmotion" | "pdf-scroll-zone";
 	renderPreset?: PresetNames | Presets;
 	hideInlineStyle?: boolean;
 	homeCover?: true | false | "start" | "end";
@@ -149,6 +151,7 @@ export const Atlas: React.FC<
 		unstable_noReconciler = false,
 		hideInlineStyle = false,
 		controllerConfig,
+		interactionMode = "popmotion",
 		children,
 		overlayStyle,
 		containerStyle,
@@ -284,6 +287,8 @@ export const Atlas: React.FC<
 		width: restProps.width,
 		height: restProps.height,
 		forceRefresh,
+		controllerConfig,
+		interactionMode,
 		unstable_webglRenderer: activeWebGL,
 		onWebGLFallback: handleWebGLFallback,
 		onImageError,
@@ -405,11 +410,13 @@ export const Atlas: React.FC<
 		if (preset) {
 			// Home cover handled separately.
 			if (!homeCover) {
-				preset.runtime.manualHomePosition = !!homePosition;
+				// PDF scroll mode owns viewport positioning and must not be overridden by world goHome.
+				preset.runtime.manualHomePosition =
+					interactionMode === "pdf-scroll-zone" || !!homePosition;
 				preset.runtime.setHomePosition(homePosition);
 			}
 		}
-	}, [preset, homeCover, homePosition]);
+	}, [preset, homeCover, homePosition, interactionMode]);
 
 	// Home padding: apply to runtime when preset or prop changes.
 	useEffect(() => {
@@ -424,17 +431,22 @@ export const Atlas: React.FC<
 	useEffect(() => {
 		if (preset) {
 			const rt: Runtime = preset.runtime;
+			const didDimensionChange =
+				viewport.current.width !== restProps.width ||
+				viewport.current.height !== restProps.height;
 
-			rt.resize(
-				viewport.current.width,
-				restProps.width,
-				viewport.current.height,
-				restProps.height,
-			);
-			viewport.current.width = restProps.width;
-			viewport.current.height = restProps.height;
-			rt.updateNextFrame();
-			viewport.current.didUpdate = true;
+			if (didDimensionChange) {
+				rt.resize(
+					viewport.current.width,
+					restProps.width,
+					viewport.current.height,
+					restProps.height,
+				);
+				viewport.current.width = restProps.width;
+				viewport.current.height = restProps.height;
+				viewport.current.didUpdate = true;
+				rt.updateNextFrame();
+			}
 		}
 	}, [preset, restProps.width, restProps.height, viewport]);
 
@@ -561,7 +573,7 @@ export const Atlas: React.FC<
 			if (preset) {
 				const rt: Runtime = preset.runtime;
 				if (
-					viewport.current.width !== restProps.width &&
+					viewport.current.width !== restProps.width ||
 					viewport.current.height !== restProps.height
 				) {
 					rt.resize(
@@ -634,12 +646,17 @@ export const Atlas: React.FC<
 				if (type === "recalculate-world-size") {
 					recalculateNavigatorDimensions();
 					recalculateHomeCover();
-					rt.resize(
-						viewport.current.width,
-						restProps.width,
-						viewport.current.height,
-						restProps.height,
-					);
+					if (
+						viewport.current.width !== restProps.width ||
+						viewport.current.height !== restProps.height
+					) {
+						rt.resize(
+							viewport.current.width,
+							restProps.width,
+							viewport.current.height,
+							restProps.height,
+						);
+					}
 				}
 			});
 		}
@@ -661,7 +678,9 @@ export const Atlas: React.FC<
 
 			useEffect(() => {
 				if (preset) {
-					preset.runtime.goHome();
+					if (interactionMode !== "pdf-scroll-zone") {
+						preset.runtime.goHome();
+					}
 
 					const result = handleCreated && handleCreated(preset);
 					return void (result && result.then
@@ -675,7 +694,7 @@ export const Atlas: React.FC<
 			return props.children;
 		},
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[preset, handleCreated],
+		[preset, handleCreated, interactionMode],
 	);
 
 	useEffect(() => {
@@ -683,7 +702,10 @@ export const Atlas: React.FC<
 			const rt = preset.runtime;
 			if (resetWorldOnChange) {
 				return rt.world.addLayoutSubscriber((type) => {
-					if (type === "recalculate-world-size") {
+					if (
+						type === "recalculate-world-size" &&
+						interactionMode !== "pdf-scroll-zone"
+					) {
 						rt.goHome();
 					}
 				});
@@ -692,7 +714,7 @@ export const Atlas: React.FC<
 		return () => {
 			// no-op
 		};
-	}, [preset, resetWorldOnChange]);
+	}, [preset, resetWorldOnChange, interactionMode]);
 
 	useEffect(() => {
 		if (preset) {

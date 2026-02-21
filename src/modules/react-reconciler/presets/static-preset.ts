@@ -1,17 +1,19 @@
-import { popmotionController } from '../../popmotion-controller/popmotion-controller';
 import { Runtime } from '../../../renderer/runtime';
 import { World } from '../../../world';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
-import { Preset, PresetArgs } from './_types';
-import { StaticRenderer } from '../../static-renderer/static-renderer';
-import { unmountComponentAtNode } from '../reconciler';
 import { CompositeRenderer } from '../../composite-renderer/composite-renderer';
 import { OverlayRenderer } from '../../overlay-renderer/overlay-renderer';
+import { pdfScrollZoneController } from '../../pdf-scroll-zone-controller/pdf-scroll-zone-controller';
+import { popmotionController } from '../../popmotion-controller/popmotion-controller';
+import { StaticRenderer } from '../../static-renderer/static-renderer';
+import { unmountComponentAtNode } from '../reconciler';
+import type { Preset, PresetArgs } from './_types';
 
 export type StaticPresetName = 'static-preset';
 
 export type StaticPresetOptions = {
   controllerConfig?: any;
+  interactionMode?: 'popmotion' | 'pdf-scroll-zone';
   interactive?: boolean;
 };
 
@@ -22,14 +24,16 @@ export function staticPreset({
   containerElement,
   overlayElement,
   controllerConfig,
+  interactionMode = 'popmotion',
 }: PresetArgs & StaticPresetOptions): Preset {
   if (!containerElement) {
     throw new Error('Invalid container');
   }
   containerElement.style.userSelect = 'none';
 
+  const controllerFactory = interactionMode === 'pdf-scroll-zone' ? pdfScrollZoneController : popmotionController;
   const controller = interactive
-    ? popmotionController({
+    ? controllerFactory({
         minZoomFactor: 0.5,
         maxZoomFactor: 3,
         enableClickToZoom: false,

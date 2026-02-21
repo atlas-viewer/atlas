@@ -1,10 +1,10 @@
-import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
-import { Runtime, RuntimeOptions } from '../../../renderer/runtime';
-import { Renderer } from '../../../renderer/renderer';
-import { RuntimeController, Viewer } from '../../../types';
-import { AtlasWebGLFallbackEvent } from '../../webgl-renderer/types';
-import { AtlasImageLoadErrorEvent } from '../../shared/image-load-events';
-import { ImageLoadingConfig } from '../../shared/image-loading-config';
+import type { Renderer } from '../../../renderer/renderer';
+import type { Runtime, RuntimeOptions } from '../../../renderer/runtime';
+import type { RuntimeController, Viewer } from '../../../types';
+import type { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
+import type { AtlasImageLoadErrorEvent } from '../../shared/image-load-events';
+import type { ImageLoadingConfig } from '../../shared/image-loading-config';
+import type { AtlasWebGLFallbackEvent } from '../../webgl-renderer/types';
 
 export type Preset = {
   name: string;
@@ -29,6 +29,8 @@ export type Preset = {
 export type PresetArgs = {
   viewport: Viewer;
   forceRefresh: () => void;
+  controllerConfig?: any;
+  interactionMode?: 'popmotion' | 'pdf-scroll-zone';
   runtimeOptions?: RuntimeOptions;
   containerElement?: HTMLDivElement;
   canvasElement?: HTMLCanvasElement;

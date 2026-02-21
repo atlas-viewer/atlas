@@ -1,5 +1,5 @@
 import { compose, DnaFactory, dna, scaleAtOrigin, transform, translate } from '@atlas-viewer/dna';
-/** @ts-ignore */
+/** @ts-expect-error */
 import normalizeWheel from 'normalize-wheel';
 import type { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
@@ -488,9 +488,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       const removeLayout = runtime.world.addLayoutSubscriber((type, data?: any) => {
         if (type === 'zone-changed') {
           stopPanMomentum();
-          runtime.transitionManager.constrainBounds({
-            transition: { duration: 0 },
-          });
+          // Avoid overriding an in-flight zone-fit transition (e.g. goToZone).
+          if (!runtime.transitionManager.hasPending()) {
+            runtime.transitionManager.constrainBounds();
+          }
         }
         if (type === 'zoom-to' && data) {
           stopPanMomentum();
@@ -554,14 +555,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           state.mousemoveBuffer
         );
         const [isConstrained, constrained] = runtime.constrainBounds(proposed, { panPadding });
-        applyPanTransition(isConstrained ? constrained : proposed);
 
         if (isConstrained) {
           stopPanMomentum();
-          runtime.world.constraintBounds(true);
+          runtime.world.constraintBounds();
           return;
         }
 
+        applyPanTransition(proposed);
         runtime.updateNextFrame();
       });
 

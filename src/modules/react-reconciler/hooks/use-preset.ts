@@ -1,7 +1,7 @@
-import { PresetNames, Presets, presets } from '../presets';
-import { Preset, PresetArgs } from '../presets/_types';
-import { defaultPreset } from '../presets/default-preset';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type PresetNames, type Presets, presets } from '../presets';
+import type { Preset, PresetArgs } from '../presets/_types';
+import { defaultPreset } from '../presets/default-preset';
 
 const defaultArgs = {};
 
@@ -11,6 +11,8 @@ export function usePreset(
     width: number;
     height: number;
     forceRefresh?: any;
+    controllerConfig?: PresetArgs['controllerConfig'];
+    interactionMode?: PresetArgs['interactionMode'];
     unstable_webglRenderer?: boolean;
     onWebGLFallback?: PresetArgs['onWebGLFallback'];
     onImageError?: PresetArgs['onImageError'];
@@ -24,7 +26,11 @@ export function usePreset(
   const parityCanvasRef = useRef<HTMLCanvasElement>();
   const navigatorRef = useRef<HTMLCanvasElement>();
   const containerRef = useRef<HTMLElement>();
-  const viewport = useRef<{ width: number; height: number; didUpdate?: boolean }>({
+  const viewport = useRef<{
+    width: number;
+    height: number;
+    didUpdate?: boolean;
+  }>({
     width: options.width,
     height: options.height,
     didUpdate: true,
@@ -52,6 +58,8 @@ export function usePreset(
       viewport: viewport.current,
       dpi: window.devicePixelRatio || 1,
       forceRefresh: options.forceRefresh,
+      controllerConfig: options.controllerConfig,
+      interactionMode: options.interactionMode,
       unstable_webglRenderer: options.unstable_webglRenderer,
       onWebGLFallback: options.onWebGLFallback,
       onImageError: options.onImageError,
@@ -84,6 +92,8 @@ export function usePreset(
     presetName,
     presetArgs,
     options.unstable_webglRenderer,
+    options.controllerConfig,
+    options.interactionMode,
     options.onWebGLFallback,
     options.onImageError,
     options.imageLoading,

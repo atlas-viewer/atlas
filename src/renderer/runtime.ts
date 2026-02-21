@@ -1,22 +1,24 @@
-import { Projection, RuntimeController, Viewer } from '../types';
-import { World } from '../world';
 import {
+  compose,
   DnaFactory,
+  dna,
   mutate,
+  type Strand,
   scale,
   scaleAtOrigin,
   transform,
-  Strand,
-  dna,
   translate,
-  compose,
 } from '@atlas-viewer/dna';
-import { Renderer } from './renderer';
-import { Paint } from '../world-objects/paint';
-import { TransitionManager } from '../modules/transition-manager/transition-manager';
 import { nanoid } from 'nanoid';
 import type { RuntimeDebugEvent } from '../modules/react-reconciler/devtools/types';
 import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
+import { TransitionManager } from '../modules/transition-manager/transition-manager';
+import type { Projection, RuntimeController, Viewer } from '../types';
+import { easingFunctions } from '../utility/easing-functions';
+import { getZoneConstrainedBounds } from '../utility/get-zone-constrained-bounds';
+import type { World } from '../world';
+import type { Paint } from '../world-objects/paint';
+import type { Renderer } from './renderer';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -285,7 +287,12 @@ export class Runtime {
     bottom: number;
   } {
     if (typeof paddingPx === 'number') {
-      return { left: paddingPx, right: paddingPx, top: paddingPx, bottom: paddingPx };
+      return {
+        left: paddingPx,
+        right: paddingPx,
+        top: paddingPx,
+        bottom: paddingPx,
+      };
     }
     if (paddingPx) {
       return {
@@ -600,7 +607,10 @@ export class Runtime {
   };
 
   constrainBounds(target: Strand, { panPadding = 0, ref = false }: { ref?: boolean; panPadding?: number } = {}) {
-    const { minX, maxX, minY, maxY } = this.getBounds({ target, padding: panPadding });
+    const { minX, maxX, minY, maxY } = this.getBounds({
+      target,
+      padding: panPadding,
+    });
 
     let isConstrained = false;
     const constrained = ref ? target : dna(target);
@@ -648,22 +658,11 @@ export class Runtime {
       const zone = this.world.getActiveZone();
 
       if (zone) {
-        const xCon = target[3] - target[1] < zone.points[3] - zone.points[1];
-        const yCon = target[4] - target[2] < zone.points[4] - zone.points[2];
-        return {
-          minX: xCon
-            ? zone.points[1] - padding
-            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-          maxX: yCon
-            ? zone.points[2] - padding
-            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-          minY: xCon
-            ? zone.points[3] + padding
-            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-          maxY: yCon
-            ? zone.points[4] + padding
-            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-        };
+        zone.recalculateBounds();
+        const zoneBounds = getZoneConstrainedBounds(target, zone.points, padding);
+        if (zoneBounds) {
+          return zoneBounds;
+        }
       }
     }
 
@@ -800,7 +799,11 @@ export class Runtime {
       this.zoomBuffer
     );
 
-    this.constrainBounds(proposedStrand, { ref: true, panPadding: 100 });
+    const zoomPanPadding = this.world.hasActiveZone() ? 0 : 100;
+    this.constrainBounds(proposedStrand, {
+      ref: true,
+      panPadding: zoomPanPadding,
+    });
 
     return proposedStrand;
   }
@@ -958,7 +961,12 @@ export class Runtime {
     this.pendingUpdate = true;
   }
 
-  getReadyState(): { ready: boolean; cycle: number; reason: AtlasReadyResetReason; timestamp?: number } {
+  getReadyState(): {
+    ready: boolean;
+    cycle: number;
+    reason: AtlasReadyResetReason;
+    timestamp?: number;
+  } {
     return {
       ready: this.ready,
       cycle: this.readyCycle,
@@ -970,6 +978,54 @@ export class Runtime {
   selectZone(zone: number | string) {
     this.world.selectZone(zone);
     this.pendingUpdate = true;
+  }
+
+  goToZone(
+    id: string,
+    options: {
+      paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
+      immediate?: boolean;
+    } = {}
+  ): boolean {
+    const zone = this.world.getZoneById(id);
+    if (!zone) {
+      return false;
+    }
+
+    zone.recalculateBounds();
+    if (zone.points[0] === 0) {
+      return false;
+    }
+
+    this.world.selectZone(id);
+
+    const homeTarget = this.getHomeTarget({
+      position: zone.points,
+      paddingPx: options.paddingPx,
+    });
+
+    if (options.immediate) {
+      this.transitionManager.stopTransition();
+      this.setViewport(homeTarget);
+      this.constrainBounds(this.target, { ref: true });
+      this.updateControllerPosition();
+      this.pendingUpdate = true;
+      return true;
+    }
+
+    this.transitionManager.applyTransition(
+      DnaFactory.singleBox(homeTarget.width, homeTarget.height, homeTarget.x, homeTarget.y),
+      undefined,
+      {
+        duration: 1000,
+        easing: easingFunctions.easeOutExpo,
+        constrain: false,
+      }
+    );
+    this.updateNextFrame();
+    this.pendingUpdate = true;
+
+    return true;
   }
 
   deselectZone() {

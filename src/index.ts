@@ -7,6 +7,7 @@ export * from './modules/grid-builder/grid-builder';
 export * from './modules/iiif';
 export * from './modules/navigator-renderer/navigator-renderer';
 export * from './modules/overlay-renderer/overlay-renderer';
+export * from './modules/pdf-scroll-zone-controller/pdf-scroll-zone-controller';
 export * from './modules/popmotion-controller/popmotion-controller';
 export * from './modules/react-reconciler';
 export * from './modules/react-reconciler/components/DevTools';

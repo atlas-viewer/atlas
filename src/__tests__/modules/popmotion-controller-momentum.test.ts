@@ -248,4 +248,36 @@ describe('popmotion controller pan momentum', () => {
     expect(harness.runtime.target[1]).toBeGreaterThan(releasedAt);
     harness.stop();
   });
+
+  test('edge hit during momentum requests animated bounds constrain', () => {
+    const harness = createRuntimeHarness();
+    now = 0;
+    dragForMomentum(harness, (value) => {
+      now = value;
+    });
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(0);
+
+    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => [true, nextTarget] as const);
+    harness.runFrame(16);
+
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(1);
+    expect(harness.world.constraintBounds).toHaveBeenCalledWith();
+    harness.stop();
+  });
+
+  test('edge hit during momentum does not snap target to constrained position', () => {
+    const harness = createRuntimeHarness();
+    now = 0;
+    dragForMomentum(harness, (value) => {
+      now = value;
+    });
+    const releasedAt = harness.runtime.target[1];
+    harness.runtime.constrainBounds = vi.fn(() => [true, dna([1, 500, 0, 600, 100])] as const);
+
+    harness.runFrame(16);
+
+    expect(harness.runtime.target[1]).toBe(releasedAt);
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(1);
+    harness.stop();
+  });
 });

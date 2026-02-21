@@ -5,6 +5,7 @@ import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
 import { CompositeRenderer } from '../../composite-renderer/composite-renderer';
 import { NavigatorRenderer, type NavigatorRendererOptions } from '../../navigator-renderer/navigator-renderer';
 import { OverlayRenderer } from '../../overlay-renderer/overlay-renderer';
+import { pdfScrollZoneController } from '../../pdf-scroll-zone-controller/pdf-scroll-zone-controller';
 import { popmotionController } from '../../popmotion-controller/popmotion-controller';
 import { isWebGLImageFastPathCandidate } from '../../webgl-renderer/webgl-eligibility';
 import { WebGLRenderer } from '../../webgl-renderer/webgl-renderer';
@@ -15,6 +16,7 @@ export type DefaultPresetName = 'default-preset';
 
 export type DefaultPresetOptions = {
   controllerConfig?: any;
+  interactionMode?: 'popmotion' | 'pdf-scroll-zone';
   unstable_webglRenderer?: boolean;
   interactive?: boolean;
   dpi?: number;
@@ -32,6 +34,7 @@ export function defaultPreset({
   parityCanvasElement,
   overlayElement,
   controllerConfig,
+  interactionMode = 'popmotion',
   unstable_webglRenderer,
   dpi,
   debug,
@@ -52,8 +55,9 @@ export function defaultPreset({
 
   canvasElement.style.userSelect = 'none';
 
+  const controllerFactory = interactionMode === 'pdf-scroll-zone' ? pdfScrollZoneController : popmotionController;
   const controller = interactive
-    ? popmotionController({
+    ? controllerFactory({
         minZoomFactor: 0.5,
         maxZoomFactor: 3,
         enableClickToZoom: false,

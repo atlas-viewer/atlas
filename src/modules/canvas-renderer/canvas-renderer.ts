@@ -1,20 +1,21 @@
-import { Strand } from '@atlas-viewer/dna';
-import { Paint, Paintable, WorldObject } from '../../world-objects';
-import { PositionPair } from '../../types';
-import { distance } from '../../utils';
-import { Text } from '../../objects/text';
-import { SingleImage } from '../../spacial-content/single-image';
-import { SpacialContent } from '../../spacial-content/spacial-content';
-import { TiledImage } from '../../spacial-content/tiled-image';
-import { Renderer } from '../../renderer/renderer';
-import { World } from '../../world';
-import { Box } from '../../objects/box';
+import type { Strand } from '@atlas-viewer/dna';
 import LRUCache from 'lru-cache';
+import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
-import { HookOptions } from '../../standalone';
+import type { Text } from '../../objects/text';
+import type { Renderer } from '../../renderer/renderer';
+import { SingleImage } from '../../spacial-content/single-image';
+import type { SpacialContent } from '../../spacial-content/spacial-content';
+import { TiledImage } from '../../spacial-content/tiled-image';
+import type { HookOptions } from '../../standalone';
+import type { PositionPair } from '../../types';
+import { getZoneConstrainedBounds } from '../../utility/get-zone-constrained-bounds';
+import { distance } from '../../utils';
+import type { World } from '../../world';
+import type { Paint, Paintable, WorldObject } from '../../world-objects';
 import { buildCssFilter } from '../shared/build-css-filter';
-import { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
-import { getRetryDelayMs, ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
+import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
 import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
 
 const shadowRegex =
@@ -171,7 +172,9 @@ export class CanvasRenderer implements Renderer {
     this.rendererPosition = canvas.getBoundingClientRect();
     // Not working as expected.
     // this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
-    this.ctx = canvas.getContext('2d', { alpha: true }) as CanvasRenderingContext2D;
+    this.ctx = canvas.getContext('2d', {
+      alpha: true,
+    }) as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
     this.imageLoadingConfig = resolveImageLoadingConfig(this.options.imageLoading);
@@ -228,7 +231,10 @@ export class CanvasRenderer implements Renderer {
   }
 
   getCanvasDims() {
-    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
+    return {
+      width: this.canvas.width / this.dpi,
+      height: this.canvas.height / this.dpi,
+    };
   }
 
   resize() {
@@ -247,7 +253,8 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
-    this.imagesPending = this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
+    this.imagesPending =
+      this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
@@ -815,16 +822,25 @@ export class CanvasRenderer implements Renderer {
 
         const isActiveLayer = this.isLayerActive(paint);
         const canvas = this.getCanvasDims();
-        const priority = distance({ x: x + width / 2, y: y + height / 2 }, { x: canvas.width / 2, y: canvas.height / 2 });
+        const priority = distance(
+          { x: x + width / 2, y: y + height / 2 },
+          { x: canvas.width / 2, y: canvas.height / 2 }
+        );
         const isInvalidated = this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1;
         const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
         const hasImage = !!canvasToPaint && !isInvalidated;
 
         if (isInvalidated) {
-          this.setTileState(imageBuffer, index, { ...tileState, state: 'idle' });
+          this.setTileState(imageBuffer, index, {
+            ...tileState,
+            state: 'idle',
+          });
         }
 
-        if ((isInvalidated || !hasImage || tileState.state === 'idle' || tileState.state === 'error') && isActiveLayer) {
+        if (
+          (isInvalidated || !hasImage || tileState.state === 'idle' || tileState.state === 'error') &&
+          isActiveLayer
+        ) {
           this.schedulePaintToCanvas(imageBuffer, paint, index, priority, false);
           this.schedulePrefetchNeighbours(imageBuffer, paint, index, priority);
         }
@@ -1075,7 +1091,11 @@ export class CanvasRenderer implements Renderer {
           return;
         }
         if (this.visible.indexOf(paint) === -1) {
-          this.setTileState(imageBuffer, index, { ...state, state: 'idle', cancelledAt: performance.now() });
+          this.setTileState(imageBuffer, index, {
+            ...state,
+            state: 'idle',
+            cancelledAt: performance.now(),
+          });
           this.pendingTileReveals.delete(tileKey);
           return;
         }
@@ -1247,7 +1267,14 @@ export class CanvasRenderer implements Renderer {
     // canvas.height = paint.display.height;
     // canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
-    paint.__host.canvas = { canvas: undefined, canvases: [], tiles: {}, indices: [], loaded: [], loading: false };
+    paint.__host.canvas = {
+      canvas: undefined,
+      canvases: [],
+      tiles: {},
+      indices: [],
+      loaded: [],
+      loading: false,
+    };
     // hostCache[paint.id] = paint.__host;
   }
 
@@ -1259,28 +1286,25 @@ export class CanvasRenderer implements Renderer {
     const zone = world.getActiveZone();
 
     if (zone) {
-      const xCon = target[3] - target[1] < zone.points[3] - zone.points[1];
-      const yCon = target[4] - target[2] < zone.points[4] - zone.points[2];
-      return {
-        x1: xCon
-          ? zone.points[1] - padding
-          : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-        y1: yCon
-          ? zone.points[2] - padding
-          : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-        x2: xCon
-          ? zone.points[3] + padding
-          : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-        y2: yCon
-          ? zone.points[4] + padding
-          : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-      };
+      zone.recalculateBounds();
+      const bounds = getZoneConstrainedBounds(target, zone.points, padding);
+      if (bounds) {
+        const width = target[3] - target[1];
+        const height = target[4] - target[2];
+        return {
+          x1: bounds.minX,
+          y1: bounds.minY,
+          x2: bounds.maxX + width,
+          y2: bounds.maxY + height,
+        };
+      }
     }
     return null;
   }
 
   pendingUpdate(): boolean {
-    this.imagesPending = this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
+    this.imagesPending =
+      this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     const ready =
       !this.pendingDrawCall &&
       this.drawCalls.length === 0 &&
@@ -1289,7 +1313,12 @@ export class CanvasRenderer implements Renderer {
       this.inFlightImageLoads.size === 0 &&
       this.pendingTileReveals.size === 0;
 
-    if (!ready && this.visible.length === 0 && this.options.readiness !== 'immediate' && this.fallbackRevealTimeout === null) {
+    if (
+      !ready &&
+      this.visible.length === 0 &&
+      this.options.readiness !== 'immediate' &&
+      this.fallbackRevealTimeout === null
+    ) {
       // If its still not ready by 500ms, force it to be.
       this.fallbackRevealTimeout = setTimeout(() => {
         this.canvas.style.opacity = '1';

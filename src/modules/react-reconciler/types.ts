@@ -1,9 +1,9 @@
-import React from 'react';
-import { UpdateTextureFunction } from '../../spacial-content/image-texture';
-import { BoxStyle } from '../../objects/box';
-import { EventListenerProps } from '../../clean-objects/traits/evented';
-import { GeometryProps } from '../../objects/geometry';
-import { CompositeResourceProps } from '../../spacial-content/composite-resource';
+import type React from 'react';
+import type { EventListenerProps } from '../../clean-objects/traits/evented';
+import type { BoxStyle } from '../../objects/box';
+import type { GeometryProps } from '../../objects/geometry';
+import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
+import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
 
 type BaseElement = {
   id?: string;
@@ -13,6 +13,11 @@ type BaseElement = {
 };
 
 export type AllEvents = EventListenerProps;
+type ZoneVisibilityProps = {
+  onZoneVisible?: () => void;
+  onZoneHidden?: () => void;
+  onZoneVisibilityChange?: (visible: boolean) => void;
+};
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -40,6 +45,15 @@ declare global {
         y?: number;
         rotation?: number;
       } & AllEvents;
+      zone: BaseElement & {
+        id: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        margin?: number;
+        children?: React.ReactNode;
+      } & ZoneVisibilityProps;
       worldImage: BaseElement & {
         uri: string;
         target: any;

@@ -1,25 +1,25 @@
-import { Viewer, ViewingDirection } from './types';
 import {
   compose,
   DnaFactory,
+  dna,
   dnaLength,
   hidePointsOutsideRegion,
   mutate,
+  type Strand,
   scale,
   scaleAtOrigin,
   translate,
-  dna,
-  Strand,
 } from '@atlas-viewer/dna';
-import { WorldObject } from './world-objects/world-object';
-import { AbstractObject } from './world-objects/abstract-object';
-import { Paint, Paintable } from './world-objects/paint';
-import { ZoneInterface } from './world-objects/zone';
-import { BaseObject } from './objects/base-object';
-import { SpacialContent } from './spacial-content/spacial-content';
-import { SupportedEvents } from './events';
-import { Geometry } from './objects/geometry';
+import type { SupportedEvents } from './events';
 import type { WorldDebugEvent } from './modules/react-reconciler/devtools/types';
+import { BaseObject } from './objects/base-object';
+import { Geometry } from './objects/geometry';
+import type { SpacialContent } from './spacial-content/spacial-content';
+import type { Viewer, ViewingDirection } from './types';
+import type { AbstractObject } from './world-objects/abstract-object';
+import type { Paint, Paintable } from './world-objects/paint';
+import { WorldObject } from './world-objects/world-object';
+import type { ZoneInterface } from './world-objects/zone';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
@@ -116,7 +116,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       touches: touchTargets.length,
     });
 
-    return targets.map((target) => this.propagateEvent(eventName, e, target, { bubbles: true, cancelable: true }));
+    return targets.map((target) =>
+      this.propagateEvent(eventName, e, target, {
+        bubbles: true,
+        cancelable: true,
+      })
+    );
   }
 
   propagatePointerEvent<Name extends keyof SupportedEvents>(
@@ -224,6 +229,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.objects[index] = null;
     this.renderOrder = this.renderOrder.filter((t) => t !== index);
     this.points[index * 5] = 0;
+    for (const zone of this.zones) {
+      const zoneIndex = zone.objects.indexOf(item);
+      if (zoneIndex !== -1) {
+        zone.objects.splice(zoneIndex, 1);
+        zone.recalculateBounds();
+      }
+    }
     this.triggerRepaint();
     this.needsRecalculate = true;
   }
@@ -252,15 +264,44 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.zones.push(zone);
   }
 
+  removeZone(zone: ZoneInterface) {
+    const index = this.zones.indexOf(zone);
+    if (index === -1) {
+      return;
+    }
+    this.zones.splice(index, 1);
+    if (typeof this.selectedZone === 'undefined') {
+      return;
+    }
+    if (this.selectedZone === index) {
+      this.selectedZone = undefined;
+      this.trigger('zone-changed');
+      return;
+    }
+    if (this.selectedZone > index) {
+      this.selectedZone -= 1;
+    }
+  }
+
+  getZoneById(id: string): ZoneInterface | undefined {
+    for (const zone of this.zones) {
+      if (zone.id === id) {
+        return zone;
+      }
+    }
+    return undefined;
+  }
+
+  hasZone(id: string): boolean {
+    return typeof this.getZoneById(id) !== 'undefined';
+  }
+
   selectZone(id: string | number) {
     if (typeof id === 'string') {
-      const len = this.zones.length;
-      for (let i = 0; i < len; i++) {
-        if (this.zones[i].id === id) {
-          this.selectedZone = i;
-          this.trigger('zone-changed');
-          return;
-        }
+      const zone = this.getZoneById(id);
+      if (zone) {
+        this.selectedZone = this.zones.indexOf(zone);
+        this.trigger('zone-changed');
       }
     } else {
       if (this.zones[id]) {
@@ -272,10 +313,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   deselectZone() {
     this.selectedZone = undefined;
+    this.trigger('zone-changed');
   }
 
   getActiveZone(): ZoneInterface | undefined {
-    if (this.selectedZone) {
+    if (typeof this.selectedZone !== 'undefined') {
       return this.zones[this.selectedZone];
     }
     return undefined;
@@ -340,7 +382,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         didChange = true;
       }
       if (didChange) {
-        this.trigger('recalculate-world-size', { width: newWidth, height: newHeight });
+        this.trigger('recalculate-world-size', {
+          width: newWidth,
+          height: newHeight,
+        });
       }
       this.needsRecalculate = false;
     }
