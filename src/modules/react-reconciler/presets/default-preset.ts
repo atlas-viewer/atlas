@@ -1,15 +1,15 @@
-import { popmotionController } from '../../popmotion-controller/popmotion-controller';
-import { CompositeRenderer } from '../../composite-renderer/composite-renderer';
-import { WebGLRenderer } from '../../webgl-renderer/webgl-renderer';
-import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
-import { OverlayRenderer } from '../../overlay-renderer/overlay-renderer';
 import { Runtime } from '../../../renderer/runtime';
 import { World } from '../../../world';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
-import { Preset, PresetArgs } from './_types';
-import { unmountComponentAtNode } from '../reconciler';
-import { DebugRenderer } from '../../debug-renderer/debug-renderer';
+import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
+import { CompositeRenderer } from '../../composite-renderer/composite-renderer';
+import { NavigatorRenderer, type NavigatorRendererOptions } from '../../navigator-renderer/navigator-renderer';
+import { OverlayRenderer } from '../../overlay-renderer/overlay-renderer';
+import { popmotionController } from '../../popmotion-controller/popmotion-controller';
 import { isWebGLImageFastPathCandidate } from '../../webgl-renderer/webgl-eligibility';
+import { WebGLRenderer } from '../../webgl-renderer/webgl-renderer';
+import { unmountComponentAtNode } from '../reconciler';
+import type { Preset, PresetArgs } from './_types';
 
 export type DefaultPresetName = 'default-preset';
 
@@ -21,6 +21,7 @@ export type DefaultPresetOptions = {
   debug?: boolean;
   canvasBox?: boolean;
   polygon?: boolean;
+  navigatorRendererOptions?: NavigatorRendererOptions;
 };
 
 export function defaultPreset({
@@ -43,6 +44,7 @@ export function defaultPreset({
   imageLoading,
   webglFallbackOnImageLoadError,
   webglReadiness,
+  navigatorRendererOptions,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -74,10 +76,24 @@ export function defaultPreset({
         readiness: webglReadiness,
       });
     } catch (error) {
-      baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, imageLoading, onImageError });
+      baseRenderer = new CanvasRenderer(canvasElement, {
+        dpi,
+        debug,
+        box: canvasBox,
+        polygon,
+        imageLoading,
+        onImageError,
+      });
     }
   } else {
-    baseRenderer = new CanvasRenderer(canvasElement, { dpi, debug, box: canvasBox, polygon, imageLoading, onImageError });
+    baseRenderer = new CanvasRenderer(canvasElement, {
+      dpi,
+      debug,
+      box: canvasBox,
+      polygon,
+      imageLoading,
+      onImageError,
+    });
   }
 
   const usingWebGL = baseRenderer instanceof WebGLRenderer;
@@ -97,6 +113,9 @@ export function defaultPreset({
   }
 
   const shouldRenderBoxesInOverlay = usingWebGL && !parityCanvasRenderer ? true : !canvasBox;
+  const navigatorRenderer = navigatorElement
+    ? new NavigatorRenderer(navigatorElement, navigatorRendererOptions)
+    : undefined;
 
   const renderer = new CompositeRenderer([
     baseRenderer,
@@ -108,7 +127,7 @@ export function defaultPreset({
           triggerResize: forceRefresh,
         })
       : undefined,
-    navigatorElement ? new DebugRenderer(navigatorElement) : undefined,
+    navigatorRenderer,
   ]);
 
   const runtime = new Runtime(
