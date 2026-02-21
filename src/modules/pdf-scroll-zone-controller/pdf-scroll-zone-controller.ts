@@ -19,6 +19,8 @@ const defaultConfig: Required<Pick<PdfScrollZoneControllerConfig, 'scrollWheelFa
 const ZONE_VIEWPORT_HEIGHT_RATIO = 0.9;
 const ZONE_VIEWPORT_VERTICAL_PADDING_RATIO = (1 - ZONE_VIEWPORT_HEIGHT_RATIO) / 2;
 const ZONE_AUTO_EXIT_MIN_COVERAGE_RATIO = 0.8;
+let nextPdfControllerSessionId = 1;
+const activePdfControllerSessionByRuntime = new WeakMap<object, number>();
 
 function toScrollViewport(viewport: { x: number; y: number; width: number; height: number }): ScrollViewport {
   return {
@@ -38,9 +40,25 @@ function pointInZone(zone: ZoneInterface, x: number, y: number): boolean {
 export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = {}): RuntimeController => {
   return {
     start(runtime) {
+      const sessionId = nextPdfControllerSessionId++;
+      activePdfControllerSessionByRuntime.set(runtime as object, sessionId);
+      const isActiveSession = () => activePdfControllerSessionByRuntime.get(runtime as object) === sessionId;
       const { scrollWheelFactor, scrollLoadAheadFactor } = {
         ...defaultConfig,
         ...config,
+      };
+      const queueFollowUpFrame = () => {
+        if (followUpFrameQueued) {
+          return;
+        }
+        followUpFrameQueued = true;
+        window.requestAnimationFrame(() => {
+          followUpFrameQueued = false;
+          if (!isActiveSession()) {
+            return;
+          }
+          runtime.updateNextFrame();
+        });
       };
 
       const originalMode = runtime.mode;
@@ -51,6 +69,10 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let zoneEnteredViaController = false;
       let pendingProgrammaticRestoreZoneId: string | undefined;
       let savedScrollViewport: ScrollViewport | undefined;
+      let initialHomeAnchorLocked = false;
+      let initialHomeAnchorKey: string | undefined;
+      const initialHomeSyncRetryDeadlineMs = performance.now() + 5000;
+      let followUpFrameQueued = false;
       let dragStartWorldY = 0;
       let dragStartViewportY = 0;
       let isDragging = false;
@@ -115,6 +137,89 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         }
 
         return didFind ? topY : 0;
+      };
+      const getInitialHomeAnchorKey = (): string | undefined => {
+        const rendererScreen = runtime.getRendererScreenPosition();
+        const screenWidth = Math.round((rendererScreen?.width || runtime.width || 0) * 100) / 100;
+        const screenHeight = Math.round((rendererScreen?.height || runtime.height || 0) * 100) / 100;
+        const screenSource = rendererScreen?.width && rendererScreen?.height ? 'renderer' : 'runtime';
+        let topZone: ZoneInterface | undefined;
+        for (const zone of runtime.world.zones) {
+          zone.recalculateBounds();
+          if (zone.points[0] === 0) {
+            continue;
+          }
+          if (!topZone || zone.points[2] < topZone.points[2]) {
+            topZone = zone;
+          }
+        }
+        if (topZone) {
+          return [
+            'zone',
+            topZone.id,
+            topZone.points[1],
+            topZone.points[2],
+            topZone.points[3] - topZone.points[1],
+            topZone.points[4] - topZone.points[2],
+            `screen:${screenWidth}x${screenHeight}:${screenSource}`,
+          ].join(':');
+        }
+
+        let foundIndex = -1;
+        let topY = 0;
+        const objects = runtime.world.getObjects();
+        for (let i = 0; i < objects.length; i++) {
+          const worldObject = objects[i];
+          if (!worldObject || worldObject.points[0] === 0) {
+            continue;
+          }
+          if (foundIndex === -1 || worldObject.points[2] < topY) {
+            foundIndex = i;
+            topY = worldObject.points[2];
+          }
+        }
+        if (foundIndex !== -1) {
+          const object = objects[foundIndex]!;
+          return [
+            'object',
+            object.id || foundIndex,
+            object.points[1],
+            object.points[2],
+            object.points[3] - object.points[1],
+            object.points[4] - object.points[2],
+            `screen:${screenWidth}x${screenHeight}:${screenSource}`,
+          ].join(':');
+        }
+        return undefined;
+      };
+      const syncInitialHomeAnchor = () => {
+        if (!isActiveSession()) {
+          return;
+        }
+        if (
+          initialHomeAnchorLocked ||
+          mode !== 'scroll-mode' ||
+          restoringViewport ||
+          isDragging ||
+          exitTransitionInFlight ||
+          runtime.world.hasActiveZone()
+        ) {
+          return;
+        }
+        const nextAnchorKey = getInitialHomeAnchorKey();
+        if (!nextAnchorKey) {
+          if (performance.now() < initialHomeSyncRetryDeadlineMs) {
+            runtime.updateNextFrame();
+          }
+          return;
+        }
+        if (nextAnchorKey === initialHomeAnchorKey) {
+          return;
+        }
+        initialHomeAnchorKey = nextAnchorKey;
+        scrollViewY = getDocumentStartY();
+        applyScrollViewport(scrollViewY);
+        queueFollowUpFrame();
       };
 
       const getScrollBaseViewport = (): ScrollViewport | undefined => {
@@ -219,6 +324,10 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const enterZone = (zoneId: string) => {
+        if (!isActiveSession()) {
+          return;
+        }
+        initialHomeAnchorLocked = true;
         if (!savedScrollViewport) {
           savedScrollViewport = toScrollViewport({
             ...runtime.getViewport(),
@@ -234,6 +343,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         }
       };
       const restoreScrollViewport = () => {
+        if (!isActiveSession()) {
+          return;
+        }
         const targetY = savedScrollViewport ? savedScrollViewport.y : scrollViewY;
         const didAnimate = animateToScrollViewport(targetY);
         savedScrollViewport = undefined;
@@ -246,6 +358,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         runtime.updateNextFrame();
       };
       const shouldAutoExitActiveZone = () => {
+        if (!isActiveSession()) {
+          return false;
+        }
         if (mode !== 'zone-active') {
           return false;
         }
@@ -269,6 +384,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const exitZone = () => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (mode !== 'zone-active') {
           return;
         }
@@ -279,6 +397,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onClick = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (!e.atlas) {
           return;
         }
@@ -299,6 +420,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onWheel = (e: WheelEvent) => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (exitTransitionInFlight) {
           e.stopPropagation();
           return;
@@ -306,6 +430,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (mode !== 'scroll-mode') {
           return;
         }
+        initialHomeAnchorLocked = true;
         e.stopPropagation();
         const normalized = normalizeWheel(e);
         const deltaPx = normalized.pixelY || (e as any).deltaY || 0;
@@ -314,9 +439,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onMouseDown = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
+        initialHomeAnchorLocked = true;
         e.stopPropagation();
         isDragging = true;
         dragStartWorldY = e.atlas.y;
@@ -324,6 +453,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onMouseMove = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (!isDragging || mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
@@ -333,10 +465,16 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       };
 
       const onMouseUp = () => {
+        if (!isActiveSession()) {
+          return;
+        }
         isDragging = false;
       };
 
       const onKeyDown = (e: KeyboardEvent) => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (e.key === 'Escape') {
           exitZone();
         }
@@ -360,10 +498,14 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       runtime.manualHomePosition = true;
       setMode('scroll-mode');
       scrollViewY = getDocumentStartY();
-      applyScrollViewport(scrollViewY);
+      syncInitialHomeAnchor();
 
       const stopPopmotion = popmotion.start(runtime);
       const removeAutoExitHook = runtime.registerHook('useAfterFrame', () => {
+        if (!isActiveSession()) {
+          return;
+        }
+        syncInitialHomeAnchor();
         if (exitTransitionInFlight && !runtime.transitionManager.hasPending()) {
           exitTransitionInFlight = false;
           restoringViewport = false;
@@ -388,6 +530,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       });
 
       const removeLayout = runtime.world.addLayoutSubscriber((type) => {
+        if (!isActiveSession()) {
+          return;
+        }
         if (type === 'goto-region') {
           restoringViewport = false;
         }
@@ -397,9 +542,11 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
             scrollViewY = getDocumentStartY();
           }
           applyScrollViewport(scrollViewY);
+          queueFollowUpFrame();
         }
         if (type === 'zone-changed') {
           if (runtime.world.hasActiveZone()) {
+            initialHomeAnchorLocked = true;
             const activeZone = runtime.world.getActiveZone();
             if (!zoneEnteredViaController && activeZone) {
               pendingProgrammaticRestoreZoneId = activeZone.id;
@@ -439,8 +586,11 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         runtime.world.removeEventListener('mouseup', onMouseUp);
         window.removeEventListener('mouseup', onMouseUp);
         window.removeEventListener('keydown', onKeyDown);
-        runtime.manualHomePosition = originalManualHomePosition;
-        runtime.mode = originalMode;
+        if (isActiveSession()) {
+          activePdfControllerSessionByRuntime.delete(runtime as object);
+          runtime.manualHomePosition = originalManualHomePosition;
+          runtime.mode = originalMode;
+        }
       };
     },
 

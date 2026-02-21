@@ -1185,6 +1185,7 @@ export const Atlas: React.FC<
 						bounds={bounds}
 						preset={preset}
 						mode={mode}
+						interactionMode={interactionMode}
 						setIsReady={setIsReady}
 						onCreated={handleCreated}
 					>

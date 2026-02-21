@@ -1208,6 +1208,8 @@ export class Runtime {
     }
     // A final hook after the entire frame is complete.
     this.renderer.afterFrame(this.world, delta, this.target, this.hookOptions);
+    // Mark this frame as consumed before running after-frame hooks so hooks can request the next frame.
+    this.pendingUpdate = false;
     this.hook('useAfterFrame', delta);
     // Finally at the end, we set up the frame we just rendered.
     this.lastTarget[0] = this.target[0];
@@ -1217,7 +1219,6 @@ export class Runtime {
     this.lastTarget[4] = this.target[4];
     // We've just finished our first render.
     this.firstRender = false;
-    this.pendingUpdate = false;
     this.logNextRender = false;
     if (!this.ready && this.renderer.isReady()) {
       this.ready = true;

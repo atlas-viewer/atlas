@@ -268,4 +268,36 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.world.hasActiveZone()).toBe(false);
     expect(pendingAfter).toEqual(pendingBefore);
   });
+
+  test('re-anchors initial home when first zone is registered after startup', () => {
+    const world = new World(1000, 3000);
+    const page = createPage('late-zone-page', 0);
+    world.appendChild(page);
+
+    const runtime = new Runtime(
+      new MockRenderer(),
+      world,
+      {
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 800,
+        scale: 1,
+      },
+      [pdfScrollZoneController()]
+    );
+    runtime.stop();
+    world.flushSubscriptions();
+
+    const beforeZoneViewport = runtime.getViewport();
+    expect(beforeZoneViewport.y).toBeCloseTo(0, 0);
+
+    world.addZone(new Zone({ id: 'late-zone', x: 0, y: 600, width: 1000, height: 1200, objects: [page] }));
+    runtime.updateNextFrame();
+    runFrame(runtime);
+    world.flushSubscriptions();
+
+    const afterZoneViewport = runtime.getViewport();
+    expect(afterZoneViewport.y).toBeCloseTo(600, 0);
+  });
 });
