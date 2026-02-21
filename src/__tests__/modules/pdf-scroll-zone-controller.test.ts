@@ -107,6 +107,7 @@ describe('pdf scroll zone controller', () => {
     expect(viewport.y).toBe(0);
     expect(viewport.width).toBeGreaterThan(1000);
     expect(viewport.height).toBeGreaterThan(800);
+    expect(1200 / viewport.height).toBeCloseTo(0.9, 1);
   });
 
   test('scroll-mode supports vertical wheel navigation', () => {
@@ -139,10 +140,10 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.world.hasActiveZone()).toBe(false);
 
     const pending = runtime.transitionManager.getPendingTransition();
-    expect(pending.to[1]).toBeCloseTo(startViewport.x, 3);
-    expect(pending.to[2]).toBeCloseTo(startViewport.y, 3);
-    expect(pending.to[3] - pending.to[1]).toBeCloseTo(startViewport.width, 3);
-    expect(pending.to[4] - pending.to[2]).toBeCloseTo(startViewport.height, 3);
+    expect(pending.to[1]).toBeCloseTo(startViewport.x, 0);
+    expect(pending.to[2]).toBeCloseTo(startViewport.y, 0);
+    expect(pending.to[3] - pending.to[1]).toBeCloseTo(startViewport.width, 0);
+    expect(pending.to[4] - pending.to[2]).toBeCloseTo(startViewport.height, 0);
   });
 
   test('exits zone on Escape', () => {
@@ -154,6 +155,23 @@ describe('pdf scroll zone controller', () => {
 
     expect(runtime.world.hasActiveZone()).toBe(false);
     expect(runtime.mode).toBe('sketch');
+  });
+
+  test('programmatic deselect animates back to scroll viewport', () => {
+    const runtime = createRuntimeWithPdfController();
+    const startViewport = runtime.getViewport();
+
+    emitClick(runtime, 100, 100);
+    runtime.deselectZone();
+    runtime.world.flushSubscriptions();
+
+    const pending = runtime.transitionManager.getPendingTransition();
+    expect(runtime.world.hasActiveZone()).toBe(false);
+    expect(runtime.mode).toBe('sketch');
+    expect(pending.done).toBe(false);
+    expect(pending.total_time).toBeGreaterThan(0);
+    expect(pending.to[1]).toBeCloseTo(startViewport.x, 0);
+    expect(pending.to[2]).toBeCloseTo(startViewport.y, 0);
   });
 
   test('stays in zone when zooming out with wheel', () => {

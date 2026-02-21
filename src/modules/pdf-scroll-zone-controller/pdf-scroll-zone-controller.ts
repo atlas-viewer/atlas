@@ -16,6 +16,8 @@ const defaultConfig: Required<Pick<PdfScrollZoneControllerConfig, 'scrollWheelFa
   scrollWheelFactor: 1,
   scrollLoadAheadFactor: 1,
 };
+const ZONE_VIEWPORT_HEIGHT_RATIO = 0.9;
+const ZONE_VIEWPORT_VERTICAL_PADDING_RATIO = (1 - ZONE_VIEWPORT_HEIGHT_RATIO) / 2;
 
 function toScrollViewport(viewport: { x: number; y: number; width: number; height: number }): ScrollViewport {
   return {
@@ -65,6 +67,18 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         mode = nextMode;
         runtime.mode = nextMode === 'zone-active' ? 'explore' : 'sketch';
       };
+      const getZoneViewportPaddingPx = () => {
+        const screen = runtime.getRendererScreenPosition();
+        const screenHeight = Math.max(0, screen?.height || 0);
+        if (screenHeight === 0) {
+          return undefined;
+        }
+        const verticalPaddingPx = Math.round(screenHeight * ZONE_VIEWPORT_VERTICAL_PADDING_RATIO);
+        return {
+          top: verticalPaddingPx,
+          bottom: verticalPaddingPx,
+        };
+      };
 
       const getDocumentStartY = () => {
         let didFind = false;
@@ -107,7 +121,10 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           .sort((a, b) => a.points[2] - b.points[2])[0];
 
         if (firstZone) {
-          const fitted = runtime.getHomeTarget({ position: firstZone.points });
+          const fitted = runtime.getHomeTarget({
+            position: firstZone.points,
+            paddingPx: getZoneViewportPaddingPx(),
+          });
           return {
             x: fitted.x,
             y: fitted.y,
@@ -168,6 +185,19 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         runtime.setViewport(nextViewport);
         runtime.updateNextFrame();
       };
+      const animateToScrollViewport = (preferredY: number) => {
+        const nextViewport = getScrollViewport(preferredY);
+        if (!nextViewport) {
+          return false;
+        }
+        scrollViewY = nextViewport.y;
+        runtime.world.gotoRegion({
+          ...nextViewport,
+          immediate: false,
+        });
+        runtime.updateNextFrame();
+        return true;
+      };
 
       const findZoneAtPoint = (x: number, y: number) => {
         for (const zone of runtime.world.zones) {
@@ -186,7 +216,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
             y: scrollViewY,
           });
         }
-        const didNavigate = runtime.goToZone(zoneId);
+        const didNavigate = runtime.goToZone(zoneId, {
+          paddingPx: getZoneViewportPaddingPx(),
+        });
         if (didNavigate) {
           setMode('zone-active');
         }
@@ -199,19 +231,12 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         setMode('scroll-mode');
         restoringViewport = true;
         runtime.deselectZone();
-        if (savedScrollViewport) {
-          const restoreViewport = getScrollViewport(savedScrollViewport.y);
-          if (restoreViewport) {
-            scrollViewY = savedScrollViewport.y;
-            runtime.world.gotoRegion({
-              ...restoreViewport,
-              immediate: false,
-            });
-          }
-          savedScrollViewport = undefined;
-        } else {
-          applyScrollViewport(scrollViewY);
+        const targetY = savedScrollViewport ? savedScrollViewport.y : scrollViewY;
+        const didAnimate = animateToScrollViewport(targetY);
+        savedScrollViewport = undefined;
+        if (!didAnimate) {
           restoringViewport = false;
+          applyScrollViewport(scrollViewY);
         }
         runtime.updateNextFrame();
       };
@@ -317,9 +342,17 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
             setMode('zone-active');
             return;
           }
+          const wasZoneActive = mode === 'zone-active';
           setMode('scroll-mode');
           if (!restoringViewport) {
-            applyScrollViewport(scrollViewY);
+            if (wasZoneActive) {
+              const didAnimate = animateToScrollViewport(scrollViewY);
+              if (!didAnimate) {
+                applyScrollViewport(scrollViewY);
+              }
+            } else {
+              applyScrollViewport(scrollViewY);
+            }
           }
         }
       });
