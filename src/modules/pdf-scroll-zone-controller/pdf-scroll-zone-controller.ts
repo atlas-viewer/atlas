@@ -48,6 +48,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let mode: ControllerMode = 'scroll-mode';
       let restoringViewport = false;
       let exitTransitionInFlight = false;
+      let zoneEnteredViaController = false;
+      let pendingProgrammaticRestoreZoneId: string | undefined;
       let savedScrollViewport: ScrollViewport | undefined;
       let dragStartWorldY = 0;
       let dragStartViewportY = 0;
@@ -177,6 +179,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           height,
         };
       };
+      const getScrollViewportForZone = (zone: ZoneInterface): ScrollViewport | undefined => {
+        zone.recalculateBounds();
+        if (zone.points[0] === 0) {
+          return undefined;
+        }
+        return getScrollViewport(zone.points[2]);
+      };
 
       const applyScrollViewport = (preferredY: number) => {
         const nextViewport = getScrollViewport(preferredY);
@@ -216,9 +225,12 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
             y: scrollViewY,
           });
         }
+        zoneEnteredViaController = true;
         const didNavigate = runtime.goToZone(zoneId);
         if (didNavigate) {
           setMode('zone-active');
+        } else {
+          zoneEnteredViaController = false;
         }
       };
       const restoreScrollViewport = () => {
@@ -356,6 +368,17 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           exitTransitionInFlight = false;
           restoringViewport = false;
         }
+        if (pendingProgrammaticRestoreZoneId && mode === 'zone-active' && !runtime.transitionManager.hasPending()) {
+          const activeZone = runtime.world.getActiveZone();
+          if (activeZone && activeZone.id === pendingProgrammaticRestoreZoneId) {
+            const zoneScrollViewport = getScrollViewportForZone(activeZone);
+            if (zoneScrollViewport) {
+              savedScrollViewport = toScrollViewport(zoneScrollViewport);
+              scrollViewY = zoneScrollViewport.y;
+            }
+          }
+          pendingProgrammaticRestoreZoneId = undefined;
+        }
         if (restoringViewport) {
           return;
         }
@@ -377,16 +400,21 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         }
         if (type === 'zone-changed') {
           if (runtime.world.hasActiveZone()) {
-            if (!savedScrollViewport) {
+            const activeZone = runtime.world.getActiveZone();
+            if (!zoneEnteredViaController && activeZone) {
+              pendingProgrammaticRestoreZoneId = activeZone.id;
+            } else if (!savedScrollViewport) {
               savedScrollViewport = toScrollViewport({
                 ...runtime.getViewport(),
                 y: scrollViewY,
               });
             }
+            zoneEnteredViaController = false;
             setMode('zone-active');
             return;
           }
           const wasZoneActive = mode === 'zone-active';
+          pendingProgrammaticRestoreZoneId = undefined;
           setMode('scroll-mode');
           if (exitTransitionInFlight) {
             return;

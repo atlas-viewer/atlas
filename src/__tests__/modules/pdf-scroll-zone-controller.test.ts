@@ -101,6 +101,18 @@ function runFrame(runtime: Runtime, delta = 16) {
   runtime.render(performance.now() + delta);
 }
 
+function settleTransition(runtime: Runtime, maxFrames = 120) {
+  let now = performance.now();
+  for (let i = 0; i < maxFrames; i++) {
+    if (!runtime.transitionManager.hasPending()) {
+      break;
+    }
+    now += 16;
+    runtime.render(now);
+    runtime.world.flushSubscriptions();
+  }
+}
+
 describe('pdf scroll zone controller', () => {
   test('initializes at the top of the first page in scroll-mode', () => {
     const runtime = createRuntimeWithPdfController();
@@ -187,6 +199,29 @@ describe('pdf scroll zone controller', () => {
     expect(pending.to[2]).toBeCloseTo(pendingEscape.to[2], 0);
     expect(pending.to[3]).toBeCloseTo(pendingEscape.to[3], 0);
     expect(pending.to[4]).toBeCloseTo(pendingEscape.to[4], 0);
+  });
+
+  test('programmatic goToZone updates scroll restoration target to that zone', () => {
+    const runtime = createRuntimeWithPdfController();
+
+    const didGo = runtime.goToZone('page-2');
+    runtime.world.flushSubscriptions();
+    settleTransition(runtime);
+    runtime.world.flushSubscriptions();
+
+    expect(didGo).toBe(true);
+    expect(runtime.world.getActiveZone()?.id).toBe('page-2');
+    expect(runtime.mode).toBe('explore');
+
+    runtime.deselectZone();
+    runtime.world.flushSubscriptions();
+
+    expect(runtime.world.hasActiveZone()).toBe(false);
+    expect(runtime.mode).toBe('sketch');
+
+    const pending = runtime.transitionManager.getPendingTransition();
+    expect(pending.done).toBe(false);
+    expect(pending.to[2]).toBeCloseTo(1280, 0);
   });
 
   test('auto exits zone when zone is below 80% of viewport width and height', () => {
