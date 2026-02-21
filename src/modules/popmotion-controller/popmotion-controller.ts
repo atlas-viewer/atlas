@@ -1,10 +1,9 @@
+import { compose, DnaFactory, dna, scaleAtOrigin, transform, translate } from '@atlas-viewer/dna';
 /** @ts-ignore */
 import normalizeWheel from 'normalize-wheel';
-import { distance } from '../../utils';
-import { compose, dna, scale, scaleAtOrigin, transform, translate, DnaFactory } from '@atlas-viewer/dna';
-import { RuntimeController } from '../../types';
+import type { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
-import { toBox } from '../../utility/to-box';
+import { distance } from '../../utils';
 
 const INTENT_PAN = 'pan';
 const INTENT_SCROLL = 'scroll';
@@ -22,6 +21,14 @@ export type PopmotionControllerConfig = {
   panBounceDamping?: number;
   panTimeConstant?: number;
   panPower?: number;
+  /**
+   * Enable inertial momentum when releasing from pan.
+   */
+  enablePanMomentum?: boolean;
+  /**
+   * Pan momentum intensity multiplier. 1 is the default "Apple-like" feel.
+   */
+  panMomentumStrength?: number;
   nudgeDistance?: number;
   panPadding?: number;
   devicePixelRatio?: number;
@@ -49,8 +56,10 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   // Pan options.
   panBounceStiffness: 120,
   panBounceDamping: 15,
-  panTimeConstant: 240,
+  panTimeConstant: 325,
   panPower: 0.1,
+  enablePanMomentum: true,
+  panMomentumStrength: 1,
   nudgeDistance: 100,
   panPadding: 0,
   devicePixelRatio: 1,
@@ -69,7 +78,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
 
 export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
   return {
-    start: function (runtime) {
+    start: (runtime) => {
       const {
         zoomWheelConstant,
         enableWheel,
@@ -79,6 +88,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         panOnWaitDelay,
         parentElement,
         requireMetaKeyForWheelZoom,
+        enablePanMomentum,
+        panMomentumStrength,
+        panTimeConstant,
+        panPadding,
       } = {
         ...defaultConfig,
         ...config,
@@ -91,7 +104,111 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         multiTouch: {
           distance: 0,
         },
+        hasMovedSincePress: false,
       };
+      const panSamples: Array<{ x: number; y: number; t: number }> = [];
+      const momentum = {
+        active: false,
+        vx: 0,
+        vy: 0,
+      };
+      const MIN_MOMENTUM_SPEED_PX_PER_MS = 0.08;
+      const MOMENTUM_STOP_SPEED_PX_PER_MS = 0.02;
+      const MOMENTUM_SAMPLE_WINDOW_MS = 80;
+      const MOMENTUM_SAMPLE_MAX_AGE_MS = 140;
+
+      function clearPanSamples() {
+        panSamples.length = 0;
+      }
+
+      function recordPanSample(x: number, y: number) {
+        const t = performance.now();
+        const last = panSamples[panSamples.length - 1];
+        if (last && last.x === x && last.y === y) {
+          last.t = t;
+          return;
+        }
+        panSamples.push({ x, y, t });
+        while (panSamples.length > 1 && t - panSamples[0].t > MOMENTUM_SAMPLE_MAX_AGE_MS) {
+          panSamples.shift();
+        }
+      }
+
+      function stopPanMomentum() {
+        momentum.active = false;
+        momentum.vx = 0;
+        momentum.vy = 0;
+      }
+
+      function applyPanTransition(toTarget: any) {
+        runtime.transitionManager.customTransition((pendingTransition) => {
+          pendingTransition.from = dna(runtime.target);
+          pendingTransition.to = toTarget;
+          pendingTransition.elapsed_time = 0;
+          pendingTransition.total_time = 0;
+          pendingTransition.timingFunction = easingFunctions.easeInOutExpo;
+          pendingTransition.done = false;
+        });
+      }
+
+      function calculateReleaseVelocity() {
+        if (panSamples.length < 2) {
+          return null;
+        }
+        const last = panSamples[panSamples.length - 1];
+        let first = panSamples[0];
+        for (let i = panSamples.length - 2; i >= 0; i--) {
+          first = panSamples[i];
+          if (last.t - first.t >= MOMENTUM_SAMPLE_WINDOW_MS) {
+            break;
+          }
+        }
+        const dt = last.t - first.t;
+        if (dt <= 0) {
+          return null;
+        }
+        return {
+          vx: (last.x - first.x) / dt,
+          vy: (last.y - first.y) / dt,
+        };
+      }
+
+      function maybeStartPanMomentum() {
+        if (!enablePanMomentum || !state.hasMovedSincePress || panSamples.length < 2) {
+          return false;
+        }
+        const releaseVelocity = calculateReleaseVelocity();
+        if (!releaseVelocity) {
+          return false;
+        }
+        const strength = Math.max(0, panMomentumStrength);
+        const vx = releaseVelocity.vx * strength;
+        const vy = releaseVelocity.vy * strength;
+        const speedPxPerMs = Math.hypot(vx, vy) * runtime.getScaleFactor();
+        if (speedPxPerMs < MIN_MOMENTUM_SPEED_PX_PER_MS) {
+          return false;
+        }
+        momentum.active = true;
+        momentum.vx = vx;
+        momentum.vy = vy;
+        runtime.updateNextFrame();
+        return true;
+      }
+
+      function releasePointer() {
+        if (!state.isPressing) {
+          resetState();
+          return;
+        }
+        const startedMomentum = runtime.mode === 'explore' ? maybeStartPanMomentum() : false;
+        if (runtime.mode === 'explore' && !startedMomentum) {
+          runtime.world.constraintBounds();
+        }
+        state.isPressing = false;
+        state.hasMovedSincePress = false;
+        clearPanSamples();
+        resetState();
+      }
 
       runtime.world.activatedEvents.push(
         // List of events we are supporting.
@@ -116,8 +233,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onMouseUp() {
-        runtime.world.constraintBounds();
-        resetState();
+        releasePointer();
       }
 
       function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
@@ -127,8 +243,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
         if (runtime.mode === 'explore') {
           e.preventDefault();
+          stopPanMomentum();
+          clearPanSamples();
+          state.hasMovedSincePress = false;
           state.pointerStart.x = e.atlas.x;
           state.pointerStart.y = e.atlas.y;
+          recordPanSample(runtime.target[1], runtime.target[2]);
 
           runtime.transitionManager.stopTransition();
 
@@ -137,13 +257,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onWindowMouseUp() {
-        resetState();
-        if (state.isPressing) {
-          if (runtime.mode === 'explore') {
-            runtime.world.constraintBounds();
-          }
-          state.isPressing = false;
-        }
+        releasePointer();
       }
 
       let currentDistance = 0;
@@ -151,8 +265,15 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       let touchStartTime = 0;
       // what the user's intent would be for the behavior
       let intent = '';
-      function onTouchStart(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
+      function onTouchStart(
+        e: TouchEvent & {
+          atlasTouches: Array<{ id: number; x: number; y: number }>;
+        }
+      ) {
         if (runtime.mode === 'explore') {
+          stopPanMomentum();
+          clearPanSamples();
+          state.hasMovedSincePress = false;
           if (e.atlasTouches.length === 1) {
             touchStartTime = performance.now();
             if (ignoreSingleFingerTouch == false) {
@@ -161,6 +282,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             }
             state.pointerStart.x = e.atlasTouches[0].x;
             state.pointerStart.y = e.atlasTouches[0].y;
+            recordPanSample(runtime.target[1], runtime.target[2]);
           }
           if (e.atlasTouches.length === 2) {
             intent = INTENT_GESTURE;
@@ -176,6 +298,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               { x: e.touches[0].clientX, y: e.touches[0].clientY },
               { x: e.touches[1].clientX, y: e.touches[1].clientY }
             );
+            clearPanSamples();
           }
 
           runtime.transitionManager.stopTransition();
@@ -196,11 +319,15 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
       }
 
-      function onTouchMove(e: TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> }) {
+      function onTouchMove(
+        e: TouchEvent & {
+          atlasTouches: Array<{ id: number; x: number; y: number }>;
+        }
+      ) {
         let clientX = null;
         let clientY = null;
-        let isMulti = false;
         let newDistance = 0;
+        let shouldRecordMomentum = false;
         if (state.isPressing && e.touches.length === 2) {
           // We have 2?
           const x1 = e.touches[0].clientX;
@@ -214,7 +341,6 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             { x: e.touches[0].clientX, y: e.touches[0].clientY },
             { x: e.touches[1].clientX, y: e.touches[1].clientY }
           );
-          isMulti = true;
         }
         setDataAttribute(intent);
 
@@ -239,6 +365,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           const touch = e.touches[0];
           clientX = touch.clientX;
           clientY = touch.clientY;
+          shouldRecordMomentum = true;
         }
 
         // Translate.
@@ -248,22 +375,24 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             const { x, y } = runtime.viewerToWorld(clientX - bounds.x, clientY - bounds.y);
 
             const deltaDistance = newDistance && currentDistance ? newDistance / currentDistance : 1;
+            const nextTarget = transform(
+              dna(runtime.target),
+              compose(
+                translate(state.pointerStart.x - x, state.pointerStart.y - y),
+                scaleAtOrigin(1 / deltaDistance, x, y)
+              ),
+              state.mousemoveBuffer
+            );
 
-            runtime.transitionManager.customTransition((pendingTransition) => {
-              pendingTransition.from = dna(runtime.target);
-              pendingTransition.to = transform(
-                pendingTransition.from,
-                compose(
-                  translate(state.pointerStart.x - x, state.pointerStart.y - y),
-                  scaleAtOrigin(1 / deltaDistance, x, y)
-                ),
-                state.mousemoveBuffer
-              );
-              pendingTransition.elapsed_time = 0;
-              pendingTransition.total_time = 0;
-              pendingTransition.timingFunction = easingFunctions.easeInOutExpo;
-              pendingTransition.done = false;
-            });
+            if (shouldRecordMomentum) {
+              const previousSample = panSamples[panSamples.length - 1];
+              if (previousSample && (previousSample.x !== nextTarget[1] || previousSample.y !== nextTarget[2])) {
+                state.hasMovedSincePress = true;
+              }
+              recordPanSample(nextTarget[1], nextTarget[2]);
+            }
+
+            applyPanTransition(nextTarget);
           }
           currentDistance = newDistance;
         }
@@ -280,19 +409,17 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           const bounds = runtime.getRendererScreenPosition();
           if (bounds) {
             const { x, y } = runtime.viewerToWorld(e.clientX - bounds.x, e.clientY - bounds.y);
-            // const atlas = runtime.
-            runtime.transitionManager.customTransition((pendingTransition) => {
-              pendingTransition.from = dna(runtime.target);
-              pendingTransition.to = transform(
-                pendingTransition.from,
-                translate(state.pointerStart.x - x, state.pointerStart.y - y),
-                state.mousemoveBuffer
-              );
-              pendingTransition.elapsed_time = 0;
-              pendingTransition.total_time = 0;
-              pendingTransition.timingFunction = easingFunctions.easeInOutExpo;
-              pendingTransition.done = false;
-            });
+            const nextTarget = transform(
+              dna(runtime.target),
+              translate(state.pointerStart.x - x, state.pointerStart.y - y),
+              state.mousemoveBuffer
+            );
+            const previousSample = panSamples[panSamples.length - 1];
+            if (previousSample && (previousSample.x !== nextTarget[1] || previousSample.y !== nextTarget[2])) {
+              state.hasMovedSincePress = true;
+            }
+            recordPanSample(nextTarget[1], nextTarget[2]);
+            applyPanTransition(nextTarget);
           }
         }
       }
@@ -304,6 +431,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onWheel(e: WheelEvent & { atlas: { x: number; y: number } }) {
+        stopPanMomentum();
         const normalized = normalizeWheel(e);
         const zoomFactor = 1 + normalized.spinY / zoomWheelConstant;
         runtime.world.zoomTo(
@@ -348,7 +476,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.world.activatedEvents.push('onWheel');
         if (requireMetaKeyForWheelZoom) {
           // add an event listener above the world to guard the wheel event if the 'meta' key is pressed
-          parentElement?.addEventListener('wheel', onWheelGuard as any, { passive: true, capture: true });
+          parentElement?.addEventListener('wheel', onWheelGuard as any, {
+            passive: true,
+            capture: true,
+          });
         }
         runtime.world.addEventListener('wheel', onWheel);
       }
@@ -356,11 +487,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       // Layout subscriber - move more into here.
       const removeLayout = runtime.world.addLayoutSubscriber((type, data?: any) => {
         if (type === 'zone-changed') {
+          stopPanMomentum();
           runtime.transitionManager.constrainBounds({
             transition: { duration: 0 },
           });
         }
         if (type === 'zoom-to' && data) {
+          stopPanMomentum();
           // zoomTo(data.factor, data.point, data.stream);
           runtime.transitionManager.zoomTo(data.factor, {
             origin: data.point,
@@ -368,6 +501,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           });
         }
         if (type === 'go-home') {
+          stopPanMomentum();
           const transition = data.immediate ? { duration: 0 } : undefined;
           // Use getHomeTarget to calculate the padded home position
           const paddingPx = data?.paddingPx;
@@ -375,6 +509,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.transitionManager.goToRegion(homeTarget, { transition });
         }
         if (type === 'goto-region' && data) {
+          stopPanMomentum();
           const transition = data.immediate ? { duration: 0 } : {};
           // If paddingPx is provided, use getHomeTarget to calculate the padded region
           if (data.paddingPx !== undefined) {
@@ -382,19 +517,56 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               position: DnaFactory.singleBox(data.width, data.height, data.x, data.y),
               paddingPx: data.paddingPx,
             });
-            runtime.transitionManager.goToRegion(targetRegion, { transition });
+            runtime.transitionManager.goToRegion(targetRegion, {
+              transition,
+            });
           } else {
             runtime.transitionManager.goToRegion(data, { transition });
           }
         }
         if (type === 'constrain-bounds') {
+          stopPanMomentum();
           runtime.transitionManager.constrainBounds({
+            panPadding,
             transition: data?.immediate ? { duration: 0 } : undefined,
           });
         }
       });
 
+      const removeMomentumHook = runtime.registerHook('useFrame', (delta: number) => {
+        if (!momentum.active) {
+          return;
+        }
+        const decay = Math.exp(-delta / Math.max(1, panTimeConstant));
+        momentum.vx *= decay;
+        momentum.vy *= decay;
+
+        const speedPxPerMs = Math.hypot(momentum.vx, momentum.vy) * runtime.getScaleFactor();
+        if (speedPxPerMs <= MOMENTUM_STOP_SPEED_PX_PER_MS) {
+          stopPanMomentum();
+          runtime.world.constraintBounds();
+          return;
+        }
+
+        const proposed = transform(
+          dna(runtime.target),
+          translate(momentum.vx * delta, momentum.vy * delta),
+          state.mousemoveBuffer
+        );
+        const [isConstrained, constrained] = runtime.constrainBounds(proposed, { panPadding });
+        applyPanTransition(isConstrained ? constrained : proposed);
+
+        if (isConstrained) {
+          stopPanMomentum();
+          runtime.world.constraintBounds(true);
+          return;
+        }
+
+        runtime.updateNextFrame();
+      });
+
       return () => {
+        stopPanMomentum();
         runtime.world.removeEventListener('mouseup', onMouseUp);
         runtime.world.removeEventListener('touchend', onMouseUp);
         runtime.world.removeEventListener('touchstart', onTouchStart);
@@ -403,10 +575,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         window.removeEventListener('touchend', onWindowMouseUp);
         window.removeEventListener('mouseup', onWindowMouseUp);
 
-        runtime.world.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mousemove', onMouseMove);
         if (parentElement) {
-          (parentElement as any).removeEventListener('touchmove', onMouseMove);
-          (parentElement as any).removeEventListener('wheel', onWheelGuard, { passive: true, capture: true });
+          (parentElement as any).removeEventListener('touchmove', onTouchMove);
+          (parentElement as any).removeEventListener('wheel', onWheelGuard, {
+            passive: true,
+            capture: true,
+          });
         }
         if (enableClickToZoom) {
           runtime.world.removeEventListener('click', onClick);
@@ -416,6 +591,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.world.removeEventListener('wheel', onWheel);
         }
 
+        removeMomentumHook();
         removeLayout();
       };
     },
