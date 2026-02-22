@@ -43,6 +43,8 @@ function createMockContext() {
     clearRect: vi.fn(),
     fillRect: vi.fn(),
     beginPath: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
     lineTo: vi.fn(),
     closePath: vi.fn(),
     stroke: vi.fn(),
@@ -85,8 +87,12 @@ function setCompositeState(
     prefetchRadius: number;
     fadeInMs: number;
     fadeFallbackTiles: boolean;
+    fadeOnLayerChange: boolean;
+    clipToBounds: boolean;
+    activatedAt: number;
   }> = {}
 ) {
+  const { activatedAt, ...renderOptions } = options;
   image.__parent = {
     renderOptions: {
       layerPolicy: 'fallback-only',
@@ -94,9 +100,12 @@ function setCompositeState(
       prefetchRadius: 1,
       fadeInMs: 0,
       fadeFallbackTiles: false,
-      ...options,
+      fadeOnLayerChange: false,
+      clipToBounds: false,
+      ...renderOptions,
     },
     isImageActive: () => active,
+    getImageActivatedAt: () => (active && typeof activatedAt === 'number' ? activatedAt : undefined),
   } as any;
 }
 
@@ -209,6 +218,35 @@ describe('Canvas image loading behavior', () => {
 
     renderer.paint(image, 0, 0, 0, 100, 100);
     expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('fades a newly active layer even when the tile was decoded earlier', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('active-layer-fade');
+    setCompositeState(image, true, { fadeInMs: 1000, fadeOnLayerChange: true, activatedAt: performance.now() - 20 });
+
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    buffer.canvases[0] = 'active-layer-fade-0';
+    buffer.tiles[0] = { state: 'decoded', loadedAt: performance.now() - 5000 };
+    renderer.hostCache.set('active-layer-fade-0', {} as HTMLCanvasElement);
+
+    renderer.paint(image, 0, 0, 0, 100, 100);
+
+    expect((renderer as any).hasTilesFading).toBe(true);
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('clips composite layers to parent bounds when clipToBounds is enabled', () => {
+    const { renderer, context } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('clip-layer');
+    setCompositeState(image, true, { clipToBounds: true });
+
+    renderer.prepareLayer(image, new Float32Array([1, 10, 20, 110, 120]) as any);
+    renderer.finishLayer();
+
+    expect(context.rect).toHaveBeenCalledWith(10, 20, 100, 100);
+    expect(context.clip).toHaveBeenCalledTimes(1);
   });
 
   test('uses adaptive defaults unless explicit imageLoading overrides are set', () => {

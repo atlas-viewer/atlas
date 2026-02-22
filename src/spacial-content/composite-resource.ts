@@ -19,6 +19,8 @@ type RenderOptions = {
   prefetchRadius?: number;
   fadeInMs: number;
   fadeFallbackTiles: boolean;
+  fadeOnLayerChange: boolean;
+  clipToBounds: boolean;
 };
 
 export type CompositeResourceProps = Partial<RenderOptions>;
@@ -38,7 +40,7 @@ export class CompositeResource
   isFullyLoaded = false;
   isLoadingFullResource = false;
   maxScaleFactor = 0;
-  private layerSelection = new WeakMap<SpacialContent, { active: boolean; frame: number }>();
+  private layerSelection = new WeakMap<SpacialContent, { active: boolean; frame: number; activatedAt?: number }>();
   private layerSelectionFrame = 0;
 
   renderOptions: RenderOptions;
@@ -78,6 +80,8 @@ export class CompositeResource
       prefetchRadius: 1,
       fadeInMs: 300,
       fadeFallbackTiles: false,
+      fadeOnLayerChange: false,
+      clipToBounds: false,
       ...(data.renderOptions || {}),
     };
 
@@ -129,6 +133,15 @@ export class CompositeResource
       props.fadeFallbackTiles !== this.renderOptions.fadeFallbackTiles
     ) {
       this.renderOptions.fadeFallbackTiles = props.fadeFallbackTiles;
+    }
+    if (
+      typeof props.fadeOnLayerChange !== 'undefined' &&
+      props.fadeOnLayerChange !== this.renderOptions.fadeOnLayerChange
+    ) {
+      this.renderOptions.fadeOnLayerChange = props.fadeOnLayerChange;
+    }
+    if (typeof props.clipToBounds !== 'undefined' && props.clipToBounds !== this.renderOptions.clipToBounds) {
+      this.renderOptions.clipToBounds = props.clipToBounds;
     }
 
     if (shouldResort) {
@@ -327,11 +340,39 @@ export class CompositeResource
         break;
     }
 
+    const activeImages = new Set<SpacialContent>();
+    for (const idx of active) {
+      const image = this.images[idx];
+      if (image) {
+        activeImages.add(image);
+      }
+    }
+
     this.layerSelectionFrame += 1;
+    const now = this.getNow();
+    const initialActivatedAt = now - Math.max(0, this.renderOptions.fadeInMs);
     for (const image of this.allImages) {
+      const previous = this.layerSelection.get(image);
+      const isActive = activeImages.has(image);
+      if (!isActive) {
+        this.layerSelection.set(image, {
+          active: false,
+          frame: this.layerSelectionFrame,
+        });
+        continue;
+      }
+
+      const hadPreviousFrame = !!previous && previous.frame === this.layerSelectionFrame - 1;
+      const wasActive = hadPreviousFrame && previous.active;
       this.layerSelection.set(image, {
-        active: false,
+        active: true,
         frame: this.layerSelectionFrame,
+        activatedAt:
+          wasActive && typeof previous.activatedAt === 'number'
+            ? previous.activatedAt
+            : hadPreviousFrame
+            ? now
+            : initialActivatedAt,
       });
     }
 
@@ -339,10 +380,6 @@ export class CompositeResource
     for (let i = 0; i < toPaintIdx.length; i++) {
       const idx = toPaintIdx[i];
       const image = this.images[idx];
-      this.layerSelection.set(image, {
-        active: active.has(idx),
-        frame: this.layerSelectionFrame,
-      });
       toPaint.push(...image.getAllPointsAt(target, newAggregate, scale));
     }
 
@@ -352,5 +389,20 @@ export class CompositeResource
   isImageActive(image: SpacialContent): boolean {
     const selected = this.layerSelection.get(image);
     return !!selected && selected.frame === this.layerSelectionFrame && selected.active;
+  }
+
+  getImageActivatedAt(image: SpacialContent): number | undefined {
+    const selected = this.layerSelection.get(image);
+    if (!selected || selected.frame !== this.layerSelectionFrame || !selected.active) {
+      return undefined;
+    }
+    return selected.activatedAt;
+  }
+
+  private getNow(): number {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now();
+    }
+    return Date.now();
   }
 }

@@ -1,4 +1,9 @@
-import { createFiniteTileGrid, MapTiledImage } from '../../spacial-content/map-tiled-image';
+import { tileXToLng, tileYToLat } from '../../modules/maps/projection';
+import {
+  createFiniteTileGrid,
+  estimateFiniteTileGridCoverage,
+  MapTiledImage,
+} from '../../spacial-content/map-tiled-image';
 
 describe('MapTiledImage', () => {
   test('generates finite tile grid for bounds at zoom level', () => {
@@ -95,5 +100,23 @@ describe('MapTiledImage', () => {
     expect(image.type).toEqual('spacial-content');
     expect(image.columns).toBeGreaterThan(0);
     expect(image.rows).toBeGreaterThan(0);
+  });
+
+  test('reports fractional tile span for partial edge coverage', () => {
+    const zoom = 6;
+    const coverage = estimateFiniteTileGridCoverage({
+      bounds: {
+        west: tileXToLng(10.25, zoom),
+        south: tileYToLat(20.9, zoom),
+        east: tileXToLng(10.75, zoom),
+        north: tileYToLat(20.1, zoom),
+      },
+      zoom,
+    });
+
+    expect(coverage.columns).toBe(1);
+    expect(coverage.rows).toBe(1);
+    expect(coverage.tileSpanX).toBeCloseTo(0.5, 5);
+    expect(coverage.tileSpanY).toBeCloseTo(0.8, 5);
   });
 });

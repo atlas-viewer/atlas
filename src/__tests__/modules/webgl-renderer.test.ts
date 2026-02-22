@@ -2,8 +2,8 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebGLRenderer } from '../../modules/webgl-renderer/webgl-renderer';
-import { SingleImage } from '../../spacial-content/single-image';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
 
 function createMockCanvas() {
@@ -13,7 +13,14 @@ function createMockCanvas() {
     clientWidth: 100,
     clientHeight: 100,
     style: { filter: '' },
-    getBoundingClientRect: () => ({ x: 0, y: 0, top: 0, left: 0, width: 100, height: 100 }),
+    getBoundingClientRect: () => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      width: 100,
+      height: 100,
+    }),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     getContext: vi.fn(),
@@ -44,6 +51,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     BLEND: 20,
     SRC_ALPHA: 21,
     ONE_MINUS_SRC_ALPHA: 22,
+    SCISSOR_TEST: 23,
     canvas,
     createShader: vi.fn(() => ({})),
     shaderSource: vi.fn(),
@@ -65,8 +73,10 @@ function createMockGL(canvas: HTMLCanvasElement) {
     viewport: vi.fn(),
     clearColor: vi.fn(),
     clear: vi.fn(),
+    scissor: vi.fn(),
     useProgram: vi.fn(),
     enable: vi.fn(),
+    disable: vi.fn(),
     blendFunc: vi.fn(),
     enableVertexAttribArray: vi.fn(),
     vertexAttribPointer: vi.fn(),
@@ -296,6 +306,86 @@ describe('WebGLRenderer fallback events', () => {
     expect(renderer.pendingUpdate()).toBe(true);
   });
 
+  test('fades a newly active layer even when the texture was decoded earlier', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'active-layer-fade',
+      uri: 'https://example.com/active-layer-fade.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+        fadeInMs: 1000,
+        fadeFallbackTiles: false,
+        fadeOnLayerChange: true,
+      },
+      isImageActive: () => true,
+      getImageActivatedAt: () => performance.now() - 20,
+    } as any;
+
+    renderer.prepareLayer(image);
+    image.__host.webgl.textures[0] = {};
+    image.__host.webgl.loadedAt[0] = performance.now() - 5000;
+
+    renderer.beforeFrame({} as any, 16, {} as any, {
+      ...defaultHookOptions,
+    });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+
+    const alphaArg = gl.uniform1f.mock.calls[gl.uniform1f.mock.calls.length - 1][1];
+    expect(alphaArg).toBeLessThan(1);
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('clips composite layers to parent bounds when clipToBounds is enabled', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'clip-layer',
+      uri: 'https://example.com/clip-layer.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+        clipToBounds: true,
+      },
+      isImageActive: () => true,
+    } as any;
+
+    renderer.prepareLayer(image, new Float32Array([1, 5, 10, 45, 50]) as any);
+
+    expect(gl.enable).toHaveBeenCalledWith(gl.SCISSOR_TEST);
+    expect(gl.scissor).toHaveBeenCalledWith(5, 50, 40, 40);
+
+    renderer.finishLayer();
+    expect(gl.disable).toHaveBeenCalledWith(gl.SCISSOR_TEST);
+  });
+
   test('does not request inactive layers but still draws cached fallback textures', () => {
     const canvas = createMockCanvas();
     const gl = createMockGL(canvas);
@@ -497,7 +587,10 @@ describe('WebGLRenderer fallback events', () => {
       return null as any;
     });
 
-    const renderer = new WebGLRenderer(canvas, { dpi: 1, imageLoading: { skipFadeIfLoadedWithinMs: 500 } });
+    const renderer = new WebGLRenderer(canvas, {
+      dpi: 1,
+      imageLoading: { skipFadeIfLoadedWithinMs: 500 },
+    });
     const image = new SingleImage();
     image.applyProps({
       id: 'quick-webgl',
@@ -608,7 +701,10 @@ describe('WebGLRenderer fallback events', () => {
       return null as any;
     });
 
-    const renderer = new WebGLRenderer(canvas, { dpi: 1, readiness: 'immediate' });
+    const renderer = new WebGLRenderer(canvas, {
+      dpi: 1,
+      readiness: 'immediate',
+    });
     expect(renderer.isReady()).toBe(true);
 
     renderer.resetReadyState();

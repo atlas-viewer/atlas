@@ -21,9 +21,9 @@ export type MapTileLayerProps = {
 	renderOptions?: CompositeResourceProps;
 };
 
-const DEFAULT_MAX_TILES_PER_LAYER = 4096;
-const DEFAULT_MAX_TOTAL_TILES = 12000;
-const DEFAULT_MAX_QUALITY_LEVELS = 8;
+const DEFAULT_MAX_TILES_PER_LAYER = 16000;
+const DEFAULT_MAX_TOTAL_TILES = 120000;
+const DEFAULT_MAX_QUALITY_LEVELS = 12;
 
 export const MapTileLayer: React.FC<MapTileLayerProps> = ({
 	id,
@@ -122,8 +122,10 @@ export const MapTileLayer: React.FC<MapTileLayerProps> = ({
 			prefetchRadius: 0,
 			quality: 0.9,
 			useDevicePixelRatio,
-			fadeInMs: 180,
+			fadeInMs: 300,
 			fadeFallbackTiles: true,
+			fadeOnLayerChange: true,
+			clipToBounds: true,
 			...(renderOptions || {}),
 		}),
 		[renderOptions, useDevicePixelRatio],
@@ -133,8 +135,8 @@ export const MapTileLayer: React.FC<MapTileLayerProps> = ({
 	const compositeId = id || `map-tile-layer-${map.width}x${map.height}`;
 
 	const tiles = zoomEntries.map(({ zoom, coverage }) => {
-		const sourceWidth = coverage.columns * tileSize;
-		const sourceHeight = coverage.rows * tileSize;
+		const sourceWidth = coverage.tileSpanX * tileSize;
+		const sourceHeight = coverage.tileSpanY * tileSize;
 		const scaleFactor = Math.max(
 			map.mapRect.width / sourceWidth,
 			map.mapRect.height / sourceHeight,

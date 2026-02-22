@@ -1,6 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import { DnaFactory } from '@atlas-viewer/dna';
+import { vi } from 'vitest';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { SingleImage } from '../../spacial-content/single-image';
 
@@ -103,5 +104,47 @@ describe('CompositeResource', () => {
     await composite.loadFullResource();
     expect(composite.isFullyLoaded).toBe(true);
     expect(composite.allImages).toContain(extra);
+  });
+
+  test('tracks activation time when zoom switches active layer', () => {
+    const high = createImage('high', 100, 100);
+    const mid = createImage('mid', 50, 50);
+    const low = createImage('low', 25, 25);
+
+    const composite = new CompositeResource({
+      id: 'comp',
+      width: 100,
+      height: 100,
+      images: [high, mid, low],
+      renderOptions: {
+        minSize: 0,
+        maxImageSize: 99999,
+        renderLayers: 2,
+        renderSmallestFallback: true,
+        layerPolicy: 'fallback-only',
+        fadeInMs: 300,
+      },
+    });
+
+    for (const update of composite.getScheduledUpdates(DnaFactory.singleBox(100, 100), 1)) {
+      update();
+    }
+
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(1000);
+    composite.getAllPointsAt(DnaFactory.singleBox(100, 100), undefined, 1);
+
+    expect(composite.isImageActive(high)).toBe(true);
+    expect(composite.getImageActivatedAt(high)).toBe(700);
+    expect(composite.getImageActivatedAt(mid)).toBeUndefined();
+
+    nowSpy.mockReturnValue(1300);
+    composite.getAllPointsAt(DnaFactory.singleBox(100, 100), undefined, 0.5);
+
+    expect(composite.isImageActive(mid)).toBe(true);
+    expect(composite.getImageActivatedAt(mid)).toBe(1300);
+    expect(composite.getImageActivatedAt(high)).toBeUndefined();
+
+    nowSpy.mockRestore();
   });
 });

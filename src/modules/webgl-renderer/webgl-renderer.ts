@@ -59,6 +59,13 @@ type InFlightTileLoad = {
   release: (opts?: { silent?: boolean }) => void;
 };
 
+type ScissorRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 const imageCache = new Map<string, HTMLImageElement>();
 
 export class WebGLRenderer implements Renderer {
@@ -154,6 +161,7 @@ export class WebGLRenderer implements Renderer {
       queuedFrame: number;
     }
   >();
+  activeLayerScissorRect: ScissorRect | undefined;
   onContextLost = (event: Event) => {
     event.preventDefault();
     this.emitFatalImageError({
@@ -290,6 +298,8 @@ export class WebGLRenderer implements Renderer {
 
     this.gl.clearColor(0, 0, 0, 0);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    this.gl.disable(this.gl.SCISSOR_TEST);
+    this.activeLayerScissorRect = undefined;
 
     this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
     // Runtime coordinates are in CSS pixels, so keep shader resolution in CSS pixel space.
@@ -303,7 +313,108 @@ export class WebGLRenderer implements Renderer {
 
   lastResize = 0;
 
-  prepareLayer(paint: SpacialContent) {
+  private getCompositeRenderOptions(paint: SingleImage | TiledImage) {
+    return paint.__parent?.renderOptions;
+  }
+
+  private shouldClipLayerToBounds(paint: SpacialContent): boolean {
+    if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+      return false;
+    }
+    return !!this.getCompositeRenderOptions(paint)?.clipToBounds;
+  }
+
+  private getBoundsFromPoints(points: Strand): { x: number; y: number; width: number; height: number } | undefined {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < points.length; i += 5) {
+      if (!points[i]) {
+        continue;
+      }
+      minX = Math.min(minX, points[i + 1]);
+      minY = Math.min(minY, points[i + 2]);
+      maxX = Math.max(maxX, points[i + 3]);
+      maxY = Math.max(maxY, points[i + 4]);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return undefined;
+    }
+    if (maxX <= minX || maxY <= minY) {
+      return undefined;
+    }
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  private toScissorRect(bounds: { x: number; y: number; width: number; height: number }): ScissorRect | undefined {
+    const canvasWidthCss = this.gl.canvas.width / this.dpi;
+    const canvasHeightCss = this.gl.canvas.height / this.dpi;
+
+    const x1 = Math.max(0, Math.min(canvasWidthCss, bounds.x));
+    const y1 = Math.max(0, Math.min(canvasHeightCss, bounds.y));
+    const x2 = Math.max(0, Math.min(canvasWidthCss, bounds.x + bounds.width));
+    const y2 = Math.max(0, Math.min(canvasHeightCss, bounds.y + bounds.height));
+    if (x2 <= x1 || y2 <= y1) {
+      return undefined;
+    }
+
+    let scissorX = Math.floor(x1 * this.dpi);
+    let scissorY = Math.floor((canvasHeightCss - y2) * this.dpi);
+    let scissorWidth = Math.ceil((x2 - x1) * this.dpi);
+    let scissorHeight = Math.ceil((y2 - y1) * this.dpi);
+
+    if (scissorX < 0) {
+      scissorWidth += scissorX;
+      scissorX = 0;
+    }
+    if (scissorY < 0) {
+      scissorHeight += scissorY;
+      scissorY = 0;
+    }
+    scissorWidth = Math.min(scissorWidth, this.gl.canvas.width - scissorX);
+    scissorHeight = Math.min(scissorHeight, this.gl.canvas.height - scissorY);
+    if (scissorWidth <= 0 || scissorHeight <= 0) {
+      return undefined;
+    }
+
+    return {
+      x: scissorX,
+      y: scissorY,
+      width: scissorWidth,
+      height: scissorHeight,
+    };
+  }
+
+  prepareLayer(paint: SpacialContent, points?: Strand) {
+    this.activeLayerScissorRect = undefined;
+    if (points && this.shouldClipLayerToBounds(paint)) {
+      const bounds = this.getBoundsFromPoints(points);
+      if (bounds) {
+        const scissorRect = this.toScissorRect(bounds);
+        if (scissorRect) {
+          this.activeLayerScissorRect = scissorRect;
+          this.gl.enable(this.gl.SCISSOR_TEST);
+          this.gl.scissor(scissorRect.x, scissorRect.y, scissorRect.width, scissorRect.height);
+        } else {
+          this.gl.enable(this.gl.SCISSOR_TEST);
+          this.gl.scissor(0, 0, 0, 0);
+          this.activeLayerScissorRect = {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          };
+        }
+      }
+    }
+
     if (!paint.__host || !paint.__host.webgl) {
       if ((paint instanceof SingleImage || paint instanceof TiledImage) && isWebGLImageFastPathCandidate(paint, 0)) {
         this.createImageHost(paint);
@@ -584,10 +695,6 @@ export class WebGLRenderer implements Renderer {
     }
   }
 
-  private getCompositeRenderOptions(paint: SingleImage | TiledImage) {
-    return paint.__parent?.renderOptions;
-  }
-
   private getPrefetchRadius(paint: SingleImage | TiledImage): number {
     const options = this.getCompositeRenderOptions(paint);
     if (!options) {
@@ -647,15 +754,26 @@ export class WebGLRenderer implements Renderer {
     if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
       return 1;
     }
+
+    const now = performance.now();
+    let fadeAlpha = 1;
+
+    if (isActiveLayer && options.fadeOnLayerChange && options.layerPolicy !== 'active-only') {
+      const parent = paint.__parent as any;
+      if (parent && typeof parent.getImageActivatedAt === 'function') {
+        const activatedAt = parent.getImageActivatedAt(paint);
+        if (typeof activatedAt === 'number') {
+          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / options.fadeInMs)));
+        }
+      }
+    }
+
     const loadedAt = paint.__host?.webgl?.loadedAt?.[index];
-    if (!loadedAt) {
-      return 1;
+    if (loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - loadedAt) / options.fadeInMs)));
     }
-    if (!isActiveLayer && !options.fadeFallbackTiles) {
-      return 1;
-    }
-    const elapsed = performance.now() - loadedAt;
-    return Math.max(0, Math.min(1, elapsed / options.fadeInMs));
+
+    return fadeAlpha;
   }
 
   private getTileRequestKey(paint: SingleImage | TiledImage, index: number): string {
@@ -1137,7 +1255,12 @@ export class WebGLRenderer implements Renderer {
     return this.rendererPosition;
   }
 
-  finishLayer() {}
+  finishLayer() {
+    if (this.activeLayerScissorRect) {
+      this.gl.disable(this.gl.SCISSOR_TEST);
+      this.activeLayerScissorRect = undefined;
+    }
+  }
   resetReadyState() {
     if (this.isImmediateReadiness()) {
       return;

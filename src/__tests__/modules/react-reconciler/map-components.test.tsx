@@ -98,7 +98,10 @@ describe("map components", () => {
 		expect(source).toContain("map-tiled-image");
 		expect(source).toContain("map.mapRect.width / sourceWidth");
 		expect(source).toContain("map.mapRect.height / sourceHeight");
-		expect(source).toContain("quality: 1.05");
+		expect(source).toContain("coverage.tileSpanX * tileSize");
+		expect(source).toContain("coverage.tileSpanY * tileSize");
+		expect(source).toContain("quality: 0.9");
+		expect(source).toContain("clipToBounds: true");
 		expect(source).toContain("useDevicePixelRatio = false");
 		expect(source).toContain("maxTilesPerLayer");
 		expect(source).toContain("maxTotalTiles");

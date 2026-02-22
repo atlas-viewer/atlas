@@ -296,6 +296,7 @@ export const MapWithRegionHighlightInterop: React.FC = () => {
 			height={560}
 			runtimeOptions={{ maxOverZoom: 8 }}
 			unstable_webglRenderer
+			enableNavigator
 		>
 			<world>
 				<MapObject

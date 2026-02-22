@@ -29,6 +29,15 @@ export type MapTileGrid = {
   maxTileY: number;
 };
 
+export type MapTileGridCoverage = Omit<MapTileGrid, 'points' | 'tiles'> & {
+  westTile: number;
+  eastTile: number;
+  northTile: number;
+  southTile: number;
+  tileSpanX: number;
+  tileSpanY: number;
+};
+
 export type MapTiledImageProps = {
   id?: string;
   bounds: MapBounds;
@@ -46,10 +55,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function estimateFiniteTileGridCoverage(config: {
-  bounds: MapBounds;
-  zoom: number;
-}): Omit<MapTileGrid, 'points' | 'tiles'> {
+export function estimateFiniteTileGridCoverage(config: { bounds: MapBounds; zoom: number }): MapTileGridCoverage {
   validateMapBounds(config.bounds);
 
   const zoom = Math.max(0, Math.floor(config.zoom));
@@ -60,6 +66,15 @@ export function estimateFiniteTileGridCoverage(config: {
   const eastTileFloat = lngToTileX(config.bounds.east, zoom);
   const northTileFloat = latToTileY(config.bounds.north, zoom);
   const southTileFloat = latToTileY(config.bounds.south, zoom);
+
+  const westTile = clamp(westTileFloat, 0, zoomSize);
+  const eastTile = clamp(eastTileFloat, 0, zoomSize);
+  const northTile = clamp(northTileFloat, 0, zoomSize);
+  const southTile = clamp(southTileFloat, 0, zoomSize);
+
+  // Fractional span represents true source-pixel coverage for the target bounds.
+  const tileSpanX = Math.max(1e-9, eastTile - westTile);
+  const tileSpanY = Math.max(1e-9, southTile - northTile);
 
   const minTileX = clamp(Math.floor(westTileFloat), 0, maxTileIndex);
   const maxTileX = clamp(Math.ceil(eastTileFloat) - 1, 0, maxTileIndex);
@@ -76,6 +91,12 @@ export function estimateFiniteTileGridCoverage(config: {
     maxTileX,
     minTileY,
     maxTileY,
+    westTile,
+    eastTile,
+    northTile,
+    southTile,
+    tileSpanX,
+    tileSpanY,
   };
 }
 

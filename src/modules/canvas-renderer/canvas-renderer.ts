@@ -166,6 +166,7 @@ export class CanvasRenderer implements Renderer {
   fallbackRevealTimeout: ReturnType<typeof setTimeout> | null = null;
   framePrefetchCount = 0;
   hasTilesFading = false;
+  hasActiveLayerClip = false;
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
@@ -653,6 +654,42 @@ export class CanvasRenderer implements Renderer {
     return paint.__parent?.renderOptions;
   }
 
+  private shouldClipLayerToBounds(paint: SpacialContent): boolean {
+    if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+      return false;
+    }
+    return !!this.getCompositeRenderOptions(paint)?.clipToBounds;
+  }
+
+  private getBoundsFromPoints(points: Strand): { x: number; y: number; width: number; height: number } | undefined {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < points.length; i += 5) {
+      if (!points[i]) {
+        continue;
+      }
+      minX = Math.min(minX, points[i + 1]);
+      minY = Math.min(minY, points[i + 2]);
+      maxX = Math.max(maxX, points[i + 3]);
+      maxY = Math.max(maxY, points[i + 4]);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return undefined;
+    }
+    if (maxX <= minX || maxY <= minY) {
+      return undefined;
+    }
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
   private getLayerPolicy(paint: SingleImage | TiledImage) {
     return this.getCompositeRenderOptions(paint)?.layerPolicy || 'fallback-only';
   }
@@ -710,14 +747,25 @@ export class CanvasRenderer implements Renderer {
     if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
       return 1;
     }
-    if (!tileState?.loadedAt) {
-      return 1;
+
+    const now = performance.now();
+    let fadeAlpha = 1;
+
+    if (isActiveLayer && options.fadeOnLayerChange && options.layerPolicy !== 'active-only') {
+      const parent = paint.__parent as any;
+      if (parent && typeof parent.getImageActivatedAt === 'function') {
+        const activatedAt = parent.getImageActivatedAt(paint);
+        if (typeof activatedAt === 'number') {
+          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / options.fadeInMs)));
+        }
+      }
     }
-    if (!isActiveLayer && !options.fadeFallbackTiles) {
-      return 1;
+
+    if (tileState?.loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.loadedAt) / options.fadeInMs)));
     }
-    const elapsed = performance.now() - tileState.loadedAt;
-    return Math.max(0, Math.min(1, elapsed / options.fadeInMs));
+
+    return fadeAlpha;
   }
 
   private schedulePrefetchNeighbours(
@@ -1334,6 +1382,8 @@ export class CanvasRenderer implements Renderer {
   }
 
   prepareLayer(paint: SpacialContent, points: Strand): void {
+    this.hasActiveLayerClip = false;
+
     if (paint.__owner.value) {
       if (paint.cropData) {
         const scale = this.lastKnownScale * (1 / paint.display.scale);
@@ -1350,6 +1400,17 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
+    if (this.shouldClipLayerToBounds(paint)) {
+      const bounds = this.getBoundsFromPoints(points);
+      if (bounds) {
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        this.ctx.clip();
+        this.hasActiveLayerClip = true;
+      }
+    }
+
     if (!paint.__host || !paint.__host.canvas) {
       if (paint instanceof SingleImage || paint instanceof TiledImage) {
         // create it if it does not exist.
@@ -1359,6 +1420,10 @@ export class CanvasRenderer implements Renderer {
   }
 
   finishLayer() {
+    if (this.hasActiveLayerClip) {
+      this.ctx.restore();
+      this.hasActiveLayerClip = false;
+    }
     if (this.lastPaintedObject) {
       this.clearTransform();
     }

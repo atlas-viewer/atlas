@@ -499,6 +499,72 @@ export class NavigatorRenderer extends DebugRenderer {
     this.baseCanvas.height = this.canvas.height;
   }
 
+  private shouldClipImagePaintToBounds(paint: unknown): boolean {
+    if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+      return false;
+    }
+    return !!(paint as any).__parent?.renderOptions?.clipToBounds;
+  }
+
+  private getBoundsFromPoints(points: Strand): { x: number; y: number; width: number; height: number } | undefined {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (let i = 0; i < points.length; i += 5) {
+      if (!points[i]) {
+        continue;
+      }
+      minX = Math.min(minX, points[i + 1]);
+      minY = Math.min(minY, points[i + 2]);
+      maxX = Math.max(maxX, points[i + 3]);
+      maxY = Math.max(maxY, points[i + 4]);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return undefined;
+    }
+    if (maxX <= minX || maxY <= minY) {
+      return undefined;
+    }
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  private getLayerClipBounds(
+    paint: unknown,
+    transformation: Strand | undefined,
+    navigatorTransform: NavigatorTransform
+  ): { x: number; y: number; width: number; height: number } | undefined {
+    if (!this.shouldClipImagePaintToBounds(paint)) {
+      return undefined;
+    }
+
+    const parent = (paint as any).__parent;
+    const parentPoints = parent?.crop || parent?.points;
+    if (!parentPoints) {
+      return undefined;
+    }
+
+    const transformedParentPoints = transformation ? transform(parentPoints, transformation) : parentPoints;
+    const bounds = this.getBoundsFromPoints(transformedParentPoints);
+    if (!bounds) {
+      return undefined;
+    }
+
+    return {
+      x: bounds.x + navigatorTransform.offsetX,
+      y: bounds.y + navigatorTransform.offsetY,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  }
+
   private renderWorldLayer(world: World, region: NavigatorWorldRegion) {
     const ctx = this.baseContext;
     ctx.clearRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
@@ -533,39 +599,53 @@ export class NavigatorRenderer extends DebugRenderer {
       const transformation = points[p][2];
       const position = transformation ? transform(point, transformation) : point;
       const total = position.length / 5;
+      const layerClipBounds = this.getLayerClipBounds(paint, transformation, navigatorTransform);
 
-      for (let i = 0; i < total; i++) {
-        if (drawn >= this.maxRects) {
-          break;
-        }
+      if (layerClipBounds) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(layerClipBounds.x, layerClipBounds.y, layerClipBounds.width, layerClipBounds.height);
+        ctx.clip();
+      }
 
-        const key = i * 5;
-        if (position[key] === 0) {
-          continue;
-        }
-        if (activeZone) {
-          const owner = (paint as any)?.__owner?.value;
-          if (!owner || activeZone.objects.indexOf(owner) === -1) {
+      try {
+        for (let i = 0; i < total; i++) {
+          if (drawn >= this.maxRects) {
+            break;
+          }
+
+          const key = i * 5;
+          if (position[key] === 0) {
             continue;
           }
-        }
-
-        const x = position[key + 1] + navigatorTransform.offsetX;
-        const y = position[key + 2] + navigatorTransform.offsetY;
-        const width = Math.max(this.minVisibleRectSize, position[key + 3] - position[key + 1]);
-        const height = Math.max(this.minVisibleRectSize, position[key + 4] - position[key + 2]);
-
-        if (paint instanceof Geometry) {
-          this.renderGeometry(ctx, paint, x, y, navigatorTransform.scale);
-        } else if (paint instanceof Box) {
-          this.renderBox(ctx, paint, x, y, width, height, navigatorTransform.scale);
-        } else if (!this.renderImagePaint(ctx, paint, i, x, y, width, height)) {
-          if (this.drawFallbackBoxes) {
-            this.renderFallbackBox(ctx, x, y, width, height);
+          if (activeZone) {
+            const owner = (paint as any)?.__owner?.value;
+            if (!owner || activeZone.objects.indexOf(owner) === -1) {
+              continue;
+            }
           }
-        }
 
-        drawn++;
+          const x = position[key + 1] + navigatorTransform.offsetX;
+          const y = position[key + 2] + navigatorTransform.offsetY;
+          const width = Math.max(this.minVisibleRectSize, position[key + 3] - position[key + 1]);
+          const height = Math.max(this.minVisibleRectSize, position[key + 4] - position[key + 2]);
+
+          if (paint instanceof Geometry) {
+            this.renderGeometry(ctx, paint, x, y, navigatorTransform.scale);
+          } else if (paint instanceof Box) {
+            this.renderBox(ctx, paint, x, y, width, height, navigatorTransform.scale);
+          } else if (!this.renderImagePaint(ctx, paint, i, x, y, width, height)) {
+            if (this.drawFallbackBoxes) {
+              this.renderFallbackBox(ctx, x, y, width, height);
+            }
+          }
+
+          drawn++;
+        }
+      } finally {
+        if (layerClipBounds) {
+          ctx.restore();
+        }
       }
     }
   }
