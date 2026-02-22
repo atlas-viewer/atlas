@@ -206,6 +206,18 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.getViewport().y).toBeGreaterThan(startY);
   });
 
+  test('scroll wheel does not start zoom transitions in pdf scroll-mode', () => {
+    const runtime = createRuntimeWithPdfController();
+
+    const pendingBefore = runtime.transitionManager.getPendingTransition();
+    expect(pendingBefore.done).toBe(true);
+
+    emitWheel(runtime, 100, 100, 240);
+
+    const pendingAfter = runtime.transitionManager.getPendingTransition();
+    expect(pendingAfter.done).toBe(true);
+  });
+
   test('scroll-mode drag uses client delta with scale factor (hi-dpi safe)', () => {
     const runtime = createRuntimeWithPdfController({ rendererScale: 2 });
     const startY = runtime.getViewport().y;
@@ -216,6 +228,72 @@ describe('pdf scroll zone controller', () => {
     emitMouseUp(runtime);
 
     expect(runtime.getViewport().y).toBeCloseTo(startY + 50, 3);
+  });
+
+  test('scroll-mode drag release keeps vertical momentum', () => {
+    const runtime = createRuntimeWithPdfController();
+    const startX = runtime.getViewport().x;
+
+    emitMouseDown(runtime, 100, 100, 300, 100);
+    emitMouseMove(runtime, 100, 100, 220, 100);
+    emitMouseMove(runtime, 100, 100, 140, 100);
+    const yAfterDrag = runtime.getViewport().y;
+    emitMouseUp(runtime);
+
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+
+    const yAfterMomentum = runtime.getViewport().y;
+    expect(yAfterMomentum).toBeGreaterThan(yAfterDrag);
+    expect(runtime.getViewport().x).toBeCloseTo(startX, 3);
+  });
+
+  test('duplicate mouseup does not cancel scroll momentum', () => {
+    const runtime = createRuntimeWithPdfController();
+
+    emitMouseDown(runtime, 100, 100, 300, 100);
+    emitMouseMove(runtime, 100, 100, 220, 100);
+    emitMouseMove(runtime, 100, 100, 140, 100);
+    const yAfterDrag = runtime.getViewport().y;
+
+    emitMouseUp(runtime);
+    // Browser path can deliver both world + window mouseup for one release.
+    emitMouseUp(runtime);
+
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+
+    expect(runtime.getViewport().y).toBeGreaterThan(yAfterDrag);
+  });
+
+  test('scroll-mode keeps runtime in sketch and ignores window mousemove x-pan', () => {
+    const runtime = createRuntimeWithPdfController();
+    const startViewport = runtime.getViewport();
+
+    // Simulate external mode overwrite from host React layer.
+    runtime.mode = 'explore';
+
+    emitMouseDown(runtime, 100, 100, 200, 100);
+    expect(runtime.mode).toBe('sketch');
+
+    // If popmotion pan were active here, this would introduce horizontal panning.
+    window.dispatchEvent(
+      new MouseEvent('mousemove', {
+        clientX: 750,
+        clientY: 200,
+      })
+    );
+    runFrame(runtime);
+    runtime.world.flushSubscriptions();
+    emitMouseUp(runtime);
+
+    const nextViewport = runtime.getViewport();
+    expect(nextViewport.x).toBeCloseTo(startViewport.x, 3);
+    expect(runtime.transitionManager.getPendingTransition().done).toBe(true);
   });
 
   test('scroll-mode click-vs-drag threshold is configurable in browser pixels', () => {
@@ -273,6 +351,22 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.world.getActiveZone()?.id).toBe('page-1');
     const pending = runtime.transitionManager.getPendingTransition();
     expect(pending.to[4] - pending.to[2]).toBeCloseTo(1200, 0);
+  });
+
+  test('zone-active mode supports wheel zoom after selecting a zone', () => {
+    const runtime = createRuntimeWithPdfController();
+    emitClick(runtime, 100, 100);
+    runtime.world.flushSubscriptions();
+    settleTransition(runtime);
+    runtime.world.flushSubscriptions();
+
+    const before = runtime.transitionManager.getPendingTransition().to.slice(0);
+    emitWheel(runtime, 100, 100, 180);
+    const after = runtime.transitionManager.getPendingTransition().to.slice(0);
+
+    expect(runtime.mode).toBe('explore');
+    expect(runtime.world.getActiveZone()?.id).toBe('page-1');
+    expect(after).not.toEqual(before);
   });
 
   test('exits zone on background click and restores pre-focus viewport', () => {

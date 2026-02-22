@@ -23,6 +23,10 @@ const defaultConfig: Required<
 const ZONE_VIEWPORT_HEIGHT_RATIO = 0.9;
 const ZONE_VIEWPORT_VERTICAL_PADDING_RATIO = (1 - ZONE_VIEWPORT_HEIGHT_RATIO) / 2;
 const ZONE_AUTO_EXIT_MIN_COVERAGE_RATIO = 0.8;
+const SCROLL_MOMENTUM_MIN_START_PX_PER_MS = 0.08;
+const SCROLL_MOMENTUM_STOP_PX_PER_MS = 0.02;
+const SCROLL_MOMENTUM_SAMPLE_WINDOW_MS = 80;
+const SCROLL_MOMENTUM_SAMPLE_MAX_AGE_MS = 140;
 let nextPdfControllerSessionId = 1;
 const activePdfControllerSessionByRuntime = new WeakMap<object, number>();
 
@@ -47,7 +51,14 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       const sessionId = nextPdfControllerSessionId++;
       activePdfControllerSessionByRuntime.set(runtime as object, sessionId);
       const isActiveSession = () => activePdfControllerSessionByRuntime.get(runtime as object) === sessionId;
-      const { scrollWheelFactor, scrollLoadAheadFactor, clickDragThresholdPx } = {
+      const {
+        scrollWheelFactor,
+        scrollLoadAheadFactor,
+        clickDragThresholdPx,
+        enablePanMomentum = true,
+        panMomentumStrength = 1,
+        panTimeConstant = 325,
+      } = {
         ...defaultConfig,
         ...config,
       };
@@ -91,9 +102,17 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let scrollBaseViewportScreenWidth = -1;
       let scrollBaseViewportScreenHeight = -1;
       let scrollBaseViewportZoneCount = -1;
+      const panSamples: Array<{ y: number; t: number }> = [];
+      const momentum = {
+        active: false,
+        vy: 0,
+      };
 
       const popmotion = popmotionController({
         ...config,
+        // Keep popmotion wheel enabled for zone-active zoom.
+        // Scroll-mode wheel is guarded via wheelInExploreModeOnly + controller mode sync.
+        enableWheel: true,
         enableClickToZoom: false,
         wheelInExploreModeOnly: true,
       });
@@ -107,6 +126,69 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       const setMode = (nextMode: ControllerMode) => {
         mode = nextMode;
         runtime.mode = nextMode === 'zone-active' ? 'explore' : 'sketch';
+      };
+      const clearPanSamples = () => {
+        panSamples.length = 0;
+      };
+      const recordPanSample = (y: number) => {
+        const t = performance.now();
+        const last = panSamples[panSamples.length - 1];
+        if (last && last.y === y) {
+          last.t = t;
+          return;
+        }
+        panSamples.push({ y, t });
+        while (panSamples.length > 1 && t - panSamples[0].t > SCROLL_MOMENTUM_SAMPLE_MAX_AGE_MS) {
+          panSamples.shift();
+        }
+      };
+      const stopScrollMomentum = () => {
+        momentum.active = false;
+        momentum.vy = 0;
+      };
+      const calculateReleaseVelocityY = () => {
+        if (panSamples.length < 2) {
+          return null;
+        }
+        const last = panSamples[panSamples.length - 1];
+        let first = panSamples[0];
+        for (let i = panSamples.length - 2; i >= 0; i--) {
+          first = panSamples[i];
+          if (last.t - first.t >= SCROLL_MOMENTUM_SAMPLE_WINDOW_MS) {
+            break;
+          }
+        }
+        const dy = last.y - first.y;
+        const dt = last.t - first.t;
+        if (dt <= 0 || Math.abs(dy) <= 0.5) {
+          return null;
+        }
+        return dy / dt;
+      };
+      const maybeStartScrollMomentum = () => {
+        if (!enablePanMomentum || panSamples.length < 2) {
+          return false;
+        }
+        const releaseVelocityY = calculateReleaseVelocityY();
+        if (releaseVelocityY === null) {
+          return false;
+        }
+        const strength = Math.max(0, panMomentumStrength);
+        const vy = releaseVelocityY * strength;
+        const speedPxPerMs = Math.abs(vy) * runtime.getScaleFactor();
+        if (speedPxPerMs < SCROLL_MOMENTUM_MIN_START_PX_PER_MS) {
+          return false;
+        }
+        momentum.active = true;
+        momentum.vy = vy;
+        runtime.updateNextFrame();
+        return true;
+      };
+      const syncRuntimeModeToController = () => {
+        const expectedMode = mode === 'zone-active' ? 'explore' : 'sketch';
+        if (runtime.mode !== expectedMode) {
+          runtime.mode = expectedMode;
+        }
       };
       const invalidateScrollBaseViewport = () => {
         scrollBaseViewportDirty = true;
@@ -391,6 +473,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (!isActiveSession()) {
           return;
         }
+        stopScrollMomentum();
+        clearPanSamples();
         initialHomeAnchorLocked = true;
         if (!savedScrollViewport) {
           savedScrollViewport = toScrollViewport({
@@ -454,6 +538,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (mode !== 'zone-active') {
           return;
         }
+        stopScrollMomentum();
+        clearPanSamples();
         setMode('scroll-mode');
         restoringViewport = true;
         runtime.deselectZone();
@@ -464,6 +550,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (!isActiveSession()) {
           return;
         }
+        syncRuntimeModeToController();
         if (suppressNextClick) {
           return;
         }
@@ -490,6 +577,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (!isActiveSession()) {
           return;
         }
+        syncRuntimeModeToController();
         if (exitTransitionInFlight) {
           e.stopPropagation();
           return;
@@ -497,6 +585,7 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (mode !== 'scroll-mode') {
           return;
         }
+        stopScrollMomentum();
         initialHomeAnchorLocked = true;
         e.stopPropagation();
         const normalized = normalizeWheel(e);
@@ -509,9 +598,12 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (!isActiveSession()) {
           return;
         }
+        syncRuntimeModeToController();
         if (mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
+        stopScrollMomentum();
+        clearPanSamples();
         initialHomeAnchorLocked = true;
         e.stopPropagation();
         isDragging = true;
@@ -520,12 +612,14 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         pointerDownClientY = typeof e.clientY === 'number' ? e.clientY : 0;
         dragStartClientY = e.clientY;
         dragStartViewportY = scrollViewY;
+        recordPanSample(scrollViewY);
       };
 
       const onMouseMove = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
         if (!isActiveSession()) {
           return;
         }
+        syncRuntimeModeToController();
         if (!isDragging || mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
@@ -539,14 +633,28 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         const deltaPx = e.clientY - dragStartClientY;
         const deltaWorld = deltaPx / Math.max(0.0001, runtime.getScaleFactor());
         applyScrollViewport(dragStartViewportY - deltaWorld);
+        recordPanSample(scrollViewY);
       };
 
       const onMouseUp = () => {
         if (!isActiveSession()) {
           return;
         }
+        const releasedDrag = isDragging;
         isDragging = false;
         suppressNextClick = false;
+
+        if (!releasedDrag) {
+          clearPanSamples();
+          return;
+        }
+
+        if (mode === 'scroll-mode' && !exitTransitionInFlight) {
+          maybeStartScrollMomentum();
+        } else {
+          stopScrollMomentum();
+        }
+        clearPanSamples();
       };
 
       const onKeyDown = (e: KeyboardEvent) => {
@@ -579,10 +687,44 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       syncInitialHomeAnchor();
 
       const stopPopmotion = popmotion.start(runtime);
+      const removeMomentumHook = runtime.registerHook('useFrame', (delta: number) => {
+        if (!momentum.active) {
+          return;
+        }
+        if (
+          !isActiveSession() ||
+          mode !== 'scroll-mode' ||
+          restoringViewport ||
+          exitTransitionInFlight ||
+          isDragging ||
+          runtime.world.hasActiveZone()
+        ) {
+          stopScrollMomentum();
+          return;
+        }
+
+        const decay = Math.exp(-delta / Math.max(1, panTimeConstant));
+        momentum.vy *= decay;
+
+        const speedPxPerMs = Math.abs(momentum.vy) * runtime.getScaleFactor();
+        if (speedPxPerMs <= SCROLL_MOMENTUM_STOP_PX_PER_MS) {
+          stopScrollMomentum();
+          return;
+        }
+
+        const previousY = scrollViewY;
+        applyScrollViewport(scrollViewY + momentum.vy * delta);
+        if (Math.abs(scrollViewY - previousY) <= 0.01) {
+          stopScrollMomentum();
+          return;
+        }
+        runtime.updateNextFrame();
+      });
       const removeAutoExitHook = runtime.registerHook('useAfterFrame', () => {
         if (!isActiveSession()) {
           return;
         }
+        syncRuntimeModeToController();
         normalizeScrollModeViewport();
         syncInitialHomeAnchor();
         if (exitTransitionInFlight && !runtime.transitionManager.hasPending()) {
@@ -628,6 +770,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         }
         if (type === 'zone-changed') {
           if (runtime.world.hasActiveZone()) {
+            stopScrollMomentum();
+            clearPanSamples();
             initialHomeAnchorLocked = true;
             const activeZone = runtime.world.getActiveZone();
             if (!zoneEnteredViaController && activeZone) {
@@ -658,7 +802,10 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       });
 
       return () => {
+        stopScrollMomentum();
+        clearPanSamples();
         stopPopmotion();
+        removeMomentumHook();
         removeAutoExitHook();
         removeLayout();
         runtime.world.removeEventListener('click', onClick);
