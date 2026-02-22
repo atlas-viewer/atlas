@@ -44,7 +44,7 @@ describe('CompositeResource', () => {
     expect(composite.images).toEqual([a]);
     expect(composite.allImages).toEqual([a]);
 
-    const paints = composite.getAllPointsAt(DnaFactory.singleBox(100, 100), undefined, 2);
+    const paints = composite.getAllPointsAt(DnaFactory.singleBox(100, 100), undefined, 1);
     const rendered = paints.map((paint) => paint[0]);
     expect(rendered).toEqual([a]);
   });
