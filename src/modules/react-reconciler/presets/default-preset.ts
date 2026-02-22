@@ -117,8 +117,20 @@ export function defaultPreset({
   }
 
   const shouldRenderBoxesInOverlay = usingWebGL && !parityCanvasRenderer ? true : !canvasBox;
+  const runtimeRef: { current?: Runtime } = {};
+  const externalNavigatorRenderRequest = navigatorRendererOptions?.onRequestRender;
   const navigatorRenderer = navigatorElement
-    ? new NavigatorRenderer(navigatorElement, navigatorRendererOptions)
+    ? new NavigatorRenderer(navigatorElement, {
+        ...(navigatorRendererOptions || {}),
+        onRequestRender: () => {
+          if (externalNavigatorRenderRequest) {
+            externalNavigatorRenderRequest();
+          }
+          if (runtimeRef.current) {
+            runtimeRef.current.updateNextFrame();
+          }
+        },
+      })
     : undefined;
 
   const renderer = new CompositeRenderer([
@@ -141,6 +153,7 @@ export function defaultPreset({
     controller ? [controller] : [],
     runtimeOptions
   );
+  runtimeRef.current = runtime;
 
   const em = new BrowserEventManager(canvasElement, runtime);
 

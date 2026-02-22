@@ -141,4 +141,60 @@ describe('NavigatorRenderer clipping', () => {
     expect(baseContext.clip).not.toHaveBeenCalled();
     createElementSpy.mockRestore();
   });
+
+  test('marks cached-complete preview images as loaded and requests a render', () => {
+    class ImmediatelyCompleteImage {
+      complete = false;
+      naturalWidth = 0;
+      naturalHeight = 0;
+      onload: any = null;
+      onerror: any = null;
+      private _src = '';
+
+      set src(value: string) {
+        this._src = value;
+        this.complete = true;
+        this.naturalWidth = 512;
+        this.naturalHeight = 512;
+      }
+
+      get src() {
+        return this._src;
+      }
+    }
+
+    const mainContext = createMockContext();
+    const baseContext = createMockContext();
+    const canvas = createMockCanvas(mainContext);
+    const baseCanvas = createMockCanvas(baseContext);
+    const requestRender = vi.fn();
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName.toLowerCase() === 'canvas') {
+        return baseCanvas as any;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    const OriginalImage = globalThis.Image;
+    (globalThis as any).Image = ImmediatelyCompleteImage as any;
+
+    try {
+      const renderer = new NavigatorRenderer(canvas, {
+        drawFallbackBoxes: false,
+        onRequestRender: requestRender,
+      });
+      const imageUrl = 'https://example.org/navigator-cached-complete.jpg';
+      const preview = (renderer as any).getLoadedPreviewImage(imageUrl);
+      const cacheEntry = (renderer as any).previewImageCache.get(imageUrl);
+
+      expect(cacheEntry.status).toBe('loaded');
+      expect(preview).toBe(cacheEntry.image);
+      expect(requestRender).toHaveBeenCalledTimes(1);
+    } finally {
+      (globalThis as any).Image = OriginalImage;
+      createElementSpy.mockRestore();
+    }
+  });
 });

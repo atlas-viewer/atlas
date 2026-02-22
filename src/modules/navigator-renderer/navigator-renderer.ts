@@ -40,6 +40,7 @@ export type NavigatorRendererOptions = {
   minVisibleRectSize?: number;
   drawFallbackBoxes?: boolean;
   zoneWindow?: NavigatorZoneWindowOptions;
+  onRequestRender?: () => void;
 };
 
 export type NavigatorZoneWindowOptions = {
@@ -364,6 +365,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private readonly minVisibleRectSize: number;
   private readonly drawFallbackBoxes: boolean;
   private readonly zoneWindow?: NavigatorZoneWindowOptions;
+  private readonly onRequestRender?: () => void;
   private readonly baseCanvas: HTMLCanvasElement;
   private readonly baseContext: CanvasRenderingContext2D;
   private readonly worldTarget: Strand = DnaFactory.singleBox(1, 1, 0, 0);
@@ -388,6 +390,7 @@ export class NavigatorRenderer extends DebugRenderer {
     this.minVisibleRectSize = Math.max(1, options.minVisibleRectSize || 1);
     this.drawFallbackBoxes = options.drawFallbackBoxes !== false;
     this.zoneWindow = options.zoneWindow;
+    this.onRequestRender = options.onRequestRender;
     this.context.globalAlpha = 1;
     this.context.imageSmoothingEnabled = false;
 
@@ -401,6 +404,9 @@ export class NavigatorRenderer extends DebugRenderer {
   invalidateWorldLayer() {
     this.worldLayerDirty = true;
     this.renderNextFrame = true;
+    if (this.onRequestRender) {
+      this.onRequestRender();
+    }
   }
 
   resize() {
@@ -723,16 +729,32 @@ export class NavigatorRenderer extends DebugRenderer {
     this.previewImageCache.set(imageUrl, entry);
 
     image.onload = () => {
+      if (entry.status !== 'loading') {
+        return;
+      }
       entry.status = 'loaded';
       this.invalidateWorldLayer();
     };
 
     image.onerror = () => {
+      if (entry.status !== 'loading') {
+        return;
+      }
       entry.status = 'error';
     };
 
     image.src = imageUrl;
-    return undefined;
+
+    if (image.complete) {
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        entry.status = 'loaded';
+        this.invalidateWorldLayer();
+      } else {
+        entry.status = 'error';
+      }
+    }
+
+    return entry.status === 'loaded' ? image : undefined;
   }
 
   private renderBox(
