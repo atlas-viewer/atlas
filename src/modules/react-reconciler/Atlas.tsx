@@ -1304,7 +1304,7 @@ export const Atlas: React.FC<
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }
         .atlas-static-preset { touch-action: inherit; }
         .atlas-static-container { position: relative; overflow: hidden; flex: 1 1 0px; }
-        .atlas-overlay { position: absolute; top: 0; left: 0; none; overflow: hidden; }
+        .atlas-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
         /** setting the pointer events to none means that Atlas will own the touch and mousewheel events **/
         .atlas-overlay--interactive { pointer-events: none; }
         .atlas-static-image { position: absolute; user-select: none; transform-origin: 0px 0px; }
