@@ -320,6 +320,15 @@ export class CompositeResource
       }
     }
 
+    toPaintIdx.sort((a, b) => {
+      const aImage = this.images[a];
+      const bImage = this.images[b];
+      const aScale = aImage ? aImage.display.scale : 0;
+      const bScale = bImage ? bImage.display.scale : 0;
+      // Larger display scale is lower quality, and should paint/load first as fallback.
+      return bScale - aScale;
+    });
+
     const active = new Set<number>();
     switch (this.renderOptions.layerPolicy) {
       case 'always-blend':

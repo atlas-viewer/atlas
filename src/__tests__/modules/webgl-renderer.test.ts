@@ -427,6 +427,64 @@ describe('WebGLRenderer fallback events', () => {
     expect(gl.drawArrays).toHaveBeenCalledTimes(1);
   });
 
+  test('loads lower-quality composite layer first when tile priority ties', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1 });
+    const acquire = vi.spyOn((renderer as any).imageRequestPool, 'acquire').mockImplementation((url: string) => ({
+      requestKey: url,
+      release: vi.fn(),
+      promise: new Promise(() => {}),
+    }));
+
+    const high = new SingleImage();
+    high.applyProps({
+      id: 'high',
+      uri: 'https://example.com/high.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 400, height: 400 },
+      style: { opacity: 1 },
+    } as any);
+
+    const low = new SingleImage();
+    low.applyProps({
+      id: 'low',
+      uri: 'https://example.com/low.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+
+    const compositeParent = {
+      renderOptions: {
+        layerPolicy: 'always-blend',
+      },
+      isImageActive: () => true,
+    } as any;
+    high.__parent = compositeParent;
+    low.__parent = compositeParent;
+
+    renderer.prepareLayer(high);
+    renderer.prepareLayer(low);
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+
+    // Intentionally enqueue high-quality first; queue sorting should still load low-quality first.
+    renderer.paint(high, 0, 0, 0, 100, 100);
+    renderer.paint(low, 0, 0, 0, 100, 100);
+    renderer.afterFrame();
+
+    expect(acquire).toHaveBeenCalledTimes(2);
+    expect(acquire.mock.calls[0][0]).toBe('https://example.com/low.jpg');
+    expect(acquire.mock.calls[1][0]).toBe('https://example.com/high.jpg');
+  });
+
   test('caps prefetch and concurrent active tile requests', () => {
     const canvas = createMockCanvas();
     const gl = createMockGL(canvas);

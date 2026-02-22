@@ -79,6 +79,34 @@ describe('CompositeResource', () => {
     expect(composite.isImageActive(low)).toBe(true);
   });
 
+  test('renders lowest quality first for composite layers', () => {
+    const high = createImage('high', 400, 400);
+    const mid = createImage('mid', 200, 200);
+    const low = createImage('low', 100, 100);
+
+    const composite = new CompositeResource({
+      id: 'comp',
+      width: 100,
+      height: 100,
+      images: [high, mid, low],
+      renderOptions: {
+        minSize: 0,
+        maxImageSize: 99999,
+        renderLayers: 3,
+        renderSmallestFallback: true,
+        layerPolicy: 'always-blend',
+      },
+    });
+
+    for (const update of composite.getScheduledUpdates(DnaFactory.singleBox(100, 100), 1)) {
+      update();
+    }
+
+    const paints = composite.getAllPointsAt(DnaFactory.singleBox(100, 100), undefined, 1);
+    const rendered = paints.map((paint) => (paint[0] as SingleImage).id);
+    expect(rendered).toEqual(['low', 'mid', 'high']);
+  });
+
   test('loadFullResource resets loading flag after failure and succeeds on retry', async () => {
     const base = createImage('base', 100, 100);
     const extra = createImage('extra', 200, 200);

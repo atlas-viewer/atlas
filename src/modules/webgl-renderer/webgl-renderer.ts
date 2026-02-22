@@ -35,6 +35,7 @@ type WebGLTileRequest = {
   index: number;
   url: string;
   priority: number;
+  scale: number;
   prefetch: boolean;
 };
 
@@ -833,6 +834,7 @@ export class WebGLRenderer implements Renderer {
       index,
       url: paint.getImageUrl(index),
       priority,
+      scale: paint.display.scale,
       prefetch,
     });
     this.queuedTileRequestKeys.add(key);
@@ -892,7 +894,11 @@ export class WebGLRenderer implements Renderer {
       if (a.prefetch !== b.prefetch) {
         return a.prefetch ? 1 : -1;
       }
-      return a.priority - b.priority;
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      // Larger display scale is lower quality, and should load first.
+      return b.scale - a.scale;
     });
 
     while (this.loadingCount < this.maxConcurrentTasks && this.tileRequestQueue.length) {

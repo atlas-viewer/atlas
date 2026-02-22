@@ -39,9 +39,9 @@ const staticTiles = [
 		height: 7200,
 	},
 	{
-		id: "https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json",
-		width: 5233,
-		height: 7200,
+		id: "https://iiif.ub.uni-leipzig.de/iiif/j2k/0000/0026/0000002636/00000001.jpx/info.json",
+		width: 3840,
+		height: 5760,
 	},
 	{
 		id: "https://glenrobson.github.io/iiif_stuff/rounding_issue/odd/info.json",
