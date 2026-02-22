@@ -640,6 +640,24 @@ export const Atlas: React.FC<
 		);
 	};
 
+	const getRendererDpi = useCallback(() => {
+		if (!preset) {
+			return window.devicePixelRatio || 1;
+		}
+		const renderer = preset.renderer as {
+			dpi?: number;
+			renderers?: Array<{ dpi?: number }>;
+		};
+		const primaryRenderer = Array.isArray(renderer.renderers)
+			? renderer.renderers[0]
+			: renderer;
+		const dpi = primaryRenderer?.dpi;
+		if (typeof dpi === "number" && Number.isFinite(dpi) && dpi > 0) {
+			return dpi;
+		}
+		return window.devicePixelRatio || 1;
+	}, [preset]);
+
 	const getNavigatorRegion = useCallback(
 		(runtime: Runtime) =>
 			getNavigatorWorldRegion(runtime.world, {
@@ -655,7 +673,7 @@ export const Atlas: React.FC<
 			const wHeight = region.height;
 			const wWidth = region.width;
 
-			const ratio = window.devicePixelRatio || 1;
+			const ratio = getRendererDpi();
 			const safeWorldWidth = Math.max(1, wWidth);
 			const safeWorldHeight = Math.max(1, wHeight);
 			const configuredWidth = Math.max(1, resolvedNavigatorOptions.width);
@@ -719,6 +737,7 @@ export const Atlas: React.FC<
 		restProps.height,
 		resolvedNavigatorOptions.width,
 		getNavigatorRegion,
+		getRendererDpi,
 	]);
 
 	const Canvas = useCallback(
@@ -772,7 +791,7 @@ export const Atlas: React.FC<
 			const rt = preset.runtime;
 			return rt.registerHook("useBeforeFrame", () => {
 				if (viewport.current.didUpdate && preset.canvas) {
-					const ratio = window.devicePixelRatio || 1;
+					const ratio = getRendererDpi();
 					const canvasWidth = viewport.current.width;
 					const canvasHeight = viewport.current.height;
 
@@ -811,7 +830,7 @@ export const Atlas: React.FC<
 		return () => {
 			// no-op
 		};
-	}, [preset, resetWorldOnChange]);
+	}, [preset, resetWorldOnChange, getRendererDpi]);
 
 	// @todo move to controller.
 	useEffect(() => {

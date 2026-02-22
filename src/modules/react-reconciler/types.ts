@@ -4,6 +4,7 @@ import type { BoxStyle } from '../../objects/box';
 import type { GeometryProps } from '../../objects/geometry';
 import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
 import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
+import type { MapBounds, MapTileSource } from '../maps/types';
 
 type BaseElement = {
   id?: string;
@@ -98,6 +99,28 @@ declare global {
         scaleFactor: number;
         crop: any;
         version3?: boolean;
+      } & AllEvents;
+      mapTiledImage: BaseElement & {
+        bounds: MapBounds;
+        worldWidth: number;
+        worldHeight: number;
+        zoom: number;
+        tileSize?: number;
+        scaleFactor?: number;
+        tileSource?: MapTileSource;
+        tileUrlTemplate?: string;
+        subdomains?: string[];
+      } & AllEvents;
+      ['map-tiled-image']: BaseElement & {
+        bounds: MapBounds;
+        worldWidth: number;
+        worldHeight: number;
+        zoom: number;
+        tileSize?: number;
+        scaleFactor?: number;
+        tileSource?: MapTileSource;
+        tileUrlTemplate?: string;
+        subdomains?: string[];
       } & AllEvents;
       box: BaseElement & {
         interactive?: boolean;

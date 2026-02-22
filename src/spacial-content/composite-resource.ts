@@ -13,6 +13,7 @@ type RenderOptions = {
   minSize: number;
   maxImageSize: number;
   quality: number;
+  useDevicePixelRatio: boolean;
   layerPolicy: 'fallback-only' | 'always-blend' | 'active-only';
   loadingBias: 'balanced' | 'speed' | 'data';
   prefetchRadius?: number;
@@ -71,6 +72,7 @@ export class CompositeResource
       minSize: 255,
       maxImageSize: 2048,
       quality: 1.3,
+      useDevicePixelRatio: true,
       layerPolicy: 'always-blend',
       loadingBias: 'balanced',
       prefetchRadius: 1,
@@ -103,6 +105,12 @@ export class CompositeResource
     }
     if (typeof props.quality !== 'undefined' && props.quality !== this.renderOptions.quality) {
       this.renderOptions.quality = props.quality;
+    }
+    if (
+      typeof props.useDevicePixelRatio !== 'undefined' &&
+      props.useDevicePixelRatio !== this.renderOptions.useDevicePixelRatio
+    ) {
+      this.renderOptions.useDevicePixelRatio = props.useDevicePixelRatio;
     }
     if (typeof props.layerPolicy !== 'undefined' && props.layerPolicy !== this.renderOptions.layerPolicy) {
       this.renderOptions.layerPolicy = props.layerPolicy;
@@ -272,8 +280,10 @@ export class CompositeResource
       return [];
     }
 
+    const devicePixelRatio =
+      this.renderOptions.useDevicePixelRatio && typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     const bestIndex = bestResourceIndexAtRatio(
-      1 / (scale || 1) / (window.devicePixelRatio || 1),
+      1 / (scale || 1) / devicePixelRatio,
       this.images,
       this.renderOptions.quality
     );

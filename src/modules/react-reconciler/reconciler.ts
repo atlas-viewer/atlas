@@ -10,6 +10,7 @@ import { Text } from '../../objects/text';
 import { Runtime } from '../../renderer/runtime';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { MapTiledImage } from '../../spacial-content/map-tiled-image';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
 import { World } from '../../world';
@@ -308,6 +309,21 @@ function createInstance(
         props.useFloorCalc,
         props.version3
       );
+      break;
+    case 'mapTiledImage':
+    case 'map-tiled-image':
+      instance = new MapTiledImage({
+        id: props.id,
+        bounds: props.bounds,
+        worldWidth: props.worldWidth,
+        worldHeight: props.worldHeight,
+        zoom: props.zoom,
+        tileSize: props.tileSize,
+        scaleFactor: props.scaleFactor,
+        tileSource: props.tileSource,
+        tileUrlTemplate: props.tileUrlTemplate,
+        subdomains: props.subdomains,
+      });
       break;
     case 'paragraph':
       instance = new Text();

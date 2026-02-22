@@ -3,6 +3,7 @@ export * from './modules/canvas-renderer/canvas-renderer';
 export * from './modules/composite-renderer/composite-renderer';
 export * from './modules/grid-builder/grid-builder';
 export * from './modules/iiif/standalone';
+export * from './modules/maps';
 export * from './modules/pdf-scroll-zone-controller/pdf-scroll-zone-controller';
 export * from './modules/popmotion-controller/popmotion-controller';
 export * from './modules/shared/image-load-events';
