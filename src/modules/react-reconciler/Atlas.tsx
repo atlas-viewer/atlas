@@ -67,6 +67,21 @@ function getReadyRenderer(renderer: unknown): AtlasReadyRenderer {
 	return "unknown";
 }
 
+const NAVIGATOR_HOME_TOLERANCE = 1;
+
+function isProjectionWithinTolerance(
+	a: { x: number; y: number; width: number; height: number },
+	b: { x: number; y: number; width: number; height: number },
+	tolerance = NAVIGATOR_HOME_TOLERANCE,
+): boolean {
+	return (
+		Math.abs(a.x - b.x) <= tolerance &&
+		Math.abs(a.y - b.y) <= tolerance &&
+		Math.abs(a.width - b.width) <= tolerance &&
+		Math.abs(a.height - b.height) <= tolerance
+	);
+}
+
 export type AtlasProps = {
 	debug?: boolean;
 	mode?: ViewerMode;
@@ -192,6 +207,7 @@ export const Atlas: React.FC<
 	const navigatorIdleTimer = useRef<number | undefined>(undefined);
 	const [isNavigatorIdle, setIsNavigatorIdle] = useState(false);
 	const [isNavigatorDragging, setIsNavigatorDragging] = useState(false);
+	const [isNavigatorHiddenAtHome, setIsNavigatorHiddenAtHome] = useState(false);
 	const navigatorDraggingRef = useRef(false);
 
 	const resolvedNavigatorOptions = useMemo(
@@ -667,6 +683,18 @@ export const Atlas: React.FC<
 		[resolvedNavigatorOptions.zoneWindow],
 	);
 
+	const shouldHideNavigatorAtHome = useCallback(
+		(runtime: Runtime) => {
+			const viewport = runtime.getViewport();
+			const homeTarget = runtime.getHomeTarget({
+				cover: !!homeCover,
+				paddingPx: homePaddingPx,
+			});
+			return isProjectionWithinTolerance(viewport, homeTarget);
+		},
+		[homeCover, homePaddingPx],
+	);
+
 	const recalculateNavigatorDimensions = () => {
 		if (preset && preset.navigator) {
 			const region = getNavigatorRegion(preset.runtime);
@@ -739,6 +767,26 @@ export const Atlas: React.FC<
 		getNavigatorRegion,
 		getRendererDpi,
 	]);
+
+	useEffect(() => {
+		if (!preset || !enableNavigator) {
+			setIsNavigatorHiddenAtHome(false);
+			return;
+		}
+
+		const runtime = preset.runtime;
+		const syncNavigatorVisibility = () => {
+			const hideAtHome = shouldHideNavigatorAtHome(runtime);
+			setIsNavigatorHiddenAtHome((prev) =>
+				prev === hideAtHome ? prev : hideAtHome,
+			);
+		};
+
+		syncNavigatorVisibility();
+		return runtime.world.addLayoutSubscriber(() => {
+			syncNavigatorVisibility();
+		});
+	}, [preset, enableNavigator, shouldHideNavigatorAtHome]);
 
 	const Canvas = useCallback(
 		function Canvas(props: { children: React.ReactElement }): JSX.Element {
@@ -1266,6 +1314,7 @@ export const Atlas: React.FC<
 				<Container
 					className={[
 						"atlas-navigator",
+						isNavigatorHiddenAtHome ? "atlas-navigator--hidden-at-home" : "",
 						resolvedNavigatorOptions.idleFade && isNavigatorIdle
 							? "atlas-navigator--idle"
 							: "",
@@ -1310,6 +1359,7 @@ export const Atlas: React.FC<
         .atlas-static-image { position: absolute; user-select: none; transform-origin: 0px 0px; }
         .atlas-navigator { position: absolute; top: var(--atlas-navigator-top, 10px); right: var(--atlas-navigator-right, 10px); left: var(--atlas-navigator-left); bottom: var(--atlas-navigator-bottom); opacity: var(--atlas-navigator-opacity-active, .94); transition: opacity var(--atlas-navigator-fade-duration, 250ms) ease; z-index: var(--atlas-navigator-z-index, 30); }
         .atlas-navigator--idle { opacity: var(--atlas-navigator-opacity-idle, .4); }
+        .atlas-navigator--hidden-at-home { opacity: 0; pointer-events: none; }
          .atlas-navigator-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; border-radius: var(--atlas-navigator-radius, 6px); border: var(--atlas-navigator-border, 1px solid rgba(0, 0, 0, 0.7)); box-shadow: var(--atlas-navigator-shadow, 0 6px 16px rgba(2, 6, 23, 0.45)); box-sizing: border-box; }
         .atlas-navigator--dragging .atlas-navigator-canvas { cursor: grabbing; }
       `}</style>
