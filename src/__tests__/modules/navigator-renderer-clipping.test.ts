@@ -197,4 +197,50 @@ describe('NavigatorRenderer clipping', () => {
       createElementSpy.mockRestore();
     }
   });
+
+  test('keeps navigator pending when invalidated during world-layer render', () => {
+    const mainContext = createMockContext();
+    const baseContext = createMockContext();
+    const canvas = createMockCanvas(mainContext);
+    const baseCanvas = createMockCanvas(baseContext);
+    const requestRender = vi.fn();
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName.toLowerCase() === 'canvas') {
+        return baseCanvas as any;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    try {
+      const renderer = new NavigatorRenderer(canvas, {
+        drawFallbackBoxes: false,
+        onRequestRender: requestRender,
+      });
+      const world = {
+        width: 100,
+        height: 100,
+        zones: [],
+        getActiveZone: () => undefined,
+        getPointsAt: () => [],
+      } as any;
+      const target = DnaFactory.singleBox(100, 100, 0, 0);
+
+      const renderWorldLayerSpy = vi.spyOn(renderer as any, 'renderWorldLayer').mockImplementation(() => {
+        (renderer as any).invalidateWorldLayer();
+      });
+
+      renderer.invalidateWorldLayer();
+      requestRender.mockClear();
+      renderer.afterFrame(world, 16, target);
+
+      expect(renderWorldLayerSpy).toHaveBeenCalledTimes(1);
+      expect(requestRender).toHaveBeenCalledTimes(1);
+      expect(renderer.pendingUpdate()).toBe(true);
+      expect((renderer as any).worldLayerDirty).toBe(true);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
 });

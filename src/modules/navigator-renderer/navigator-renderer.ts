@@ -382,6 +382,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private lastRegionY = Number.NaN;
   private lastRegionWidth = Number.NaN;
   private lastRegionHeight = Number.NaN;
+  private worldLayerInvalidationVersion = 0;
 
   constructor(canvas: HTMLCanvasElement, options: NavigatorRendererOptions = {}) {
     super(canvas);
@@ -402,6 +403,7 @@ export class NavigatorRenderer extends DebugRenderer {
   }
 
   invalidateWorldLayer() {
+    this.worldLayerInvalidationVersion++;
     this.worldLayerDirty = true;
     this.renderNextFrame = true;
     if (this.onRequestRender) {
@@ -432,6 +434,7 @@ export class NavigatorRenderer extends DebugRenderer {
   }
 
   afterFrame(world: World, _delta: number, target: Strand) {
+    const frameInvalidationVersion = this.worldLayerInvalidationVersion;
     if (this.canvas.width <= 0 || this.canvas.height <= 0) {
       this.renderNextFrame = true;
       return;
@@ -463,8 +466,9 @@ export class NavigatorRenderer extends DebugRenderer {
     }
 
     if (this.worldLayerDirty) {
+      const worldLayerRenderInvalidationVersion = this.worldLayerInvalidationVersion;
       this.renderWorldLayer(world, region);
-      this.worldLayerDirty = false;
+      this.worldLayerDirty = worldLayerRenderInvalidationVersion !== this.worldLayerInvalidationVersion;
     }
 
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -479,7 +483,7 @@ export class NavigatorRenderer extends DebugRenderer {
     this.lastRegionY = region.y;
     this.lastRegionWidth = region.width;
     this.lastRegionHeight = region.height;
-    this.renderNextFrame = false;
+    this.renderNextFrame = frameInvalidationVersion !== this.worldLayerInvalidationVersion;
   }
 
   private hasViewportChanged(target: Strand) {
