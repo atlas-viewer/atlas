@@ -688,6 +688,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.trigger('constrain-bounds', { immediate });
   }
 
+  hasPendingAnimation() {
+    return !!(
+      this.zoneVisibilityFade &&
+      performance.now() - this.zoneVisibilityFade.startedAt < this.zoneVisibilityFadeDurationMs
+    );
+  }
+
   addDebugSubscriber(callback: (event: WorldDebugEvent) => void) {
     this.debugSubscribers.add(callback);
     return () => {

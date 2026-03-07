@@ -191,7 +191,7 @@ export class Runtime {
     this.transitionManager = new TransitionManager(this);
     this.aggregate = scale(1);
     this.world.addLayoutSubscriber((type: string) => {
-      if (type === 'repaint') {
+      if (type === 'repaint' || type === 'zone-changed') {
         this.pendingUpdate = true;
       }
       if (type === 'recalculate-world-size') {
@@ -1121,15 +1121,22 @@ export class Runtime {
     // Called every frame.
     this.hook('useFrame', delta);
 
-    const pendingUpdate = this.pendingUpdate;
+    let pendingUpdate = this.pendingUpdate;
     const rendererPendingUpdate = this.renderer.pendingUpdate();
+    const worldPendingUpdate = this.world.hasPendingAnimation();
     const debugEnabled = this.hasDebugSubscribers();
 
     if (this.transitionManager.hasPending()) {
       this.transitionManager.runTransition(this.target, delta);
 
       this.pendingUpdate = true;
+      pendingUpdate = true;
       this.updateControllerPosition();
+    }
+
+    if (worldPendingUpdate) {
+      this.pendingUpdate = true;
+      pendingUpdate = true;
     }
 
     if (
@@ -1137,6 +1144,7 @@ export class Runtime {
       !pendingUpdate &&
       // Check if there was a pending update from the renderer.
       !rendererPendingUpdate &&
+      !worldPendingUpdate &&
       // Then check the points, the first will catch invalidation.
       this.target[0] === this.lastTarget[0] &&
       // The following are x1, y1, x2, y2 points of the target.

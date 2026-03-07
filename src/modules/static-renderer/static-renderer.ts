@@ -65,6 +65,7 @@ export class StaticRenderer implements Renderer {
     this.rendererPosition = this.container.getBoundingClientRect();
     this.width = this.rendererPosition.width;
     this.height = this.rendererPosition.height;
+    this.pending = true;
   }
 
   getRendererScreenPosition() {
@@ -88,6 +89,7 @@ export class StaticRenderer implements Renderer {
 
     this.previouslyVisible = this.currentlyVisible;
     this.currentlyVisible = [];
+    this.pending = false;
   }
 
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void {}
@@ -146,8 +148,6 @@ export class StaticRenderer implements Renderer {
   }
 
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
-    // Unsure.
-    this.pending = false;
     this.zIndex++;
 
     if (paint instanceof SingleImage) {
@@ -214,5 +214,7 @@ export class StaticRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent): void {}
   finishLayer(paint: SpacialContent): void {}
-  reset() {}
+  reset() {
+    this.pending = true;
+  }
 }
