@@ -11,7 +11,7 @@ describe('Atlas navigator home visibility', () => {
     expect(source).toContain('const homeTarget = runtime.getHomeTarget({');
     expect(source).toContain('cover: !!homeCover,');
     expect(source).toContain('paddingPx: homePaddingPx,');
-    expect(source).toContain('isNavigatorHiddenAtHome ? "atlas-navigator--hidden-at-home" : "",');
+    expect(source).toContain("isNavigatorHiddenAtHome ? 'atlas-navigator--hidden-at-home' : ''");
     expect(source).toContain('.atlas-navigator--hidden-at-home { opacity: 0; pointer-events: none; }');
     expect(source).toContain('return runtime.world.addLayoutSubscriber(() => {');
   });

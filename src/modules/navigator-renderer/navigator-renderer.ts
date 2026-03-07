@@ -41,7 +41,46 @@ export type NavigatorRendererOptions = {
   drawFallbackBoxes?: boolean;
   zoneWindow?: NavigatorZoneWindowOptions;
   onRequestRender?: () => void;
+  onDebugEvent?: (event: NavigatorDebugEvent) => void;
 };
+
+export type NavigatorDebugEvent =
+  | {
+      type: 'preview-image-requested';
+      imageUrl: string;
+    }
+  | {
+      type: 'preview-image-loaded';
+      imageUrl: string;
+      cached: boolean;
+    }
+  | {
+      type: 'preview-image-error';
+      imageUrl: string;
+    }
+  | {
+      type: 'world-layer-invalidated';
+      reason: string;
+    }
+  | {
+      type: 'frame-skipped-zero-size-canvas';
+      canvasWidth: number;
+      canvasHeight: number;
+      baseCanvasWidth: number;
+      baseCanvasHeight: number;
+    }
+  | {
+      type: 'world-layer-render-start';
+      region: NavigatorWorldRegion;
+    }
+  | {
+      type: 'world-layer-render-end';
+      region: NavigatorWorldRegion;
+    }
+  | {
+      type: 'render-request-forwarded';
+      reason: string;
+    };
 
 export type NavigatorZoneWindowOptions = {
   total?: number;
@@ -366,6 +405,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private readonly drawFallbackBoxes: boolean;
   private readonly zoneWindow?: NavigatorZoneWindowOptions;
   private readonly onRequestRender?: () => void;
+  private readonly onDebugEvent?: (event: NavigatorDebugEvent) => void;
   private readonly baseCanvas: HTMLCanvasElement;
   private readonly baseContext: CanvasRenderingContext2D;
   private readonly worldTarget: Strand = DnaFactory.singleBox(1, 1, 0, 0);
@@ -392,6 +432,7 @@ export class NavigatorRenderer extends DebugRenderer {
     this.drawFallbackBoxes = options.drawFallbackBoxes !== false;
     this.zoneWindow = options.zoneWindow;
     this.onRequestRender = options.onRequestRender;
+    this.onDebugEvent = options.onDebugEvent;
     this.context.globalAlpha = 1;
     this.context.imageSmoothingEnabled = false;
 
@@ -402,26 +443,44 @@ export class NavigatorRenderer extends DebugRenderer {
     this.syncBaseLayerCanvas();
   }
 
-  invalidateWorldLayer() {
+  private emitDebugEvent(event: NavigatorDebugEvent) {
+    if (this.onDebugEvent) {
+      this.onDebugEvent(event);
+    }
+  }
+
+  private requestRender(reason: string) {
+    if (this.onRequestRender) {
+      this.emitDebugEvent({
+        type: 'render-request-forwarded',
+        reason,
+      });
+      this.onRequestRender();
+    }
+  }
+
+  invalidateWorldLayer(reason = 'manual') {
     this.worldLayerInvalidationVersion++;
     this.worldLayerDirty = true;
     this.renderNextFrame = true;
-    if (this.onRequestRender) {
-      this.onRequestRender();
-    }
+    this.emitDebugEvent({
+      type: 'world-layer-invalidated',
+      reason,
+    });
+    this.requestRender(reason);
   }
 
   resize() {
     super.resize();
     this.syncBaseLayerCanvas();
-    this.invalidateWorldLayer();
+    this.invalidateWorldLayer('resize');
   }
 
   beforeFrame(world: World) {
     if (world.width !== this.lastWorldWidth || world.height !== this.lastWorldHeight) {
       this.lastWorldWidth = world.width;
       this.lastWorldHeight = world.height;
-      this.invalidateWorldLayer();
+      this.invalidateWorldLayer('world-size-changed');
     }
   }
 
@@ -436,6 +495,13 @@ export class NavigatorRenderer extends DebugRenderer {
   afterFrame(world: World, _delta: number, target: Strand) {
     const frameInvalidationVersion = this.worldLayerInvalidationVersion;
     if (this.canvas.width <= 0 || this.canvas.height <= 0) {
+      this.emitDebugEvent({
+        type: 'frame-skipped-zero-size-canvas',
+        canvasWidth: this.canvas.width,
+        canvasHeight: this.canvas.height,
+        baseCanvasWidth: this.baseCanvas.width,
+        baseCanvasHeight: this.baseCanvas.height,
+      });
       this.renderNextFrame = true;
       return;
     }
@@ -461,13 +527,31 @@ export class NavigatorRenderer extends DebugRenderer {
     }
 
     if (this.baseCanvas.width <= 0 || this.baseCanvas.height <= 0) {
+      this.emitDebugEvent({
+        type: 'frame-skipped-zero-size-canvas',
+        canvasWidth: this.canvas.width,
+        canvasHeight: this.canvas.height,
+        baseCanvasWidth: this.baseCanvas.width,
+        baseCanvasHeight: this.baseCanvas.height,
+      });
       this.renderNextFrame = true;
       return;
     }
 
     if (this.worldLayerDirty) {
       const worldLayerRenderInvalidationVersion = this.worldLayerInvalidationVersion;
-      this.renderWorldLayer(world, region);
+      this.emitDebugEvent({
+        type: 'world-layer-render-start',
+        region,
+      });
+      try {
+        this.renderWorldLayer(world, region);
+      } finally {
+        this.emitDebugEvent({
+          type: 'world-layer-render-end',
+          region,
+        });
+      }
       this.worldLayerDirty = worldLayerRenderInvalidationVersion !== this.worldLayerInvalidationVersion;
     }
 
@@ -716,10 +800,19 @@ export class NavigatorRenderer extends DebugRenderer {
       if (cached.status === 'loading' && cached.image.complete) {
         if (cached.image.naturalWidth > 0 && cached.image.naturalHeight > 0) {
           cached.status = 'loaded';
-          this.invalidateWorldLayer();
+          this.emitDebugEvent({
+            type: 'preview-image-loaded',
+            imageUrl,
+            cached: true,
+          });
+          this.invalidateWorldLayer('preview-image-loaded');
           return cached.image;
         }
         cached.status = 'error';
+        this.emitDebugEvent({
+          type: 'preview-image-error',
+          imageUrl,
+        });
         return undefined;
       }
       return cached.status === 'loaded' ? cached.image : undefined;
@@ -731,13 +824,22 @@ export class NavigatorRenderer extends DebugRenderer {
       status: 'loading',
     };
     this.previewImageCache.set(imageUrl, entry);
+    this.emitDebugEvent({
+      type: 'preview-image-requested',
+      imageUrl,
+    });
 
     image.onload = () => {
       if (entry.status !== 'loading') {
         return;
       }
       entry.status = 'loaded';
-      this.invalidateWorldLayer();
+      this.emitDebugEvent({
+        type: 'preview-image-loaded',
+        imageUrl,
+        cached: false,
+      });
+      this.invalidateWorldLayer('preview-image-loaded');
     };
 
     image.onerror = () => {
@@ -745,6 +847,10 @@ export class NavigatorRenderer extends DebugRenderer {
         return;
       }
       entry.status = 'error';
+      this.emitDebugEvent({
+        type: 'preview-image-error',
+        imageUrl,
+      });
     };
 
     image.src = imageUrl;
@@ -752,9 +858,18 @@ export class NavigatorRenderer extends DebugRenderer {
     if (image.complete) {
       if (image.naturalWidth > 0 && image.naturalHeight > 0) {
         entry.status = 'loaded';
-        this.invalidateWorldLayer();
+        this.emitDebugEvent({
+          type: 'preview-image-loaded',
+          imageUrl,
+          cached: true,
+        });
+        this.invalidateWorldLayer('preview-image-loaded');
       } else {
         entry.status = 'error';
+        this.emitDebugEvent({
+          type: 'preview-image-error',
+          imageUrl,
+        });
       }
     }
 

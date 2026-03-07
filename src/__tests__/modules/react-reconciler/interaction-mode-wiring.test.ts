@@ -9,7 +9,7 @@ describe("interaction mode wiring", () => {
 		);
 
 		expect(atlasSource).toContain(
-			'interactionMode?: "popmotion" | "pdf-scroll-zone"',
+			"interactionMode?: 'popmotion' | 'pdf-scroll-zone'",
 		);
 		expect(atlasSource).toContain("controllerConfig,");
 		expect(atlasSource).toContain("interactionMode,");

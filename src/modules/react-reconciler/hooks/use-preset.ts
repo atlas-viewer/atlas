@@ -19,6 +19,7 @@ export function usePreset(
     imageLoading?: PresetArgs['imageLoading'];
     webglFallbackOnImageLoadError?: PresetArgs['webglFallbackOnImageLoadError'];
     webglReadiness?: PresetArgs['webglReadiness'];
+    runtimeOptions?: PresetArgs['runtimeOptions'];
   }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
@@ -26,14 +27,24 @@ export function usePreset(
   const parityCanvasRef = useRef<HTMLCanvasElement>();
   const navigatorRef = useRef<HTMLCanvasElement>();
   const containerRef = useRef<HTMLElement>();
-  const viewport = useRef<{
-    width: number;
-    height: number;
-    didUpdate?: boolean;
-  }>({
+  const viewport = useRef<
+    PresetArgs['viewport'] & {
+      didUpdate?: boolean;
+    }
+  >({
+    x: 0,
+    y: 0,
     width: options.width,
     height: options.height,
+    scale: 1,
     didUpdate: true,
+  });
+  const liveCallbacksRef = useRef<{
+    onWebGLFallback?: PresetArgs['onWebGLFallback'];
+    onImageError?: PresetArgs['onImageError'];
+  }>({
+    onWebGLFallback: options.onWebGLFallback,
+    onImageError: options.onImageError,
   });
 
   const [presetName = 'default-preset', presetArgs = defaultArgs] = Array.isArray(renderPreset)
@@ -41,6 +52,11 @@ export function usePreset(
     : [renderPreset];
 
   const [preset, setPreset] = useState<Preset | null>(null);
+
+  useLayoutEffect(() => {
+    liveCallbacksRef.current.onWebGLFallback = options.onWebGLFallback;
+    liveCallbacksRef.current.onImageError = options.onImageError;
+  }, [options.onImageError, options.onWebGLFallback]);
 
   useLayoutEffect(() => {
     const canvasElement = canvasRef.current;
@@ -61,11 +77,20 @@ export function usePreset(
       controllerConfig: options.controllerConfig,
       interactionMode: options.interactionMode,
       unstable_webglRenderer: options.unstable_webglRenderer,
-      onWebGLFallback: options.onWebGLFallback,
-      onImageError: options.onImageError,
+      onWebGLFallback: (event) => {
+        if (liveCallbacksRef.current.onWebGLFallback) {
+          liveCallbacksRef.current.onWebGLFallback(event);
+        }
+      },
+      onImageError: (event) => {
+        if (liveCallbacksRef.current.onImageError) {
+          liveCallbacksRef.current.onImageError(event);
+        }
+      },
       imageLoading: options.imageLoading,
       webglFallbackOnImageLoadError: options.webglFallbackOnImageLoadError,
       webglReadiness: options.webglReadiness,
+      runtimeOptions: options.runtimeOptions,
       ...(presetArgs || {}),
     });
 
@@ -73,6 +98,12 @@ export function usePreset(
 
     return () => {
       if (createdPreset) {
+        const currentViewport = createdPreset.runtime.getViewport();
+        viewport.current = {
+          ...viewport.current,
+          ...currentViewport,
+          didUpdate: true,
+        };
         createdPreset.unmount();
 
         if (canvasElement) {
@@ -94,8 +125,6 @@ export function usePreset(
     options.unstable_webglRenderer,
     options.controllerConfig,
     options.interactionMode,
-    options.onWebGLFallback,
-    options.onImageError,
     options.imageLoading,
     options.webglFallbackOnImageLoadError,
     options.webglReadiness,

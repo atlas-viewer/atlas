@@ -17,7 +17,9 @@ export default defineConfig({
     storylitePlugin({
       stories: 'stories/**/*.stories.tsx', // relative to process.cwd()
     }),
-    react({}),
+    react({
+      fastRefresh: !process.env.VITEST,
+    }),
   ],
   test: {
     include: ['**/*.{test,tests,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],

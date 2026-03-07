@@ -243,4 +243,194 @@ describe('NavigatorRenderer clipping', () => {
       createElementSpy.mockRestore();
     }
   });
+
+  test('renders a preview image on the frame after it loads asynchronously', () => {
+    class AsyncImage {
+      static instances: AsyncImage[] = [];
+
+      complete = false;
+      naturalWidth = 0;
+      naturalHeight = 0;
+      onload: any = null;
+      onerror: any = null;
+      private _src = '';
+
+      constructor() {
+        AsyncImage.instances.push(this);
+      }
+
+      set src(value: string) {
+        this._src = value;
+      }
+
+      get src() {
+        return this._src;
+      }
+
+      resolve() {
+        this.complete = true;
+        this.naturalWidth = 640;
+        this.naturalHeight = 480;
+        if (this.onload) {
+          this.onload();
+        }
+      }
+    }
+
+    const mainContext = createMockContext();
+    const baseContext = createMockContext();
+    const canvas = createMockCanvas(mainContext);
+    const baseCanvas = createMockCanvas(baseContext);
+    const requestRender = vi.fn();
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName.toLowerCase() === 'canvas') {
+        return baseCanvas as any;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    const OriginalImage = globalThis.Image;
+    (globalThis as any).Image = AsyncImage as any;
+
+    try {
+      const renderer = new NavigatorRenderer(canvas, {
+        drawFallbackBoxes: false,
+        onRequestRender: requestRender,
+      });
+      const image = new SingleImage();
+      image.applyProps({
+        id: 'navigator-async-preview',
+        uri: 'https://example.org/navigator-async-preview.jpg',
+        target: { width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      } as any);
+
+      const world = {
+        width: 100,
+        height: 100,
+        zones: [],
+        getActiveZone: () => undefined,
+        getPointsAt: () => [[image, DnaFactory.singleBox(100, 100, 0, 0), undefined]],
+      } as any;
+      const target = DnaFactory.singleBox(100, 100, 0, 0);
+
+      renderer.beforeFrame(world);
+      renderer.afterFrame(world, 16, target);
+      expect(baseContext.drawImage).not.toHaveBeenCalledWith(
+        expect.any(AsyncImage),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number),
+        expect.any(Number)
+      );
+      requestRender.mockClear();
+
+      AsyncImage.instances[0].resolve();
+      expect(requestRender).toHaveBeenCalledTimes(1);
+
+      renderer.afterFrame(world, 32, target);
+
+      expect(baseContext.drawImage).toHaveBeenCalledWith(AsyncImage.instances[0], 0, 0, 100, 100);
+    } finally {
+      (globalThis as any).Image = OriginalImage;
+      createElementSpy.mockRestore();
+    }
+  });
+
+  test('emits navigator debug events for async preview image lifecycle in order', () => {
+    class AsyncImage {
+      static instances: AsyncImage[] = [];
+
+      complete = false;
+      naturalWidth = 0;
+      naturalHeight = 0;
+      onload: any = null;
+      onerror: any = null;
+      private _src = '';
+
+      constructor() {
+        AsyncImage.instances.push(this);
+      }
+
+      set src(value: string) {
+        this._src = value;
+      }
+
+      get src() {
+        return this._src;
+      }
+
+      resolve() {
+        this.complete = true;
+        this.naturalWidth = 640;
+        this.naturalHeight = 480;
+        if (this.onload) {
+          this.onload();
+        }
+      }
+    }
+
+    const mainContext = createMockContext();
+    const baseContext = createMockContext();
+    const canvas = createMockCanvas(mainContext);
+    const baseCanvas = createMockCanvas(baseContext);
+    const debugEvents: string[] = [];
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName.toLowerCase() === 'canvas') {
+        return baseCanvas as any;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    const OriginalImage = globalThis.Image;
+    (globalThis as any).Image = AsyncImage as any;
+
+    try {
+      const renderer = new NavigatorRenderer(canvas, {
+        drawFallbackBoxes: false,
+        onRequestRender: vi.fn(),
+        onDebugEvent: (event) => {
+          debugEvents.push(event.type);
+        },
+      });
+      const image = new SingleImage();
+      image.applyProps({
+        id: 'navigator-debug-preview',
+        uri: 'https://example.org/navigator-debug-preview.jpg',
+        target: { width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      } as any);
+
+      const world = {
+        width: 100,
+        height: 100,
+        zones: [],
+        getActiveZone: () => undefined,
+        getPointsAt: () => [[image, DnaFactory.singleBox(100, 100, 0, 0), undefined]],
+      } as any;
+      const target = DnaFactory.singleBox(100, 100, 0, 0);
+
+      renderer.beforeFrame(world);
+      renderer.afterFrame(world, 16, target);
+      AsyncImage.instances[0].resolve();
+      renderer.afterFrame(world, 32, target);
+
+      const requestIndex = debugEvents.indexOf('preview-image-requested');
+      const loadIndex = debugEvents.indexOf('preview-image-loaded');
+      const invalidationIndex = debugEvents.lastIndexOf('world-layer-invalidated');
+      const renderRequestIndex = debugEvents.lastIndexOf('render-request-forwarded');
+
+      expect(requestIndex).toBeGreaterThanOrEqual(0);
+      expect(loadIndex).toBeGreaterThan(requestIndex);
+      expect(invalidationIndex).toBeGreaterThan(loadIndex);
+      expect(renderRequestIndex).toBeGreaterThan(invalidationIndex);
+    } finally {
+      (globalThis as any).Image = OriginalImage;
+      createElementSpy.mockRestore();
+    }
+  });
 });
