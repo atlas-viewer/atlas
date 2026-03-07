@@ -242,6 +242,26 @@ export class CanvasRenderer implements Renderer {
     this.rendererPosition = this.canvas.getBoundingClientRect();
   }
 
+  private getCompositeOwner(paint?: SingleImage | TiledImage): unknown {
+    const parent = paint?.__parent as any;
+    return parent && parent.renderOptions ? parent : undefined;
+  }
+
+  private compareCompositeLoadPriority(
+    aPaint?: SingleImage | TiledImage,
+    bPaint?: SingleImage | TiledImage
+  ): number {
+    const aOwner = this.getCompositeOwner(aPaint);
+    const bOwner = this.getCompositeOwner(bPaint);
+    if (!aOwner || aOwner !== bOwner) {
+      return 0;
+    }
+
+    const aScale = aPaint?.display.scale || 0;
+    const bScale = bPaint?.display.scale || 0;
+    return aScale - bScale;
+  }
+
   isReady(): boolean {
     return this.firstMeaningfulPaint;
   }
@@ -259,13 +279,14 @@ export class CanvasRenderer implements Renderer {
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
-        if (a.network) {
-          if (a.scale === b.scale) {
-            return b.distance - a.distance;
-          }
+        const compositePriority = this.compareCompositeLoadPriority(a.paint, b.paint);
+        if (compositePriority !== 0) {
+          return compositePriority;
         }
-
-        return a.scale < b.scale ? -1 : 1;
+        if (a.network && b.network && a.scale === b.scale) {
+          return b.distance - a.distance;
+        }
+        return a.scale - b.scale;
       });
       this.loadingQueueOrdered = true;
     }

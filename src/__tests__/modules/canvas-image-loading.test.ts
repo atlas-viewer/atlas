@@ -168,6 +168,62 @@ describe('Canvas image loading behavior', () => {
     expect(context.drawImage.mock.calls[2][0]).toBe(activeCanvas);
   });
 
+  test('loads lower-quality composite layer first even when tile priority differs', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate', imageLoading: { maxConcurrentRequests: 1 } });
+    const acquire = vi.spyOn((renderer as any).imageRequestPool, 'acquire').mockImplementation((url: string) => ({
+      requestKey: url,
+      release: vi.fn(),
+      promise: new Promise(() => {}),
+    }));
+
+    const high = new SingleImage();
+    high.applyProps({
+      id: 'high',
+      uri: 'https://example.com/high.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 400, height: 400 },
+      style: { opacity: 1 },
+    } as any);
+
+    const low = new SingleImage();
+    low.applyProps({
+      id: 'low',
+      uri: 'https://example.com/low.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+
+    const compositeParent = {
+      renderOptions: {
+        layerPolicy: 'always-blend',
+        loadingBias: 'balanced',
+        prefetchRadius: 1,
+        fadeInMs: 0,
+        fadeFallbackTiles: false,
+        fadeOnLayerChange: false,
+        clipToBounds: false,
+      },
+      isImageActive: () => true,
+    } as any;
+    high.__parent = compositeParent;
+    low.__parent = compositeParent;
+
+    renderer.prepareLayer(high, high.points);
+    renderer.prepareLayer(low, low.points);
+    (renderer as any).visible = [high, low];
+
+    renderer.schedulePaintToCanvas(high.__host.canvas, high, 0, 0, false);
+    renderer.schedulePaintToCanvas(low.__host.canvas, low, 0, 1000, false);
+    renderer.afterFrame({
+      hasActiveZone: () => true,
+      getObjects: () => [],
+    } as any);
+
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(acquire.mock.calls[0][0]).toBe('https://example.com/low.jpg');
+  });
+
   test('restores canvas state on early returns (opacity and first-meaningful-paint)', () => {
     const { renderer, context } = createRenderer();
 

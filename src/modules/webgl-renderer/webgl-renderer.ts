@@ -781,6 +781,26 @@ export class WebGLRenderer implements Renderer {
     return `${paint.id}::${paint.display.scale}::${index}`;
   }
 
+  private getCompositeOwner(paint?: SingleImage | TiledImage): unknown {
+    const parent = paint?.__parent as any;
+    return parent && parent.renderOptions ? parent : undefined;
+  }
+
+  private compareCompositeLoadPriority(
+    aPaint?: SingleImage | TiledImage,
+    bPaint?: SingleImage | TiledImage
+  ): number {
+    const aOwner = this.getCompositeOwner(aPaint);
+    const bOwner = this.getCompositeOwner(bPaint);
+    if (!aOwner || aOwner !== bOwner) {
+      return 0;
+    }
+
+    const aScale = aPaint?.display.scale || 0;
+    const bScale = bPaint?.display.scale || 0;
+    return bScale - aScale;
+  }
+
   private enqueueTileRequest(
     paint: SingleImage | TiledImage,
     index: number,
@@ -893,6 +913,10 @@ export class WebGLRenderer implements Renderer {
     this.tileRequestQueue.sort((a, b) => {
       if (a.prefetch !== b.prefetch) {
         return a.prefetch ? 1 : -1;
+      }
+      const compositePriority = this.compareCompositeLoadPriority(a.paint, b.paint);
+      if (compositePriority !== 0) {
+        return compositePriority;
       }
       if (a.priority !== b.priority) {
         return a.priority - b.priority;

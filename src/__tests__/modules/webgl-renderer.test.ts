@@ -427,7 +427,7 @@ describe('WebGLRenderer fallback events', () => {
     expect(gl.drawArrays).toHaveBeenCalledTimes(1);
   });
 
-  test('loads lower-quality composite layer first when tile priority ties', () => {
+  test('loads lower-quality composite layer first even when tile priority differs', () => {
     const canvas = createMockCanvas();
     const gl = createMockGL(canvas);
     canvas.getContext = vi.fn((type) => {
@@ -475,9 +475,9 @@ describe('WebGLRenderer fallback events', () => {
     renderer.prepareLayer(low);
     renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
 
-    // Intentionally enqueue high-quality first; queue sorting should still load low-quality first.
+    // Intentionally enqueue the sharper layer closer to center; fallback should still load first.
     renderer.paint(high, 0, 0, 0, 100, 100);
-    renderer.paint(low, 0, 0, 0, 100, 100);
+    renderer.paint(low, 200, 200, 0, 100, 100);
     renderer.afterFrame();
 
     expect(acquire).toHaveBeenCalledTimes(2);
