@@ -122,6 +122,7 @@ export function defaultPreset({
   const navigatorRenderer = navigatorElement
     ? new NavigatorRenderer(navigatorElement, {
         ...(navigatorRendererOptions || {}),
+        sharedCanvasRenderer: baseRenderer instanceof CanvasRenderer ? (baseRenderer as any) : undefined,
         onRequestRender: () => {
           if (externalNavigatorRenderRequest) {
             externalNavigatorRenderRequest();

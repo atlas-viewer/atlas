@@ -34,12 +34,37 @@ export type NavigatorRendererStyle = {
   viewportLineWidth: number;
 };
 
+type SharedCanvasTileState = {
+  state?: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
+};
+
+type SharedCanvasImageBuffer = {
+  canvases?: string[];
+  tiles?: Record<number, SharedCanvasTileState>;
+};
+
+type SharedCanvasRenderer = {
+  hostCache?: {
+    get(id: string): HTMLCanvasElement | undefined;
+  };
+  invalidated?: string[];
+  schedulePaintToCanvas?: (
+    imageBuffer: SharedCanvasImageBuffer,
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number,
+    prefetch?: boolean
+  ) => boolean;
+  createImageHost?: (paint: SingleImage | TiledImage) => void;
+};
+
 export type NavigatorRendererOptions = {
   style?: Partial<NavigatorRendererStyle>;
   maxRects?: number;
   minVisibleRectSize?: number;
   drawFallbackBoxes?: boolean;
   zoneWindow?: NavigatorZoneWindowOptions;
+  sharedCanvasRenderer?: SharedCanvasRenderer;
   onRequestRender?: () => void;
   onDebugEvent?: (event: NavigatorDebugEvent) => void;
 };
@@ -404,6 +429,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private readonly minVisibleRectSize: number;
   private readonly drawFallbackBoxes: boolean;
   private readonly zoneWindow?: NavigatorZoneWindowOptions;
+  private readonly sharedCanvasRenderer?: SharedCanvasRenderer;
   private readonly onRequestRender?: () => void;
   private readonly onDebugEvent?: (event: NavigatorDebugEvent) => void;
   private readonly baseCanvas: HTMLCanvasElement;
@@ -423,6 +449,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private lastRegionWidth = Number.NaN;
   private lastRegionHeight = Number.NaN;
   private worldLayerInvalidationVersion = 0;
+  private sharedCanvasResourcesPending = false;
 
   constructor(canvas: HTMLCanvasElement, options: NavigatorRendererOptions = {}) {
     super(canvas);
@@ -431,6 +458,7 @@ export class NavigatorRenderer extends DebugRenderer {
     this.minVisibleRectSize = Math.max(1, options.minVisibleRectSize || 1);
     this.drawFallbackBoxes = options.drawFallbackBoxes !== false;
     this.zoneWindow = options.zoneWindow;
+    this.sharedCanvasRenderer = options.sharedCanvasRenderer;
     this.onRequestRender = options.onRequestRender;
     this.onDebugEvent = options.onDebugEvent;
     this.context.globalAlpha = 1;
@@ -540,6 +568,7 @@ export class NavigatorRenderer extends DebugRenderer {
 
     if (this.worldLayerDirty) {
       const worldLayerRenderInvalidationVersion = this.worldLayerInvalidationVersion;
+      this.sharedCanvasResourcesPending = false;
       this.emitDebugEvent({
         type: 'world-layer-render-start',
         region,
@@ -552,7 +581,9 @@ export class NavigatorRenderer extends DebugRenderer {
           region,
         });
       }
-      this.worldLayerDirty = worldLayerRenderInvalidationVersion !== this.worldLayerInvalidationVersion;
+      this.worldLayerDirty =
+        this.sharedCanvasResourcesPending ||
+        worldLayerRenderInvalidationVersion !== this.worldLayerInvalidationVersion;
     }
 
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -567,7 +598,8 @@ export class NavigatorRenderer extends DebugRenderer {
     this.lastRegionY = region.y;
     this.lastRegionWidth = region.width;
     this.lastRegionHeight = region.height;
-    this.renderNextFrame = frameInvalidationVersion !== this.worldLayerInvalidationVersion;
+    this.renderNextFrame =
+      this.sharedCanvasResourcesPending || frameInvalidationVersion !== this.worldLayerInvalidationVersion;
   }
 
   private hasViewportChanged(target: Strand) {
@@ -777,6 +809,10 @@ export class NavigatorRenderer extends DebugRenderer {
     if (paint instanceof ImageTexture) {
       source = paint.getTexture()?.source as CanvasImageSource | undefined;
     } else if (paint instanceof SingleImage || paint instanceof TiledImage) {
+      const renderedFromSharedCanvas = this.renderSharedCanvasImage(ctx, paint, index, x, y, width, height);
+      if (renderedFromSharedCanvas !== null) {
+        return renderedFromSharedCanvas;
+      }
       if (typeof paint.getImageUrl !== 'function') {
         return false;
       }
@@ -792,6 +828,113 @@ export class NavigatorRenderer extends DebugRenderer {
     const dh = Math.max(1, Math.round(height));
     ctx.drawImage(source, Math.round(x), Math.round(y), dw, dh);
     return true;
+  }
+
+  private ensureSharedCanvasImageBuffer(paint: SingleImage | TiledImage): SharedCanvasImageBuffer {
+    if (!paint.__host?.canvas) {
+      this.sharedCanvasRenderer?.createImageHost?.(paint);
+    }
+    if (!paint.__host) {
+      paint.__host = {};
+    }
+    if (!paint.__host.canvas) {
+      paint.__host.canvas = {
+        canvases: [],
+        tiles: {},
+      };
+    }
+    if (!paint.__host.canvas.canvases) {
+      paint.__host.canvas.canvases = [];
+    }
+    if (!paint.__host.canvas.tiles) {
+      paint.__host.canvas.tiles = {};
+    }
+    return paint.__host.canvas as SharedCanvasImageBuffer;
+  }
+
+  private drawSharedCanvasTile(
+    ctx: CanvasRenderingContext2D,
+    paint: SingleImage | TiledImage,
+    index: number,
+    sharedTileCanvas: HTMLCanvasElement,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): boolean {
+    const dw = Math.max(1, Math.round(width));
+    const dh = Math.max(1, Math.round(height));
+
+    if (paint.crop && paint.cropData) {
+      const cropIndex = index * 5;
+      if (!paint.crop[cropIndex]) {
+        return false;
+      }
+
+      const sourceX =
+        paint.crop[cropIndex + 1] / paint.display.scale -
+        paint.display.points[cropIndex + 1] +
+        paint.cropData.x / paint.display.scale;
+      const sourceY =
+        paint.crop[cropIndex + 2] / paint.display.scale -
+        paint.display.points[cropIndex + 2] +
+        paint.cropData.y / paint.display.scale;
+      const sourceWidth = 1 + (paint.crop[cropIndex + 3] - paint.crop[cropIndex + 1]) / paint.display.scale;
+      const sourceHeight = 1 + (paint.crop[cropIndex + 4] - paint.crop[cropIndex + 2]) / paint.display.scale;
+
+      ctx.drawImage(
+        sharedTileCanvas,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        Math.round(x),
+        Math.round(y),
+        dw,
+        dh
+      );
+      return true;
+    }
+
+    const pointIndex = index * 5;
+    const sourceWidth = paint.display.points[pointIndex + 3] - paint.display.points[pointIndex + 1];
+    const sourceHeight = paint.display.points[pointIndex + 4] - paint.display.points[pointIndex + 2];
+    ctx.drawImage(sharedTileCanvas, 0, 0, sourceWidth, sourceHeight, Math.round(x), Math.round(y), dw, dh);
+    return true;
+  }
+
+  private renderSharedCanvasImage(
+    ctx: CanvasRenderingContext2D,
+    paint: SingleImage | TiledImage,
+    index: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): boolean | null {
+    const sharedCanvasRenderer = this.sharedCanvasRenderer;
+    if (!sharedCanvasRenderer?.hostCache) {
+      return null;
+    }
+
+    const imageBuffer = this.ensureSharedCanvasImageBuffer(paint);
+    const canvasId = imageBuffer.canvases?.[index];
+    const isInvalidated = !!canvasId && !!sharedCanvasRenderer.invalidated?.includes(canvasId);
+    const sharedTileCanvas = canvasId && !isInvalidated ? sharedCanvasRenderer.hostCache.get(canvasId) : undefined;
+
+    if (sharedTileCanvas) {
+      return this.drawSharedCanvasTile(ctx, paint, index, sharedTileCanvas, x, y, width, height);
+    }
+
+    const tileState = imageBuffer.tiles?.[index];
+    const priority = Math.hypot(x + width / 2 - this.baseCanvas.width / 2, y + height / 2 - this.baseCanvas.height / 2);
+    const scheduled = sharedCanvasRenderer.schedulePaintToCanvas?.(imageBuffer, paint, index, priority, false) || false;
+
+    if (scheduled || tileState?.state === 'queued' || tileState?.state === 'loading' || tileState?.state === 'decoded') {
+      this.sharedCanvasResourcesPending = true;
+    }
+
+    return false;
   }
 
   private getLoadedPreviewImage(imageUrl: string): HTMLImageElement | undefined {

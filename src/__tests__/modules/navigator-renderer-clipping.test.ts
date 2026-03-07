@@ -198,6 +198,129 @@ describe('NavigatorRenderer clipping', () => {
     }
   });
 
+  test('renders image paints from shared canvas renderer resources without creating preview images', () => {
+    class ThrowingImage {
+      constructor() {
+        throw new Error('navigator preview loader should not run when shared canvas resources exist');
+      }
+    }
+
+    const mainContext = createMockContext();
+    const baseContext = createMockContext();
+    const canvas = createMockCanvas(mainContext);
+    const baseCanvas = createMockCanvas(baseContext);
+    const sharedTileCanvas = createMockCanvas(createMockContext());
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName.toLowerCase() === 'canvas') {
+        return baseCanvas as any;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    const OriginalImage = globalThis.Image;
+    (globalThis as any).Image = ThrowingImage as any;
+
+    try {
+      const renderer = new NavigatorRenderer(canvas, {
+        drawFallbackBoxes: false,
+        sharedCanvasRenderer: {
+          hostCache: {
+            get: vi.fn((id: string) => (id === 'shared-tile-0' ? (sharedTileCanvas as any) : undefined)),
+          },
+          invalidated: [],
+        } as any,
+      });
+      const image = new SingleImage();
+      image.applyProps({
+        id: 'navigator-shared-canvas',
+        uri: 'https://example.org/navigator-shared-canvas.jpg',
+        target: { width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      } as any);
+      image.__host = {
+        canvas: {
+          canvases: ['shared-tile-0'],
+          tiles: {
+            0: { state: 'decoded' },
+          },
+        },
+      } as any;
+
+      const world = {
+        width: 100,
+        height: 100,
+        zones: [],
+        getActiveZone: () => undefined,
+        getPointsAt: () => [[image, DnaFactory.singleBox(100, 100, 0, 0), undefined]],
+      } as any;
+      const target = DnaFactory.singleBox(100, 100, 0, 0);
+
+      renderer.beforeFrame(world);
+      renderer.afterFrame(world, 16, target);
+
+      expect(baseContext.drawImage).toHaveBeenCalledWith(sharedTileCanvas, 0, 0, 100, 100, 0, 0, 100, 100);
+    } finally {
+      (globalThis as any).Image = OriginalImage;
+      createElementSpy.mockRestore();
+    }
+  });
+
+  test('stays dirty while waiting for shared canvas renderer resources', () => {
+    const mainContext = createMockContext();
+    const baseContext = createMockContext();
+    const canvas = createMockCanvas(mainContext);
+    const baseCanvas = createMockCanvas(baseContext);
+    const schedulePaintToCanvas = vi.fn(() => true);
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName.toLowerCase() === 'canvas') {
+        return baseCanvas as any;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    try {
+      const renderer = new NavigatorRenderer(canvas, {
+        drawFallbackBoxes: false,
+        sharedCanvasRenderer: {
+          hostCache: {
+            get: vi.fn(() => undefined),
+          },
+          invalidated: [],
+          schedulePaintToCanvas,
+        } as any,
+      });
+      const image = new SingleImage();
+      image.applyProps({
+        id: 'navigator-shared-pending',
+        uri: 'https://example.org/navigator-shared-pending.jpg',
+        target: { width: 100, height: 100 },
+        display: { width: 100, height: 100 },
+      } as any);
+
+      const world = {
+        width: 100,
+        height: 100,
+        zones: [],
+        getActiveZone: () => undefined,
+        getPointsAt: () => [[image, DnaFactory.singleBox(100, 100, 0, 0), undefined]],
+      } as any;
+      const target = DnaFactory.singleBox(100, 100, 0, 0);
+
+      renderer.beforeFrame(world);
+      renderer.afterFrame(world, 16, target);
+
+      expect(schedulePaintToCanvas).toHaveBeenCalledTimes(1);
+      expect(renderer.pendingUpdate()).toBe(true);
+      expect((renderer as any).worldLayerDirty).toBe(true);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
   test('keeps navigator pending when invalidated during world-layer render', () => {
     const mainContext = createMockContext();
     const baseContext = createMockContext();
