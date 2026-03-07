@@ -93,6 +93,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         wheelInExploreModeOnly,
         enablePanMomentum,
         panMomentumStrength,
+        panBounceStiffness,
+        panBounceDamping,
         panTimeConstant,
         panPadding,
       } = {
@@ -141,6 +143,20 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         momentum.active = false;
         momentum.vx = 0;
         momentum.vy = 0;
+      }
+
+      function stepConstrainedMomentumAxis(current: number, velocity: number, deltaMs: number, boundary: number) {
+        const deltaSec = Math.min(deltaMs, 32) / 1000;
+        const velocityPerSec = velocity * 1000;
+        const projected = current + velocityPerSec * deltaSec;
+        const displacement = projected - boundary;
+        const acceleration = -panBounceStiffness * displacement - panBounceDamping * velocityPerSec;
+        const nextVelocityPerSec = velocityPerSec + acceleration * deltaSec;
+        const nextPosition = projected + 0.5 * acceleration * deltaSec * deltaSec;
+        return {
+          position: nextPosition,
+          velocity: nextVelocityPerSec / 1000,
+        };
       }
 
       function applyPanTransition(toTarget: any) {
@@ -545,30 +561,57 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return;
         }
         const decay = Math.exp(-delta / Math.max(1, panTimeConstant));
-        momentum.vx *= decay;
-        momentum.vy *= decay;
-
-        const speedPxPerMs = Math.hypot(momentum.vx, momentum.vy) * runtime.getScaleFactor();
-        if (speedPxPerMs <= MOMENTUM_STOP_SPEED_PX_PER_MS) {
-          stopPanMomentum();
-          runtime.world.constraintBounds();
-          return;
-        }
-
+        const width = runtime.target[3] - runtime.target[1];
+        const height = runtime.target[4] - runtime.target[2];
         const proposed = transform(
           dna(runtime.target),
           translate(momentum.vx * delta, momentum.vy * delta),
           state.mousemoveBuffer
         );
-        const [isConstrained, constrained] = runtime.constrainBounds(proposed, { panPadding });
+        const [, constrained] = runtime.constrainBounds(proposed, { panPadding });
 
-        if (isConstrained) {
+        const xConstrained = proposed[1] !== constrained[1];
+        const yConstrained = proposed[2] !== constrained[2];
+
+        let nextVx = xConstrained ? momentum.vx : momentum.vx * decay;
+        let nextVy = yConstrained ? momentum.vy : momentum.vy * decay;
+        const nextTarget = dna(proposed);
+
+        if (xConstrained) {
+          const stepped = stepConstrainedMomentumAxis(runtime.target[1], momentum.vx, delta, constrained[1]);
+          nextTarget[1] = stepped.position;
+          nextTarget[3] = stepped.position + width;
+          nextVx = stepped.velocity;
+        } else {
+          nextTarget[1] = runtime.target[1] + nextVx * delta;
+          nextTarget[3] = nextTarget[1] + width;
+        }
+
+        if (yConstrained) {
+          const stepped = stepConstrainedMomentumAxis(runtime.target[2], momentum.vy, delta, constrained[2]);
+          nextTarget[2] = stepped.position;
+          nextTarget[4] = stepped.position + height;
+          nextVy = stepped.velocity;
+        } else {
+          nextTarget[2] = runtime.target[2] + nextVy * delta;
+          nextTarget[4] = nextTarget[2] + height;
+        }
+
+        momentum.vx = nextVx;
+        momentum.vy = nextVy;
+
+        const [, constrainedNext] = runtime.constrainBounds(nextTarget, { panPadding });
+        const overshootPx =
+          Math.hypot(nextTarget[1] - constrainedNext[1], nextTarget[2] - constrainedNext[2]) * runtime.getScaleFactor();
+        const speedPxPerMs = Math.hypot(momentum.vx, momentum.vy) * runtime.getScaleFactor();
+
+        if (overshootPx <= 0.5 && speedPxPerMs <= MOMENTUM_STOP_SPEED_PX_PER_MS) {
           stopPanMomentum();
-          runtime.world.constraintBounds();
+          applyPanTransition(constrainedNext);
           return;
         }
 
-        applyPanTransition(proposed);
+        applyPanTransition(nextTarget);
         runtime.updateNextFrame();
       });
 

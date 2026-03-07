@@ -49,27 +49,14 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
     total_time: 0,
     timingFunction: (t: number) => t,
     done: true,
+    constrain: false,
+    callback: undefined as undefined | (() => void),
   };
 
   const runtime: any = {
     mode: 'explore',
     world,
     target,
-    transitionManager: {
-      stopTransition: vi.fn(),
-      customTransition: vi.fn((applyTransition: any) => {
-        applyTransition(pendingTransition);
-        if (!pendingTransition.done) {
-          target[1] = pendingTransition.to[1];
-          target[2] = pendingTransition.to[2];
-          target[3] = pendingTransition.to[3];
-          target[4] = pendingTransition.to[4];
-        }
-      }),
-      constrainBounds: vi.fn(),
-      zoomTo: vi.fn(),
-      goToRegion: vi.fn(),
-    },
     getRendererScreenPosition: () => ({ x: 0, y: 0, width: 100, height: 100 }),
     viewerToWorld: (x: number, y: number) => ({ x, y }),
     getScaleFactor: () => 1,
@@ -84,12 +71,43 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
     getHomeTarget: () => ({ x: 0, y: 0, width: 100, height: 100 }),
   };
 
+  runtime.transitionManager = {
+    stopTransition: vi.fn(),
+    customTransition: vi.fn((applyTransition: any) => {
+      applyTransition(pendingTransition);
+      if (!pendingTransition.done && pendingTransition.total_time === 0) {
+        target[1] = pendingTransition.to[1];
+        target[2] = pendingTransition.to[2];
+        target[3] = pendingTransition.to[3];
+        target[4] = pendingTransition.to[4];
+        pendingTransition.done = true;
+      }
+    }),
+    constrainBounds: vi.fn((options: { panPadding?: number; transition?: { duration?: number; easing?: (t: number) => number } } = {}) => {
+      const [isConstrained, constrained] = runtime.constrainBounds(target, { panPadding: options.panPadding });
+      if (!isConstrained) {
+        return;
+      }
+      pendingTransition.from = dna(target);
+      pendingTransition.to = dna(constrained);
+      pendingTransition.elapsed_time = 0;
+      pendingTransition.total_time = options.transition?.duration ?? 500;
+      pendingTransition.timingFunction = options.transition?.easing ?? ((t: number) => t);
+      pendingTransition.done = false;
+      pendingTransition.constrain = false;
+      pendingTransition.callback = undefined;
+    }),
+    zoomTo: vi.fn(),
+    goToRegion: vi.fn(),
+  };
+
   const controller = popmotionController(config);
   const stop = controller.start(runtime);
 
   return {
     runtime,
     world,
+    pendingTransition,
     stop,
     emitWorld(eventName: string, payload: any) {
       const handlers = worldListeners.get(eventName);
@@ -101,6 +119,24 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
     runFrame(delta: number) {
       for (const listener of hookListeners.useFrame) {
         listener(delta);
+      }
+      if (!pendingTransition.done) {
+        const td =
+          pendingTransition.total_time === 0
+            ? 1
+            : (pendingTransition.elapsed_time + delta) / pendingTransition.total_time;
+        const step = pendingTransition.total_time === 0 ? 1 : td === 0 ? 0 : pendingTransition.timingFunction(td);
+
+        target[1] = pendingTransition.from[1] + (pendingTransition.to[1] - pendingTransition.from[1]) * step;
+        target[2] = pendingTransition.from[2] + (pendingTransition.to[2] - pendingTransition.from[2]) * step;
+        target[3] = pendingTransition.from[3] + (pendingTransition.to[3] - pendingTransition.from[3]) * step;
+        target[4] = pendingTransition.from[4] + (pendingTransition.to[4] - pendingTransition.from[4]) * step;
+
+        pendingTransition.elapsed_time += delta;
+        if (pendingTransition.total_time === 0 || pendingTransition.elapsed_time >= pendingTransition.total_time) {
+          pendingTransition.done = true;
+          pendingTransition.callback?.();
+        }
       }
     },
   };
@@ -249,7 +285,7 @@ describe('popmotion controller pan momentum', () => {
     harness.stop();
   });
 
-  test('edge hit during momentum requests animated bounds constrain', () => {
+  test('edge hit during momentum carries through the bound before springing back', () => {
     const harness = createRuntimeHarness();
     now = 0;
     dragForMomentum(harness, (value) => {
@@ -257,27 +293,73 @@ describe('popmotion controller pan momentum', () => {
     });
     expect(harness.world.constraintBounds).toHaveBeenCalledTimes(0);
 
-    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => [true, nextTarget] as const);
-    harness.runFrame(16);
+    const boundaryX = 40;
+    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => {
+      if (nextTarget[1] > boundaryX) {
+        return [true, dna([1, boundaryX, 0, boundaryX + 100, 100])] as const;
+      }
+      return [false, nextTarget] as const;
+    });
 
-    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(1);
-    expect(harness.world.constraintBounds).toHaveBeenCalledWith();
+    harness.runFrame(16);
+    const overshootAtImpact = harness.runtime.target[1];
+
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(0);
+    expect(overshootAtImpact).toBeGreaterThan(boundaryX);
+
+    let peak = overshootAtImpact;
+    for (let i = 0; i < 24; i++) {
+      harness.runFrame(16);
+      peak = Math.max(peak, harness.runtime.target[1]);
+    }
+
+    expect(peak).toBeGreaterThan(overshootAtImpact);
+    expect(harness.runtime.target[1]).toBeLessThan(peak);
     harness.stop();
   });
 
-  test('edge hit during momentum does not snap target to constrained position', () => {
+  test('edge hit during momentum does not snap directly to the constrained position', () => {
     const harness = createRuntimeHarness();
     now = 0;
     dragForMomentum(harness, (value) => {
       now = value;
     });
     const releasedAt = harness.runtime.target[1];
-    harness.runtime.constrainBounds = vi.fn(() => [true, dna([1, 500, 0, 600, 100])] as const);
+    const boundaryX = 40;
+    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => {
+      if (nextTarget[1] > boundaryX) {
+        return [true, dna([1, boundaryX, 0, boundaryX + 100, 100])] as const;
+      }
+      return [false, nextTarget] as const;
+    });
 
     harness.runFrame(16);
 
-    expect(harness.runtime.target[1]).toBe(releasedAt);
-    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(1);
+    expect(harness.runtime.target[1]).toBeGreaterThan(releasedAt);
+    expect(harness.runtime.target[1]).toBeGreaterThan(boundaryX);
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(0);
+    harness.stop();
+  });
+
+  test('edge hit still overshoots smoothly even with aggressive momentum decay', () => {
+    const harness = createRuntimeHarness({ panTimeConstant: 1 });
+    now = 0;
+    dragForMomentum(harness, (value) => {
+      now = value;
+    });
+
+    const boundaryX = 40;
+    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => {
+      if (nextTarget[1] > boundaryX) {
+        return [true, dna([1, boundaryX, 0, boundaryX + 100, 100])] as const;
+      }
+      return [false, nextTarget] as const;
+    });
+
+    harness.runFrame(16);
+
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(0);
+    expect(harness.runtime.target[1]).toBeGreaterThan(boundaryX);
     harness.stop();
   });
 });
