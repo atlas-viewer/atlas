@@ -292,12 +292,12 @@ describe('popmotion controller touch gestures', () => {
     now = 240;
     harness.emitWorld('touchend', createTouchEvent([]));
 
-    expect(harness.runtime.isViewportAtHomeZoomLevel).toHaveBeenCalledWith({ tolerance: 0.05 });
+    expect(harness.runtime.isViewportAtHomeZoomLevel).toHaveBeenCalledWith({ tolerance: 0.1 });
     expect(harness.runtime.getHomeTarget).toHaveBeenCalledWith({ cover: true });
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(1);
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledWith(coverTarget, {
       transition: {
-        duration: 1400,
+        duration: 500,
         easing: easingFunctions.easeInOutQuad,
       },
     });
@@ -323,12 +323,12 @@ describe('popmotion controller touch gestures', () => {
     now = 140;
     harness.emitWorld('touchend', createTouchEvent([]));
 
-    expect(harness.runtime.isViewportAtHomeZoomLevel).toHaveBeenCalledWith({ tolerance: 0.05 });
+    expect(harness.runtime.isViewportAtHomeZoomLevel).toHaveBeenCalledWith({ tolerance: 0.1 });
     expect(harness.runtime.getHomeTarget).toHaveBeenCalledWith();
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(1);
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledWith(homeTarget, {
       transition: {
-        duration: 1400,
+        duration: 500,
         easing: easingFunctions.easeInOutQuad,
       },
     });
@@ -342,10 +342,10 @@ describe('popmotion controller touch gestures', () => {
     const coverTarget = { x: 5, y: 10, width: 90, height: 80 };
     const homeTarget = { x: 0, y: 0, width: 100, height: 100 };
 
-    harness.runtime.isViewportAtHomeZoomLevel = vi.fn()
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(false);
-    harness.runtime.getHomeTarget = vi.fn((options?: { cover?: boolean }) => (options?.cover ? coverTarget : homeTarget));
+    harness.runtime.isViewportAtHomeZoomLevel = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false);
+    harness.runtime.getHomeTarget = vi.fn((options?: { cover?: boolean }) =>
+      options?.cover ? coverTarget : homeTarget
+    );
 
     now = 10;
     harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 50, clientY: 50 }]));
@@ -370,13 +370,13 @@ describe('popmotion controller touch gestures', () => {
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(2);
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenNthCalledWith(1, coverTarget, {
       transition: {
-        duration: 1400,
+        duration: 500,
         easing: easingFunctions.easeInOutQuad,
       },
     });
     expect(harness.runtime.transitionManager.goToRegion).toHaveBeenNthCalledWith(2, homeTarget, {
       transition: {
-        duration: 1400,
+        duration: 500,
         easing: easingFunctions.easeInOutQuad,
       },
     });
