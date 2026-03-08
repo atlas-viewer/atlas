@@ -1,24 +1,25 @@
-import { Viewer, ViewingDirection } from './types';
 import {
   compose,
   DnaFactory,
+  dna,
   dnaLength,
   hidePointsOutsideRegion,
   mutate,
+  type Strand,
   scale,
   scaleAtOrigin,
   translate,
-  dna,
-  Strand,
 } from '@atlas-viewer/dna';
-import { WorldObject } from './world-objects/world-object';
-import { AbstractObject } from './world-objects/abstract-object';
-import { Paint, Paintable } from './world-objects/paint';
-import { ZoneInterface } from './world-objects/zone';
+import type { SupportedEvents } from './events';
+import type { WorldDebugEvent } from './modules/react-reconciler/devtools/types';
 import { BaseObject } from './objects/base-object';
-import { SpacialContent } from './spacial-content/spacial-content';
-import { SupportedEvents } from './events';
 import { Geometry } from './objects/geometry';
+import type { SpacialContent } from './spacial-content/spacial-content';
+import type { Viewer, ViewingDirection } from './types';
+import type { AbstractObject } from './world-objects/abstract-object';
+import type { Paint, Paintable } from './world-objects/paint';
+import { WorldObject } from './world-objects/world-object';
+import type { ZoneInterface } from './world-objects/zone';
 
 type WorldTarget = { x: number; y: number; width?: number; height?: number };
 
@@ -46,6 +47,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   needsRecalculate = true;
   emptyPaintables = [];
   renderOrder: number[] = [];
+  debugSubscribers = new Set<(event: WorldDebugEvent) => void>();
+  zoneVisibilityFadeDurationMs = 220;
+  zoneOutsideOpacity = 0.2;
+  zoneVisibilityFade?: {
+    zoneId: string;
+    startedAt: number;
+  };
 
   get x(): number {
     return 0;
@@ -107,7 +115,19 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       }
     }
 
-    return targets.map((target) => this.propagateEvent(eventName, e, target, { bubbles: true, cancelable: true }));
+    this.emitDebug({
+      type: 'touch',
+      at: performance.now(),
+      event: eventName,
+      touches: touchTargets.length,
+    });
+
+    return targets.map((target) =>
+      this.propagateEvent(eventName, e, target, {
+        bubbles: true,
+        cancelable: true,
+      })
+    );
   }
 
   propagatePointerEvent<Name extends keyof SupportedEvents>(
@@ -131,7 +151,17 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     // - When a mouse down event is detected:
     //    - Store click / clickStart / drag items
 
-    return this.propagateEvent(eventName, e, worldObjects, opts);
+    const result = this.propagateEvent(eventName, e, worldObjects, opts);
+    this.emitDebug({
+      type: 'pointer',
+      at: performance.now(),
+      event: eventName,
+      x,
+      y,
+      targets: result.length,
+    });
+
+    return result;
   }
 
   _propagateEventTargets: any[] = [];
@@ -205,6 +235,13 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.objects[index] = null;
     this.renderOrder = this.renderOrder.filter((t) => t !== index);
     this.points[index * 5] = 0;
+    for (const zone of this.zones) {
+      const zoneIndex = zone.objects.indexOf(item);
+      if (zoneIndex !== -1) {
+        zone.objects.splice(zoneIndex, 1);
+        zone.recalculateBounds();
+      }
+    }
     this.triggerRepaint();
     this.needsRecalculate = true;
   }
@@ -233,19 +270,56 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     this.zones.push(zone);
   }
 
+  removeZone(zone: ZoneInterface) {
+    const index = this.zones.indexOf(zone);
+    if (index === -1) {
+      return;
+    }
+    this.zones.splice(index, 1);
+    if (typeof this.selectedZone === 'undefined') {
+      return;
+    }
+    if (this.selectedZone === index) {
+      this.selectedZone = undefined;
+      this.trigger('zone-changed');
+      return;
+    }
+    if (this.selectedZone > index) {
+      this.selectedZone -= 1;
+    }
+  }
+
+  getZoneById(id: string): ZoneInterface | undefined {
+    for (const zone of this.zones) {
+      if (zone.id === id) {
+        return zone;
+      }
+    }
+    return undefined;
+  }
+
+  hasZone(id: string): boolean {
+    return typeof this.getZoneById(id) !== 'undefined';
+  }
+
   selectZone(id: string | number) {
     if (typeof id === 'string') {
-      const len = this.zones.length;
-      for (let i = 0; i < len; i++) {
-        if (this.zones[i].id === id) {
-          this.selectedZone = i;
-          this.trigger('zone-changed');
-          return;
-        }
+      const zone = this.getZoneById(id);
+      if (zone) {
+        this.selectedZone = this.zones.indexOf(zone);
+        this.zoneVisibilityFade = {
+          zoneId: zone.id,
+          startedAt: performance.now(),
+        };
+        this.trigger('zone-changed');
       }
     } else {
       if (this.zones[id]) {
         this.selectedZone = id;
+        this.zoneVisibilityFade = {
+          zoneId: this.zones[id].id,
+          startedAt: performance.now(),
+        };
         this.trigger('zone-changed');
       }
     }
@@ -253,10 +327,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   deselectZone() {
     this.selectedZone = undefined;
+    this.zoneVisibilityFade = undefined;
+    this.trigger('zone-changed');
   }
 
   getActiveZone(): ZoneInterface | undefined {
-    if (this.selectedZone) {
+    if (typeof this.selectedZone !== 'undefined') {
       return this.zones[this.selectedZone];
     }
     return undefined;
@@ -321,7 +397,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
         didChange = true;
       }
       if (didChange) {
-        this.trigger('recalculate-world-size', { width: newWidth, height: newHeight });
+        this.trigger('recalculate-world-size', {
+          width: newWidth,
+          height: newHeight,
+        });
       }
       this.needsRecalculate = false;
     }
@@ -444,8 +523,30 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return this._updatedList;
   }
 
-  getObjectsAt(target: Strand, all = false): Array<[WorldObject, Paintable[]]> {
+  private isZoneOutsideVisibilityFading(zone: ZoneInterface): boolean {
+    return !!(
+      this.zoneVisibilityFade &&
+      this.zoneVisibilityFade.zoneId === zone.id &&
+      performance.now() - this.zoneVisibilityFade.startedAt < this.zoneVisibilityFadeDurationMs
+    );
+  }
+
+  private getZoneOutsideVisibility(zone: ZoneInterface): number {
+    const dimmedOpacity = this.zoneOutsideOpacity;
+    if (!this.zoneVisibilityFade || this.zoneVisibilityFade.zoneId !== zone.id) {
+      return dimmedOpacity;
+    }
+    const elapsed = performance.now() - this.zoneVisibilityFade.startedAt;
+    if (elapsed >= this.zoneVisibilityFadeDurationMs) {
+      return dimmedOpacity;
+    }
+    const progress = Math.max(0, Math.min(1, elapsed / this.zoneVisibilityFadeDurationMs));
+    return 1 - progress * (1 - dimmedOpacity);
+  }
+
+  getObjectsAt(target: Strand, all = false, includeZoneFade = false): Array<[WorldObject, Paintable[]]> {
     const zone = this.getActiveZone();
+    const includeOutsideObjects = zone && includeZoneFade ? this.getZoneOutsideVisibility(zone) > 0 : false;
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
 
     const len = this.renderOrder.length;
@@ -455,7 +556,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       const index = this.renderOrder[_index];
       if (filteredPoints[index * 5] !== 0) {
         const object = this.objects[index];
-        if (!object || (zone && zone.objects.indexOf(object) === -1)) {
+        const inZone = !zone || zone.objects.indexOf(object) !== -1;
+        if (!object || (!inZone && !includeOutsideObjects)) {
           continue;
         }
         if (object.type !== 'world-object') {
@@ -474,7 +576,9 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1): Paint[] {
-    const objects = this.getObjectsAt(target);
+    const zone = this.getActiveZone();
+    const outsideVisibility = zone ? this.getZoneOutsideVisibility(zone) : 0;
+    const objects = this.getObjectsAt(target, false, true);
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
@@ -482,8 +586,18 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const layers: Paint[] = [];
     for (let index = 0; index < len; index++) {
       if (objects[index]) {
-        layers.push(...objects[index][0].getAllPointsAt(target, transformer, scaleFactor));
+        const worldObject = objects[index][0];
+        const paints = worldObject.getAllPointsAt(target, transformer, scaleFactor);
+        const inZone = !zone || zone.objects.indexOf(worldObject) !== -1;
+        const zoneVisibilityAlpha = inZone ? 1 : outsideVisibility;
+        for (let i = 0; i < paints.length; i++) {
+          (paints[i][0] as any).__zoneVisibilityAlpha = zoneVisibilityAlpha;
+        }
+        layers.push(...paints);
       }
+    }
+    if (zone && this.isZoneOutsideVisibilityFading(zone)) {
+      this.triggerRepaint();
     }
     return layers;
   }
@@ -511,6 +625,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   }
 
   trigger<T>(type: string, data?: T) {
+    this.emitDebug({
+      type: 'trigger',
+      at: performance.now(),
+      event: type,
+      data,
+    });
     this.triggerQueue.push([type, data]);
   }
 
@@ -566,5 +686,32 @@ export class World extends BaseObject<WorldProps, WorldObject> {
 
   constraintBounds(immediate?: boolean) {
     this.trigger('constrain-bounds', { immediate });
+  }
+
+  hasPendingAnimation() {
+    return !!(
+      this.zoneVisibilityFade &&
+      performance.now() - this.zoneVisibilityFade.startedAt < this.zoneVisibilityFadeDurationMs
+    );
+  }
+
+  addDebugSubscriber(callback: (event: WorldDebugEvent) => void) {
+    this.debugSubscribers.add(callback);
+    return () => {
+      this.removeDebugSubscriber(callback);
+    };
+  }
+
+  removeDebugSubscriber(callback: (event: WorldDebugEvent) => void) {
+    this.debugSubscribers.delete(callback);
+  }
+
+  private emitDebug(event: WorldDebugEvent) {
+    if (this.debugSubscribers.size === 0) {
+      return;
+    }
+    for (const callback of this.debugSubscribers) {
+      callback(event);
+    }
   }
 }

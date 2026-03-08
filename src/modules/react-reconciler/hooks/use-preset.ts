@@ -1,22 +1,50 @@
-import { PresetNames, Presets, presets } from '../presets';
-import { Preset, PresetArgs } from '../presets/_types';
-import { defaultPreset } from '../presets/default-preset';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type PresetNames, type Presets, presets } from '../presets';
+import type { Preset, PresetArgs } from '../presets/_types';
+import { defaultPreset } from '../presets/default-preset';
 
 const defaultArgs = {};
 
 export function usePreset(
   renderPreset: PresetNames | Presets | undefined,
-  options: { width: number; height: number; forceRefresh?: any; unstable_webglRenderer?: boolean }
+  options: {
+    width: number;
+    height: number;
+    forceRefresh?: any;
+    controllerConfig?: PresetArgs['controllerConfig'];
+    interactionMode?: PresetArgs['interactionMode'];
+    unstable_webglRenderer?: boolean;
+    onWebGLFallback?: PresetArgs['onWebGLFallback'];
+    onImageError?: PresetArgs['onImageError'];
+    imageLoading?: PresetArgs['imageLoading'];
+    webglFallbackOnImageLoadError?: PresetArgs['webglFallbackOnImageLoadError'];
+    webglReadiness?: PresetArgs['webglReadiness'];
+    runtimeOptions?: PresetArgs['runtimeOptions'];
+  }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
   const canvasRef = useRef<HTMLCanvasElement>();
+  const parityCanvasRef = useRef<HTMLCanvasElement>();
   const navigatorRef = useRef<HTMLCanvasElement>();
   const containerRef = useRef<HTMLElement>();
-  const viewport = useRef<{ width: number; height: number; didUpdate?: boolean }>({
+  const viewport = useRef<
+    PresetArgs['viewport'] & {
+      didUpdate?: boolean;
+    }
+  >({
+    x: 0,
+    y: 0,
     width: options.width,
     height: options.height,
+    scale: 1,
     didUpdate: true,
+  });
+  const liveCallbacksRef = useRef<{
+    onWebGLFallback?: PresetArgs['onWebGLFallback'];
+    onImageError?: PresetArgs['onImageError'];
+  }>({
+    onWebGLFallback: options.onWebGLFallback,
+    onImageError: options.onImageError,
   });
 
   const [presetName = 'default-preset', presetArgs = defaultArgs] = Array.isArray(renderPreset)
@@ -24,6 +52,11 @@ export function usePreset(
     : [renderPreset];
 
   const [preset, setPreset] = useState<Preset | null>(null);
+
+  useLayoutEffect(() => {
+    liveCallbacksRef.current.onWebGLFallback = options.onWebGLFallback;
+    liveCallbacksRef.current.onImageError = options.onImageError;
+  }, [options.onImageError, options.onWebGLFallback]);
 
   useLayoutEffect(() => {
     const canvasElement = canvasRef.current;
@@ -35,12 +68,29 @@ export function usePreset(
     const createdPreset = presetFn({
       containerElement,
       canvasElement,
+      parityCanvasElement: parityCanvasRef.current,
       overlayElement,
       navigatorElement,
       viewport: viewport.current,
       dpi: window.devicePixelRatio || 1,
       forceRefresh: options.forceRefresh,
+      controllerConfig: options.controllerConfig,
+      interactionMode: options.interactionMode,
       unstable_webglRenderer: options.unstable_webglRenderer,
+      onWebGLFallback: (event) => {
+        if (liveCallbacksRef.current.onWebGLFallback) {
+          liveCallbacksRef.current.onWebGLFallback(event);
+        }
+      },
+      onImageError: (event) => {
+        if (liveCallbacksRef.current.onImageError) {
+          liveCallbacksRef.current.onImageError(event);
+        }
+      },
+      imageLoading: options.imageLoading,
+      webglFallbackOnImageLoadError: options.webglFallbackOnImageLoadError,
+      webglReadiness: options.webglReadiness,
+      runtimeOptions: options.runtimeOptions,
       ...(presetArgs || {}),
     });
 
@@ -48,6 +98,12 @@ export function usePreset(
 
     return () => {
       if (createdPreset) {
+        const currentViewport = createdPreset.runtime.getViewport();
+        viewport.current = {
+          ...viewport.current,
+          ...currentViewport,
+          didUpdate: true,
+        };
         createdPreset.unmount();
 
         if (canvasElement) {
@@ -63,11 +119,21 @@ export function usePreset(
         }
       }
     };
-  }, [presetName, presetArgs]);
+  }, [
+    presetName,
+    presetArgs,
+    options.unstable_webglRenderer,
+    options.controllerConfig,
+    options.interactionMode,
+    options.imageLoading,
+    options.webglFallbackOnImageLoadError,
+    options.webglReadiness,
+  ]);
 
   const refs = useMemo(
     () => ({
       canvas: canvasRef,
+      parityCanvas: parityCanvasRef,
       overlay: overlayRef,
       container: containerRef,
       navigator: navigatorRef,

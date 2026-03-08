@@ -1,52 +1,51 @@
-import React, { ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { ReactAtlas } from '../reconciler';
+import React, { type ReactNode, useEffect, useRef } from 'react';
+import type { RectReadOnly } from 'react-use-measure';
+import type { ViewerMode } from '../../../renderer/runtime';
 import { ModeContext } from '../hooks/use-mode';
-import { AtlasContext, BoundsContext } from './AtlasContext';
-import { ViewerMode } from '../../../renderer/runtime';
-import { Preset } from '../presets/_types';
-import { RectReadOnly } from 'react-use-measure';
+import type { Preset } from '../presets/_types';
+import { ReactAtlas } from '../reconciler';
 import { useIsomorphicLayoutEffect } from '../utility/react';
+import { AtlasContext, BoundsContext } from './AtlasContext';
 
 type AtlasWithReconcilerProps = {
   onCreated?: (ctx: Preset) => void | Promise<void>;
   setIsReady: (value: boolean) => void;
   mode?: ViewerMode;
+  interactionMode?: 'popmotion' | 'pdf-scroll-zone';
   bounds: RectReadOnly;
   preset: Preset | null;
   children?: ReactNode;
 };
 
 export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.memo(
-  ({ children, setIsReady, onCreated, bounds, preset, mode = 'explore' }) => {
-    const AtlasRoot = useCallback(
-      function AtlasRoot(props: { children: React.ReactElement }): JSX.Element {
-        const strictModeDoubleRender = useRef(false);
+  ({ children, setIsReady, onCreated, bounds, preset, mode = 'explore', interactionMode = 'popmotion' }) => {
+    const initializedPresetsRef = useRef(new WeakSet<Preset>());
 
-        const activate = () => {
+    useEffect(() => {
+      if (!preset) {
+        return;
+      }
+      if (initializedPresetsRef.current.has(preset)) {
+        return;
+      }
+
+      initializedPresetsRef.current.add(preset);
+
+      if (interactionMode !== 'pdf-scroll-zone') {
+        preset.runtime.goHome();
+      }
+
+      let cancelled = false;
+      Promise.resolve(onCreated?.(preset)).then(() => {
+        if (!cancelled) {
           setIsReady(true);
-        };
+        }
+      });
 
-        useEffect(() => {
-          if (preset && !strictModeDoubleRender.current) {
-            preset.runtime.goHome();
-
-            const result = onCreated && onCreated(preset);
-            return void (result && result.then ? result.then(activate) : activate());
-          }
-          return () => {
-            // no-op
-          };
-        }, []);
-
-        useEffect(() => {
-          strictModeDoubleRender.current = true;
-        }, []);
-
-        return props.children;
-      },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [preset]
-    );
+      return () => {
+        cancelled = true;
+      };
+    }, [interactionMode, onCreated, preset, setIsReady]);
 
     useIsomorphicLayoutEffect(() => {
       if (preset) {
@@ -57,18 +56,16 @@ export const AtlasWithReconciler: React.FC<AtlasWithReconcilerProps> = React.mem
 
         ReactAtlas.render(
           <React.StrictMode>
-            <AtlasRoot>
-              <BoundsContext.Provider value={bounds}>
-                <ModeContext.Provider value={mode}>
-                  <AtlasContext.Provider value={preset}>{children}</AtlasContext.Provider>
-                </ModeContext.Provider>
-              </BoundsContext.Provider>
-            </AtlasRoot>
+            <BoundsContext.Provider value={bounds}>
+              <ModeContext.Provider value={mode}>
+                <AtlasContext.Provider value={preset}>{children}</AtlasContext.Provider>
+              </ModeContext.Provider>
+            </BoundsContext.Provider>
           </React.StrictMode>,
           runtime
         );
       }
-    }, [preset, mode, children]);
+    }, [preset, mode, bounds, children]);
 
     useIsomorphicLayoutEffect(() => {
       if (preset) {

@@ -1,10 +1,10 @@
-import { Paint } from './paint';
-import { WorldObject } from './world-object';
-import { Strand, dna } from '@atlas-viewer/dna';
+import { dna, type Strand } from '@atlas-viewer/dna';
+import type { Paint } from './paint';
+import type { WorldObject } from './world-object';
 
 export interface ZoneInterface {
   id: string;
-  config: Required<ZoneConfig>;
+  config: ZoneResolvedConfig;
   objects: WorldObject[];
   points: Strand;
   recalculateBounds(): void;
@@ -13,42 +13,104 @@ export interface ZoneInterface {
 
 export type ZoneConfig = {
   margin?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 };
 
-const defaultConfig: Required<ZoneConfig> = {
+export type ZoneResolvedConfig = {
+  margin: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+};
+
+const defaultConfig: ZoneResolvedConfig = {
   margin: 0,
 };
 
 export class Zone implements ZoneInterface {
   id: string;
-  config: Required<ZoneConfig>;
+  config: ZoneResolvedConfig;
   points: Strand;
   objects: WorldObject[];
 
-  constructor(objects: [WorldObject, ...WorldObject[]], config: ZoneConfig = {}) {
-    this.id = objects.map(obj => obj.id).join('$$');
-    this.config = {
-      ...defaultConfig,
-      ...config,
-    };
+  constructor(objects: [WorldObject, ...WorldObject[]], config?: ZoneConfig);
+  constructor(config: ZoneConfig & { id: string; objects?: WorldObject[] });
+  constructor(
+    objectsOrConfig: [WorldObject, ...WorldObject[]] | (ZoneConfig & { id: string; objects?: WorldObject[] }),
+    config: ZoneConfig = {}
+  ) {
+    if (Array.isArray(objectsOrConfig)) {
+      this.id = objectsOrConfig.map((obj) => obj.id).join('$$');
+      this.config = {
+        ...defaultConfig,
+        ...config,
+      };
+      this.objects = [...objectsOrConfig];
+    } else {
+      this.id = objectsOrConfig.id;
+      this.config = {
+        ...defaultConfig,
+        margin: typeof objectsOrConfig.margin === 'number' ? objectsOrConfig.margin : defaultConfig.margin,
+        x: objectsOrConfig.x,
+        y: objectsOrConfig.y,
+        width: objectsOrConfig.width,
+        height: objectsOrConfig.height,
+      };
+      this.objects = [...(objectsOrConfig.objects || [])];
+    }
 
     this.points = dna(5);
-    this.objects = objects;
+    this.recalculateBounds();
+  }
+
+  applyProps(config: ZoneConfig & { id?: string }) {
+    if (typeof config.id !== 'undefined') {
+      this.id = config.id;
+    }
+    this.config = {
+      ...this.config,
+      ...config,
+    };
+    this.recalculateBounds();
+  }
+
+  addObject(object: WorldObject) {
+    if (this.objects.indexOf(object) !== -1) {
+      return;
+    }
+    this.objects.push(object);
+    this.recalculateBounds();
+  }
+
+  removeObject(object: WorldObject) {
+    this.objects = this.objects.filter((zoneObject) => zoneObject !== object);
     this.recalculateBounds();
   }
 
   recalculateBounds(): void {
-    // To create the points we need to take the world objects and get the min x1, y1 and the max x2, y2
-    // After that we need to add the margin around.
-    // Zone is just a logical grouping of work objects, as such they can't change the positions of world objects
-    // They can however be queries for visible points, like WorldObjects.
-    this.points.set([
-      1,
-      Math.min(...this.objects.map(obj => (obj as WorldObject).points[1])) - this.config.margin,
-      Math.min(...this.objects.map(obj => (obj as WorldObject).points[2])) - this.config.margin,
-      Math.max(...this.objects.map(obj => (obj as WorldObject).points[3])) + this.config.margin,
-      Math.max(...this.objects.map(obj => (obj as WorldObject).points[4])) + this.config.margin,
-    ]);
+    const hasManualBounds =
+      Number.isFinite(this.config.x) &&
+      Number.isFinite(this.config.y) &&
+      Number.isFinite(this.config.width) &&
+      Number.isFinite(this.config.height) &&
+      (this.config.width as number) > 0 &&
+      (this.config.height as number) > 0;
+
+    if (!hasManualBounds) {
+      this.points.set([0, 0, 0, 0, 0]);
+      return;
+    }
+
+    const margin = this.config.margin;
+    const x = this.config.x as number;
+    const y = this.config.y as number;
+    const width = this.config.width as number;
+    const height = this.config.height as number;
+    this.points.set([1, x - margin, y - margin, x + width + margin, y + height + margin]);
   }
 
   getPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {

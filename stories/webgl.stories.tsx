@@ -13,6 +13,7 @@ import { BrowserEventManager } from '../src/modules/browser-event-manager/browse
 import { WebGLRenderer } from '../src/modules/webgl-renderer/webgl-renderer';
 import { TiledImage } from '../src/spacial-content/tiled-image';
 import { CompositeResource } from '../src/spacial-content/composite-resource';
+import { Atlas } from '../src/modules/react-reconciler/Atlas';
 
 export default { title: 'WebGL renderer' };
 
@@ -394,6 +395,36 @@ export const DefaultStaticTiles: React.FC = () => {
   return (
     <div>
       <canvas style={{ width: 800, height: 600, overflow: 'hidden', position: 'relative' }} ref={viewer} />
+    </div>
+  );
+};
+
+export const AutoFallbackOnImageError: React.FC = () => {
+  const [fallbackReason, setFallbackReason] = useState<string>('waiting');
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <Atlas
+        width={800}
+        height={500}
+        unstable_webglRenderer
+        onWebGLFallback={(event) => {
+          setFallbackReason(event.reason);
+        }}
+      >
+        <world>
+          <world-object id="fallback-world-object" width={1600} height={1000}>
+            <world-image
+              id="fallback-image"
+              // Intentionally invalid host to trigger image load failure and automatic downgrade.
+              uri="https://example.invalid/image-without-cors.jpg"
+              target={{ width: 1600, height: 1000 }}
+              display={{ width: 1600, height: 1000 }}
+            />
+          </world-object>
+        </world>
+      </Atlas>
+      <div>WebGL fallback reason: {fallbackReason}</div>
     </div>
   );
 };

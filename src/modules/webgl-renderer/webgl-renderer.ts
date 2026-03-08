@@ -1,21 +1,79 @@
-import { Renderer } from '../../renderer/renderer';
-import { SpacialContent } from '../../spacial-content/spacial-content';
-import { Box } from '../../objects/box';
-import { SingleImage } from '../../spacial-content/single-image';
-import { TiledImage } from '../../spacial-content/tiled-image';
-import { Strand } from '@atlas-viewer/dna';
-import { World } from '../../world';
-import { Paint } from '../../world-objects/paint';
-import { PositionPair } from '../../types';
+import type { Strand } from '@atlas-viewer/dna';
+import type { Box } from '../../objects/box';
+import type { Renderer } from '../../renderer/renderer';
+import type { HookOptions } from '../../renderer/runtime';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { SingleImage } from '../../spacial-content/single-image';
+import type { SpacialContent } from '../../spacial-content/spacial-content';
+import { TiledImage } from '../../spacial-content/tiled-image';
+import type { PositionPair } from '../../types';
+import type { World } from '../../world';
+import type { Paint } from '../../world-objects/paint';
+import { buildCssFilter } from '../shared/build-css-filter';
+import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
+import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
+import type { AtlasWebGLFallbackEvent } from './types';
+import { isWebGLImageFastPathCandidate } from './webgl-eligibility';
+
+export type { AtlasWebGLFallbackEvent, AtlasWebGLFallbackReason } from './types';
 
 export type WebGLRendererOptions = {
   dpi?: number;
+  onFatalImageError?: (event: AtlasWebGLFallbackEvent) => void;
+  onImageError?: (event: AtlasImageLoadErrorEvent) => void;
+  imageLoading?: Partial<ImageLoadingConfig>;
+  fallbackOnImageLoadError?: boolean;
+  readiness?: 'first-meaningful-paint' | 'immediate';
 };
+
+type WebGLTileRequest = {
+  key: string;
+  tileKey: string;
+  requestKey: string;
+  paint: SingleImage | TiledImage;
+  index: number;
+  url: string;
+  priority: number;
+  scale: number;
+  prefetch: boolean;
+};
+
+type WebGLTileLoadingState = {
+  state: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
+  attempts?: number;
+  nextRetryAt?: number;
+  lastRequestKey?: string;
+  cancelledAt?: number;
+  error?: unknown;
+  url?: string;
+  requestedAt?: number;
+  skipFade?: boolean;
+};
+
+type InFlightTileLoad = {
+  tileKey: string;
+  requestKey: string;
+  consumerId: string;
+  paint: SingleImage | TiledImage;
+  index: number;
+  release: (opts?: { silent?: boolean }) => void;
+};
+
+type ScissorRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+const imageCache = new Map<string, HTMLImageElement>();
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
+  options: WebGLRendererOptions;
+  fatalImageError?: AtlasWebGLFallbackEvent;
 
   program: WebGLProgram;
   fragmentShader: WebGLShader;
@@ -28,10 +86,12 @@ export class WebGLRenderer implements Renderer {
     precision mediump float;
 
     uniform sampler2D u_image;
+    uniform float u_alpha;
     varying vec2 v_texCoord;
 
     void main() {
-        gl_FragColor = texture2D(u_image, v_texCoord);
+        vec4 color = texture2D(u_image, v_texCoord);
+        gl_FragColor = vec4(color.rgb, color.a * u_alpha);
     }
   `;
 
@@ -57,7 +117,7 @@ export class WebGLRenderer implements Renderer {
         vec2 clipSpace = zeroToTwo - 1.0;
 
         gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-        
+
         v_texCoord = a_texCoord;
     }
   `;
@@ -69,6 +129,7 @@ export class WebGLRenderer implements Renderer {
   uniforms: {
     resolution: WebGLUniformLocation | null;
     texture: WebGLUniformLocation | null;
+    alpha: WebGLUniformLocation | null;
   };
   buffers: {
     position: WebGLBuffer;
@@ -76,11 +137,64 @@ export class WebGLRenderer implements Renderer {
   };
   rendererPosition: DOMRect;
   dpi: number;
+  maxConcurrentTasks = 6;
+  maxPrefetchPerFrame = 8;
+  imageLoadingConfig: ImageLoadingConfig;
+  imageRequestPool: ImageRequestPool;
+  framePrefetchCount = 0;
+  loadingCount = 0;
+  hasTilesFading = false;
+  firstMeaningfulPaint = false;
+  frameSawFastPathCandidate = false;
+  requiresRepaint = true;
+  tileRequestQueue: WebGLTileRequest[] = [];
+  queuedTileRequestKeys = new Set<string>();
+  inFlightImageLoads = new Map<string, InFlightTileLoad>();
+  requiredTileKeys = new Set<string>();
+  requiredPrefetchTileKeys = new Set<string>();
+  requestGeneration = 0;
+  frameCounter = 0;
+  pendingTileReveals = new Map<
+    string,
+    {
+      paint: SingleImage | TiledImage;
+      index: number;
+      queuedFrame: number;
+    }
+  >();
+  activeLayerScissorRect: ScissorRect | undefined;
+  onContextLost = (event: Event) => {
+    event.preventDefault();
+    this.emitFatalImageError({
+      reason: 'webgl-context-lost',
+      error: event,
+    });
+  };
 
   constructor(canvas: HTMLCanvasElement, options?: WebGLRendererOptions) {
     this.canvas = canvas;
     this.rendererPosition = canvas.getBoundingClientRect();
-    this.gl = canvas.getContext('webgl2') as WebGL2RenderingContext;
+    this.options = options || {};
+    this.imageLoadingConfig = resolveImageLoadingConfig(this.options.imageLoading);
+    this.maxConcurrentTasks = this.imageLoadingConfig.maxConcurrentRequests;
+    this.maxPrefetchPerFrame = this.imageLoadingConfig.maxPrefetchPerFrame;
+    this.imageRequestPool = new ImageRequestPool({
+      timeoutMs: this.imageLoadingConfig.timeoutMs,
+      crossOrigin: 'anonymous',
+      useFetch: true,
+      cache: imageCache,
+    });
+
+    const gl = canvas.getContext('webgl2');
+    if (!gl) {
+      this.emitFatalImageError({
+        reason: 'webgl-context-unavailable',
+        error: new Error('WebGL2 context unavailable'),
+      });
+      throw new Error('WebGL2 context unavailable');
+    }
+    this.gl = gl;
+    this.canvas.addEventListener('webglcontextlost', this.onContextLost as EventListener);
 
     this.fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, this.fragmentShaderSource);
     this.vertexShader = this.createShader(this.gl.VERTEX_SHADER, this.vertexShaderSource);
@@ -95,6 +209,7 @@ export class WebGLRenderer implements Renderer {
     this.uniforms = {
       resolution: this.gl.getUniformLocation(this.program, 'u_resolution'),
       texture: this.gl.getUniformLocation(this.program, 'u_texture'),
+      alpha: this.gl.getUniformLocation(this.program, 'u_alpha'),
     };
 
     this.buffers = {
@@ -107,13 +222,37 @@ export class WebGLRenderer implements Renderer {
     // Resize step.
     this.resize();
 
-    // @todo change.
     this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
     this.gl.clearColor(0, 0, 0, 0);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 
     this.gl.useProgram(this.program);
     this.gl.enableVertexAttribArray(this.attributes.position);
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+
+    if (this.isImmediateReadiness()) {
+      this.firstMeaningfulPaint = true;
+    }
+  }
+
+  private isImmediateReadiness() {
+    return this.options.readiness === 'immediate';
+  }
+
+  emitFatalImageError(event: Omit<AtlasWebGLFallbackEvent, 'from' | 'to'>) {
+    if (this.fatalImageError) {
+      return;
+    }
+    const fullEvent: AtlasWebGLFallbackEvent = {
+      from: 'webgl',
+      to: 'canvas',
+      ...event,
+    };
+    this.fatalImageError = fullEvent;
+    if (this.options.onFatalImageError) {
+      this.options.onFatalImageError(fullEvent);
+    }
   }
 
   resize() {
@@ -123,15 +262,49 @@ export class WebGLRenderer implements Renderer {
   }
 
   isReady() {
-    return true;
+    if (this.isImmediateReadiness()) {
+      return true;
+    }
+
+    if (this.firstMeaningfulPaint) {
+      return true;
+    }
+
+    if (!this.frameSawFastPathCandidate) {
+      return (
+        this.tileRequestQueue.length === 0 &&
+        this.loadingCount === 0 &&
+        this.inFlightImageLoads.size === 0 &&
+        this.pendingTileReveals.size === 0
+      );
+    }
+
+    return false;
   }
 
-  beforeFrame(world: World, delta: number, target: Strand) {
+  beforeFrame(world: World, delta: number, target: Strand, options: HookOptions) {
+    this.hasTilesFading = false;
+    this.requiresRepaint = false;
+    this.frameSawFastPathCandidate = false;
+    this.framePrefetchCount = 0;
+    this.frameCounter += 1;
+    this.requiredTileKeys.clear();
+    this.requiredPrefetchTileKeys.clear();
+    this.flushTileRevealBatch();
+
+    const filter = buildCssFilter(options);
+    if (this.canvas.style.filter !== filter) {
+      this.canvas.style.filter = filter;
+    }
+
     this.gl.clearColor(0, 0, 0, 0);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    this.gl.disable(this.gl.SCISSOR_TEST);
+    this.activeLayerScissorRect = undefined;
 
     this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
-    this.gl.uniform2f(this.uniforms.resolution, this.gl.canvas.width, this.gl.canvas.height);
+    // Runtime coordinates are in CSS pixels, so keep shader resolution in CSS pixel space.
+    this.gl.uniform2f(this.uniforms.resolution, this.gl.canvas.width / this.dpi, this.gl.canvas.height / this.dpi);
     if (this.lastResize > 1000) {
       this.lastResize = 0;
       this.resizeCanvasToDisplaySize();
@@ -141,19 +314,115 @@ export class WebGLRenderer implements Renderer {
 
   lastResize = 0;
 
-  prepareLayer(paint: SpacialContent) {
-    // no-op.
+  private getCompositeRenderOptions(paint: SingleImage | TiledImage) {
+    return paint.__parent?.renderOptions;
+  }
+
+  private shouldClipLayerToBounds(paint: SpacialContent): boolean {
+    if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+      return false;
+    }
+    return !!this.getCompositeRenderOptions(paint)?.clipToBounds;
+  }
+
+  private getBoundsFromPoints(points: Strand): { x: number; y: number; width: number; height: number } | undefined {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < points.length; i += 5) {
+      if (!points[i]) {
+        continue;
+      }
+      minX = Math.min(minX, points[i + 1]);
+      minY = Math.min(minY, points[i + 2]);
+      maxX = Math.max(maxX, points[i + 3]);
+      maxY = Math.max(maxY, points[i + 4]);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return undefined;
+    }
+    if (maxX <= minX || maxY <= minY) {
+      return undefined;
+    }
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  private toScissorRect(bounds: { x: number; y: number; width: number; height: number }): ScissorRect | undefined {
+    const canvasWidthCss = this.gl.canvas.width / this.dpi;
+    const canvasHeightCss = this.gl.canvas.height / this.dpi;
+
+    const x1 = Math.max(0, Math.min(canvasWidthCss, bounds.x));
+    const y1 = Math.max(0, Math.min(canvasHeightCss, bounds.y));
+    const x2 = Math.max(0, Math.min(canvasWidthCss, bounds.x + bounds.width));
+    const y2 = Math.max(0, Math.min(canvasHeightCss, bounds.y + bounds.height));
+    if (x2 <= x1 || y2 <= y1) {
+      return undefined;
+    }
+
+    let scissorX = Math.floor(x1 * this.dpi);
+    let scissorY = Math.floor((canvasHeightCss - y2) * this.dpi);
+    let scissorWidth = Math.ceil((x2 - x1) * this.dpi);
+    let scissorHeight = Math.ceil((y2 - y1) * this.dpi);
+
+    if (scissorX < 0) {
+      scissorWidth += scissorX;
+      scissorX = 0;
+    }
+    if (scissorY < 0) {
+      scissorHeight += scissorY;
+      scissorY = 0;
+    }
+    scissorWidth = Math.min(scissorWidth, this.gl.canvas.width - scissorX);
+    scissorHeight = Math.min(scissorHeight, this.gl.canvas.height - scissorY);
+    if (scissorWidth <= 0 || scissorHeight <= 0) {
+      return undefined;
+    }
+
+    return {
+      x: scissorX,
+      y: scissorY,
+      width: scissorWidth,
+      height: scissorHeight,
+    };
+  }
+
+  prepareLayer(paint: SpacialContent, points?: Strand) {
+    this.activeLayerScissorRect = undefined;
+    if (points && this.shouldClipLayerToBounds(paint)) {
+      const bounds = this.getBoundsFromPoints(points);
+      if (bounds) {
+        const scissorRect = this.toScissorRect(bounds);
+        if (scissorRect) {
+          this.activeLayerScissorRect = scissorRect;
+          this.gl.enable(this.gl.SCISSOR_TEST);
+          this.gl.scissor(scissorRect.x, scissorRect.y, scissorRect.width, scissorRect.height);
+        } else {
+          this.gl.enable(this.gl.SCISSOR_TEST);
+          this.gl.scissor(0, 0, 0, 0);
+          this.activeLayerScissorRect = {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          };
+        }
+      }
+    }
+
     if (!paint.__host || !paint.__host.webgl) {
-      if (paint instanceof SingleImage || paint instanceof TiledImage) {
-        // create it if it does not exist.
+      if ((paint instanceof SingleImage || paint instanceof TiledImage) && isWebGLImageFastPathCandidate(paint, 0)) {
         this.createImageHost(paint);
       }
       if (paint instanceof ImageTexture) {
         this.createTextureHost(paint);
       }
-      // if (paint instanceof Box) {
-      //   this.createTextureHost(paint);
-      // }
     }
   }
 
@@ -169,15 +438,19 @@ export class WebGLRenderer implements Renderer {
     if (paint instanceof ImageTexture) {
       const initial = paint.getTexture();
       if (initial.source) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+        try {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, initial.source);
+        } catch (error) {
+          this.emitFatalImageError({
+            reason: 'teximage-security',
+            contentId: paint.id,
+            error,
+          });
+        }
       }
       lastImage = initial;
     } else {
       // @todo draw box and set webgl.updateTexture function.
-      // const data = paint.props.backgroundColor === 'red' ? new Uint8Array([255, 0, 0]) : new Uint8Array([0, 0, 255]);
-      // const alignment = 1;
-      // gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
-      // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, data);
     }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -203,13 +476,27 @@ export class WebGLRenderer implements Renderer {
       textures,
       loading: [],
       loaded: [],
+      loadedAt: [],
+      tileState: {},
       lastLevelRendered: -1,
       onLoad: (index: number, image: any) => {
         const gl = this.gl;
         const texture = this.gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        try {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        } catch (error) {
+          this.emitFatalImageError({
+            reason: 'teximage-security',
+            imageUrl: paint.getImageUrl ? paint.getImageUrl(index) : undefined,
+            contentId: paint.id,
+            tileIndex: index,
+            error,
+          });
+          this.removeLoadingIndex(paint, index);
+          return;
+        }
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -217,59 +504,636 @@ export class WebGLRenderer implements Renderer {
         gl.bindTexture(gl.TEXTURE_2D, null);
         paint.__host.webgl.textures[index] = texture;
         paint.__host.webgl.loaded.push(index);
+        paint.__host.webgl.loadedAt[index] = undefined;
+        this.setTileState(paint, index, {
+          ...this.getTileState(paint, index),
+          state: 'decoded',
+          attempts: 0,
+          nextRetryAt: undefined,
+          error: undefined,
+        });
+        this.enqueueTileReveal(this.getTileKey(paint, index), paint, index);
+        this.requiresRepaint = true;
+        this.removeLoadingIndex(paint, index);
       },
     };
   }
 
-  paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
-    if (paint.type === 'spacial-content') {
-      if (paint.__host && paint.__host.webgl) {
-        if (paint.getTexture) {
-          const newText = paint?.getTexture();
-          if (newText && paint.__host.webgl.lastImage !== newText.hash && newText.source && !paint.__host.webgl.error) {
-            try {
-              const level = 0;
-              const internalFormat = this.gl.RGBA;
-              const srcFormat = this.gl.RGBA;
-              const srcType = this.gl.UNSIGNED_BYTE;
-              this.gl.bindTexture(this.gl.TEXTURE_2D, paint.__host.webgl.texture);
-              this.gl.texImage2D(this.gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, newText.source);
-              paint.__host.webgl.lastImage = newText.hash;
-            } catch (e) {
-              paint.__host.webgl.error = e;
+  removeLoadingIndex(paint: SpacialContent, index: number) {
+    if (!paint.__host?.webgl?.loading) {
+      return;
+    }
+    const loadingIndex = paint.__host.webgl.loading.indexOf(index);
+    if (loadingIndex !== -1) {
+      paint.__host.webgl.loading.splice(loadingIndex, 1);
+      this.loadingCount = Math.max(0, this.loadingCount - 1);
+      this.requiresRepaint = true;
+    }
+  }
+
+  private getTileKey(paint: SingleImage | TiledImage, index: number): string {
+    return `${paint.id}::${paint.display.scale}::${index}`;
+  }
+
+  private nextRequestKey(tileKey: string): string {
+    this.requestGeneration += 1;
+    return `${tileKey}::${this.requestGeneration}`;
+  }
+
+  private getTileState(paint: SingleImage | TiledImage, index: number): WebGLTileLoadingState {
+    const host = paint.__host?.webgl;
+    if (!host) {
+      return { state: 'idle' };
+    }
+    if (!host.tileState) {
+      host.tileState = {};
+    }
+    if (!host.tileState[index]) {
+      host.tileState[index] = { state: 'idle' };
+    }
+    return host.tileState[index] as WebGLTileLoadingState;
+  }
+
+  private setTileState(paint: SingleImage | TiledImage, index: number, state: WebGLTileLoadingState) {
+    const host = paint.__host?.webgl;
+    if (!host) {
+      return;
+    }
+    if (!host.tileState) {
+      host.tileState = {};
+    }
+    host.tileState[index] = state;
+  }
+
+  private markTileRequired(tileKey: string, prefetch: boolean) {
+    if (prefetch) {
+      this.requiredPrefetchTileKeys.add(tileKey);
+      return;
+    }
+    this.requiredTileKeys.add(tileKey);
+  }
+
+  private isTileRequired(tileKey: string): boolean {
+    return this.requiredTileKeys.has(tileKey) || this.requiredPrefetchTileKeys.has(tileKey);
+  }
+
+  private shouldSkipFade(tileState: WebGLTileLoadingState | undefined, now = performance.now()): boolean {
+    if (!tileState?.requestedAt) {
+      return false;
+    }
+    return now - tileState.requestedAt <= this.imageLoadingConfig.skipFadeIfLoadedWithinMs;
+  }
+
+  private enqueueTileReveal(tileKey: string, paint: SingleImage | TiledImage, index: number) {
+    const now = performance.now();
+    if (this.imageLoadingConfig.revealDelayFrames === 0 && this.imageLoadingConfig.revealBatchWindowFrames === 0) {
+      if (paint.__host?.webgl?.loadedAt) {
+        paint.__host.webgl.loadedAt[index] = now;
+      }
+      const state = this.getTileState(paint, index);
+      this.setTileState(paint, index, {
+        ...state,
+        skipFade: this.shouldSkipFade(state, now),
+      });
+      return;
+    }
+
+    this.pendingTileReveals.set(tileKey, {
+      paint,
+      index,
+      queuedFrame: this.frameCounter,
+    });
+  }
+
+  private flushTileRevealBatch() {
+    if (this.pendingTileReveals.size === 0) {
+      return;
+    }
+
+    const delay = this.imageLoadingConfig.revealDelayFrames;
+    const windowFrames = this.imageLoadingConfig.revealBatchWindowFrames;
+    const now = performance.now();
+
+    const entries = [...this.pendingTileReveals.entries()].sort((a, b) => a[1].queuedFrame - b[1].queuedFrame);
+    let cursor = 0;
+
+    while (cursor < entries.length) {
+      const first = entries[cursor];
+      if (this.frameCounter - first[1].queuedFrame < delay) {
+        break;
+      }
+
+      const cutoffFrame = first[1].queuedFrame + windowFrames;
+      while (cursor < entries.length && entries[cursor][1].queuedFrame <= cutoffFrame) {
+        const [tileKey, pending] = entries[cursor];
+        const host = pending.paint.__host?.webgl;
+        const state = this.getTileState(pending.paint, pending.index);
+        if (host?.loadedAt && state.state === 'decoded' && !host.loadedAt[pending.index]) {
+          host.loadedAt[pending.index] = now;
+          this.setTileState(pending.paint, pending.index, {
+            ...state,
+            skipFade: this.shouldSkipFade(state, now),
+          });
+          this.requiresRepaint = true;
+        }
+        this.pendingTileReveals.delete(tileKey);
+        cursor += 1;
+      }
+    }
+  }
+
+  private emitImageError(event: Omit<AtlasImageLoadErrorEvent, 'renderer'>) {
+    if (this.options.onImageError) {
+      this.options.onImageError({
+        renderer: 'webgl',
+        ...event,
+      });
+    }
+  }
+
+  private releaseInFlightTileLoad(tileKey: string, opts: { silent?: boolean } = {}) {
+    const inFlight = this.inFlightImageLoads.get(tileKey);
+    if (!inFlight) {
+      return;
+    }
+    inFlight.release(opts);
+    this.inFlightImageLoads.delete(tileKey);
+  }
+
+  private pruneStaleTileWork() {
+    this.tileRequestQueue = this.tileRequestQueue.filter((request) => {
+      if (this.isTileRequired(request.tileKey)) {
+        return true;
+      }
+      this.queuedTileRequestKeys.delete(request.key);
+      const state = this.getTileState(request.paint, request.index);
+      if (state.lastRequestKey === request.requestKey && state.state === 'queued') {
+        this.setTileState(request.paint, request.index, {
+          ...state,
+          state: 'idle',
+          cancelledAt: performance.now(),
+        });
+      }
+      this.pendingTileReveals.delete(request.tileKey);
+      return false;
+    });
+
+    for (const [tileKey, inFlight] of [...this.inFlightImageLoads.entries()]) {
+      if (this.isTileRequired(tileKey)) {
+        continue;
+      }
+      const state = this.getTileState(inFlight.paint, inFlight.index);
+      if (state.lastRequestKey === inFlight.requestKey && state.state === 'loading') {
+        this.setTileState(inFlight.paint, inFlight.index, {
+          ...state,
+          state: 'idle',
+          cancelledAt: performance.now(),
+        });
+      }
+      this.pendingTileReveals.delete(tileKey);
+      this.removeLoadingIndex(inFlight.paint, inFlight.index);
+      this.releaseInFlightTileLoad(tileKey, { silent: true });
+    }
+  }
+
+  private getPrefetchRadius(paint: SingleImage | TiledImage): number {
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options) {
+      return 0;
+    }
+    if (typeof options.prefetchRadius === 'number') {
+      return Math.max(0, options.prefetchRadius);
+    }
+    if (options.loadingBias === 'speed') {
+      return 2;
+    }
+    if (options.loadingBias === 'data') {
+      return 0;
+    }
+    return 1;
+  }
+
+  private isLayerActive(paint: SingleImage | TiledImage): boolean {
+    const parent = paint.__parent as any;
+    if (!parent) {
+      return true;
+    }
+    if (typeof parent.isImageActive === 'function') {
+      return !!parent.isImageActive(paint);
+    }
+    return true;
+  }
+
+  private shouldDrawLayer(paint: SingleImage | TiledImage, index: number, isActiveLayer: boolean): boolean {
+    const policy = this.getCompositeRenderOptions(paint)?.layerPolicy || 'fallback-only';
+    if (policy === 'active-only') {
+      if (isActiveLayer) {
+        return true;
+      }
+      const texture = paint.__host?.webgl?.texture
+        ? paint.__host.webgl.texture
+        : paint.__host?.webgl?.textures?.[index];
+      return !!texture;
+    }
+    return true;
+  }
+
+  private getFadeAlpha(paint: SingleImage | TiledImage, index: number, isActiveLayer: boolean): number {
+    if (this.getTileState(paint, index).skipFade) {
+      return 1;
+    }
+
+    const isRevealDeferred =
+      this.getTileState(paint, index).state === 'decoded' &&
+      !paint.__host?.webgl?.loadedAt?.[index] &&
+      (this.imageLoadingConfig.revealDelayFrames > 0 || this.imageLoadingConfig.revealBatchWindowFrames > 0);
+    if (isRevealDeferred) {
+      return 0;
+    }
+
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
+      return 1;
+    }
+
+    const now = performance.now();
+    let fadeAlpha = 1;
+
+    if (isActiveLayer && options.fadeOnLayerChange && options.layerPolicy !== 'active-only') {
+      const parent = paint.__parent as any;
+      if (parent && typeof parent.getImageActivatedAt === 'function') {
+        const activatedAt = parent.getImageActivatedAt(paint);
+        if (typeof activatedAt === 'number') {
+          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / options.fadeInMs)));
+        }
+      }
+    }
+
+    const loadedAt = paint.__host?.webgl?.loadedAt?.[index];
+    if (loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - loadedAt) / options.fadeInMs)));
+    }
+
+    return fadeAlpha;
+  }
+
+  private getTileRequestKey(paint: SingleImage | TiledImage, index: number): string {
+    return `${paint.id}::${paint.display.scale}::${index}`;
+  }
+
+  private getCompositeOwner(paint?: SingleImage | TiledImage): unknown {
+    const parent = paint?.__parent as any;
+    return parent && parent.renderOptions ? parent : undefined;
+  }
+
+  private compareCompositeLoadPriority(
+    aPaint?: SingleImage | TiledImage,
+    bPaint?: SingleImage | TiledImage
+  ): number {
+    const aOwner = this.getCompositeOwner(aPaint);
+    const bOwner = this.getCompositeOwner(bPaint);
+    if (!aOwner || aOwner !== bOwner) {
+      return 0;
+    }
+
+    const aScale = aPaint?.display.scale || 0;
+    const bScale = bPaint?.display.scale || 0;
+    return bScale - aScale;
+  }
+
+  private enqueueTileRequest(
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number,
+    prefetch: boolean
+  ): boolean {
+    if (!paint.getImageUrl || !paint.__host?.webgl) {
+      return false;
+    }
+
+    const tileKey = this.getTileKey(paint, index);
+    this.markTileRequired(tileKey, prefetch);
+
+    const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures?.[index];
+    if (texture) {
+      return false;
+    }
+
+    if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) !== -1) {
+      return false;
+    }
+
+    const tileState = this.getTileState(paint, index);
+    const now = performance.now();
+    if (tileState.nextRetryAt && tileState.nextRetryAt > now) {
+      return false;
+    }
+
+    const key = this.getTileRequestKey(paint, index);
+    if (this.queuedTileRequestKeys.has(key)) {
+      return false;
+    }
+
+    const requestKey = this.nextRequestKey(tileKey);
+    this.pendingTileReveals.delete(tileKey);
+    this.setTileState(paint, index, {
+      ...tileState,
+      state: 'queued',
+      requestedAt: now,
+      lastRequestKey: requestKey,
+      cancelledAt: undefined,
+      error: undefined,
+      skipFade: false,
+    });
+
+    this.tileRequestQueue.push({
+      key,
+      tileKey,
+      requestKey,
+      paint,
+      index,
+      url: paint.getImageUrl(index),
+      priority,
+      scale: paint.display.scale,
+      prefetch,
+    });
+    this.queuedTileRequestKeys.add(key);
+    this.requiresRepaint = true;
+    return true;
+  }
+
+  private schedulePrefetchNeighbours(paint: TiledImage, index: number, priority: number) {
+    if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+      return;
+    }
+
+    const options = this.getCompositeRenderOptions(paint);
+    if (options?.loadingBias === 'data') {
+      return;
+    }
+
+    const radius = this.getPrefetchRadius(paint);
+    if (radius <= 0 || !paint.columns || !paint.rows) {
+      return;
+    }
+
+    const x = index % paint.columns;
+    const y = Math.floor(index / paint.columns);
+
+    for (let ring = 1; ring <= radius; ring++) {
+      for (let dy = -ring; dy <= ring; dy++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) {
+            continue;
+          }
+
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= paint.columns || ny >= paint.rows) {
+            continue;
+          }
+
+          const neighbourIndex = ny * paint.columns + nx;
+          if (this.enqueueTileRequest(paint, neighbourIndex, priority + ring * 1000, true)) {
+            this.framePrefetchCount++;
+            if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+              return;
             }
           }
         }
+      }
+    }
+  }
 
-        if (paint.__host.webgl.loading && paint.__host.webgl.loading.indexOf(index) === -1 && paint.getImageUrl) {
-          paint.__host.webgl.loading.push(index);
-          const image = document.createElement('img');
-          image.decoding = 'async';
-          image.crossOrigin = 'anonymous';
-          image.src = paint.getImageUrl(index);
-          image.onload = () => {
-            image.onload = null;
-            return paint.__host.webgl.onLoad(index, image);
-          };
+  private processTileQueue() {
+    if (!this.tileRequestQueue.length) {
+      return;
+    }
+
+    this.tileRequestQueue.sort((a, b) => {
+      if (a.prefetch !== b.prefetch) {
+        return a.prefetch ? 1 : -1;
+      }
+      const compositePriority = this.compareCompositeLoadPriority(a.paint, b.paint);
+      if (compositePriority !== 0) {
+        return compositePriority;
+      }
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      // Larger display scale is lower quality, and should load first.
+      return b.scale - a.scale;
+    });
+
+    while (this.loadingCount < this.maxConcurrentTasks && this.tileRequestQueue.length) {
+      const next = this.tileRequestQueue.shift() as WebGLTileRequest;
+      this.queuedTileRequestKeys.delete(next.key);
+
+      const host = next.paint.__host?.webgl;
+      if (!host || !next.paint.getImageUrl) {
+        continue;
+      }
+
+      const state = this.getTileState(next.paint, next.index);
+      if (state.lastRequestKey !== next.requestKey) {
+        continue;
+      }
+
+      const texture = host.texture ? host.texture : host.textures?.[next.index];
+      if (texture) {
+        continue;
+      }
+      if (host.loading && host.loading.indexOf(next.index) !== -1) {
+        continue;
+      }
+
+      this.setTileState(next.paint, next.index, {
+        ...state,
+        state: 'loading',
+        url: next.url,
+        requestedAt: state.requestedAt || performance.now(),
+      });
+      host.loading.push(next.index);
+      this.loadingCount++;
+      this.requiresRepaint = true;
+
+      const consumerId = `${next.tileKey}::${next.requestKey}`;
+      const acquired = this.imageRequestPool.acquire(next.url, consumerId);
+      this.inFlightImageLoads.set(next.tileKey, {
+        tileKey: next.tileKey,
+        requestKey: next.requestKey,
+        consumerId,
+        paint: next.paint,
+        index: next.index,
+        release: acquired.release,
+      });
+
+      acquired.promise
+        .then((image) => {
+          this.releaseInFlightTileLoad(next.tileKey, { silent: true });
+          const currentState = this.getTileState(next.paint, next.index);
+          if (currentState.lastRequestKey !== next.requestKey || currentState.state !== 'loading') {
+            this.removeLoadingIndex(next.paint, next.index);
+            return;
+          }
+          next.paint.__host?.webgl?.onLoad(next.index, image);
+        })
+        .catch((error) => {
+          this.releaseInFlightTileLoad(next.tileKey, { silent: true });
+          if (isImageRequestCancelledError(error)) {
+            const cancelledState = this.getTileState(next.paint, next.index);
+            if (cancelledState.lastRequestKey === next.requestKey) {
+              this.setTileState(next.paint, next.index, {
+                ...cancelledState,
+                state: 'idle',
+                cancelledAt: performance.now(),
+              });
+            }
+            this.pendingTileReveals.delete(next.tileKey);
+            this.removeLoadingIndex(next.paint, next.index);
+            return;
+          }
+
+          const failedState = this.getTileState(next.paint, next.index);
+          if (failedState.lastRequestKey !== next.requestKey) {
+            this.removeLoadingIndex(next.paint, next.index);
+            return;
+          }
+
+          const attempts = (failedState.attempts || 0) + 1;
+          const willRetry = attempts < this.imageLoadingConfig.maxAttempts;
+          const nextRetryAt = willRetry
+            ? performance.now() + getRetryDelayMs(this.imageLoadingConfig, attempts)
+            : performance.now() + this.imageLoadingConfig.errorRetryIntervalMs;
+
+          this.setTileState(next.paint, next.index, {
+            ...failedState,
+            state: willRetry ? 'idle' : 'error',
+            attempts,
+            nextRetryAt,
+            error,
+          });
+          this.pendingTileReveals.delete(next.tileKey);
+          this.removeLoadingIndex(next.paint, next.index);
+
+          this.emitImageError({
+            severity: 'recoverable',
+            imageUrl: next.url,
+            contentId: next.paint.id,
+            tileIndex: next.index,
+            attempt: attempts,
+            maxAttempts: this.imageLoadingConfig.maxAttempts,
+            willRetry,
+            nextRetryAt,
+            error,
+          });
+
+          if (!willRetry && this.options.fallbackOnImageLoadError) {
+            this.emitFatalImageError({
+              reason: 'image-cors-or-load',
+              imageUrl: next.url,
+              contentId: next.paint.id,
+              tileIndex: next.index,
+              error,
+            });
+          }
+        })
+        .finally(() => {
+          this.processTileQueue();
+        });
+    }
+  }
+
+  paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
+    if (paint.type !== 'spacial-content') {
+      return;
+    }
+    if (!paint.__host || !paint.__host.webgl) {
+      return;
+    }
+
+    const imagePaint = paint instanceof SingleImage || paint instanceof TiledImage;
+    if (imagePaint && !isWebGLImageFastPathCandidate(paint, index)) {
+      return;
+    }
+    if (imagePaint) {
+      this.frameSawFastPathCandidate = true;
+    }
+    const isActiveLayer = imagePaint ? this.isLayerActive(paint) : true;
+
+    if (paint.getTexture) {
+      const newText = paint.getTexture();
+      if (newText && paint.__host.webgl.lastImage !== newText.hash && newText.source && !paint.__host.webgl.error) {
+        try {
+          const level = 0;
+          const internalFormat = this.gl.RGBA;
+          const srcFormat = this.gl.RGBA;
+          const srcType = this.gl.UNSIGNED_BYTE;
+          this.gl.bindTexture(this.gl.TEXTURE_2D, paint.__host.webgl.texture);
+          this.gl.texImage2D(this.gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, newText.source);
+          paint.__host.webgl.lastImage = newText.hash;
+        } catch (error) {
+          paint.__host.webgl.error = error;
+          this.emitFatalImageError({
+            reason: 'teximage-security',
+            contentId: paint.id,
+            tileIndex: index,
+            error,
+          });
         }
+      }
+    }
 
-        const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
-        if (texture) {
-          this.gl.enableVertexAttribArray(this.attributes.texCoord);
+    const texture = paint.__host.webgl.texture ? paint.__host.webgl.texture : paint.__host.webgl.textures[index];
+    if (imagePaint && isActiveLayer) {
+      const canvasCenterX = this.gl.canvas.width / this.dpi / 2;
+      const canvasCenterY = this.gl.canvas.height / this.dpi / 2;
+      const tileCenterX = x + width / 2;
+      const tileCenterY = y + height / 2;
+      const priority = Math.hypot(tileCenterX - canvasCenterX, tileCenterY - canvasCenterY);
 
-          this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.texCoord);
-          this.gl.enableVertexAttribArray(this.attributes.texCoord);
-          this.gl.vertexAttribPointer(this.attributes.texCoord, 2, this.gl.FLOAT, false, 0, 0);
+      if (!texture) {
+        this.enqueueTileRequest(paint, index, priority, false);
+      }
+      if (paint instanceof TiledImage) {
+        this.schedulePrefetchNeighbours(paint, index, priority);
+      }
+    }
 
-          this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.position);
-          this.gl.enableVertexAttribArray(this.attributes.position);
-          this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
+    if (imagePaint && !this.shouldDrawLayer(paint, index, isActiveLayer)) {
+      return;
+    }
 
-          this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-          this.gl.uniform1i(this.uniforms.texture, 0);
-          this.setRectangle(x, y, width, height);
-          this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
-        }
+    if (texture) {
+      const baseAlpha = imagePaint ? (typeof paint.style?.opacity === 'number' ? paint.style.opacity : 1) : 1;
+      const zoneVisibilityAlpha =
+        typeof (paint as any).__zoneVisibilityAlpha === 'number' ? (paint as any).__zoneVisibilityAlpha : 1;
+      if (!baseAlpha) {
+        return;
+      }
+      const fadeAlpha = imagePaint ? this.getFadeAlpha(paint, index, isActiveLayer) : 1;
+      if (fadeAlpha < 1) {
+        this.hasTilesFading = true;
+      }
+      const alpha = baseAlpha * fadeAlpha * zoneVisibilityAlpha;
+
+      this.gl.enableVertexAttribArray(this.attributes.texCoord);
+
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.texCoord);
+      this.gl.enableVertexAttribArray(this.attributes.texCoord);
+      this.gl.vertexAttribPointer(this.attributes.texCoord, 2, this.gl.FLOAT, false, 0, 0);
+
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.position);
+      this.gl.enableVertexAttribArray(this.attributes.position);
+      this.gl.vertexAttribPointer(this.attributes.position, 2, this.gl.FLOAT, false, 0, 0);
+
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      this.gl.uniform1i(this.uniforms.texture, 0);
+      this.gl.uniform1f(this.uniforms.alpha, alpha);
+      this.setRectangle(x, y, width, height);
+      this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+      if (!this.isImmediateReadiness() && imagePaint && alpha > 0) {
+        this.firstMeaningfulPaint = true;
       }
     }
   }
@@ -279,7 +1143,14 @@ export class WebGLRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
-    return true;
+    return (
+      this.requiresRepaint ||
+      this.tileRequestQueue.length > 0 ||
+      this.loadingCount > 0 ||
+      this.inFlightImageLoads.size > 0 ||
+      this.pendingTileReveals.size > 0 ||
+      this.hasTilesFading
+    );
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
@@ -287,7 +1158,8 @@ export class WebGLRenderer implements Renderer {
   }
 
   afterFrame() {
-    // no-op.
+    this.pruneStaleTileWork();
+    this.processTileQueue();
   }
 
   lastKnownScale = 1;
@@ -312,7 +1184,10 @@ export class WebGLRenderer implements Renderer {
   }
 
   getCanvasDims() {
-    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
+    return {
+      width: this.canvas.width / this.dpi,
+      height: this.canvas.height / this.dpi,
+    };
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {
@@ -365,14 +1240,16 @@ export class WebGLRenderer implements Renderer {
     // Lookup the size the browser is displaying the canvas in CSS pixels.
     const displayWidth = canvas.clientWidth;
     const displayHeight = canvas.clientHeight;
+    const targetWidth = Math.round(displayWidth * this.dpi);
+    const targetHeight = Math.round(displayHeight * this.dpi);
 
     // Check if the canvas is not the same size.
-    const needResize = canvas.width !== displayWidth || canvas.height !== displayHeight;
+    const needResize = canvas.width !== targetWidth || canvas.height !== targetHeight;
 
     if (needResize) {
       // Make the canvas the same size
-      canvas.width = displayWidth;
-      canvas.height = displayHeight;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
     }
 
     return needResize;
@@ -408,6 +1285,39 @@ export class WebGLRenderer implements Renderer {
     return this.rendererPosition;
   }
 
-  finishLayer() {}
-  reset() {}
+  finishLayer() {
+    if (this.activeLayerScissorRect) {
+      this.gl.disable(this.gl.SCISSOR_TEST);
+      this.activeLayerScissorRect = undefined;
+    }
+  }
+  resetReadyState() {
+    if (this.isImmediateReadiness()) {
+      return;
+    }
+    this.firstMeaningfulPaint = false;
+  }
+
+  reset() {
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost as EventListener);
+    this.canvas.style.filter = 'none';
+    this.framePrefetchCount = 0;
+    this.loadingCount = 0;
+    this.hasTilesFading = false;
+    this.requiresRepaint = false;
+    this.tileRequestQueue = [];
+    this.queuedTileRequestKeys.clear();
+    for (const tileKey of [...this.inFlightImageLoads.keys()]) {
+      this.releaseInFlightTileLoad(tileKey, { silent: true });
+    }
+    this.imageRequestPool.cancelAll({ silent: true });
+    this.inFlightImageLoads.clear();
+    this.requiredTileKeys.clear();
+    this.requiredPrefetchTileKeys.clear();
+    this.pendingTileReveals.clear();
+    this.requestGeneration += 1;
+    this.frameCounter = 0;
+    this.frameSawFastPathCandidate = false;
+    this.firstMeaningfulPaint = this.isImmediateReadiness();
+  }
 }

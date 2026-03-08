@@ -1,22 +1,29 @@
-import Reconciler_ from 'react-reconciler';
+import React, { version } from 'react';
 import type { OpaqueHandle } from 'react-reconciler';
-import { now } from './utility/now';
+import Reconciler_ from 'react-reconciler';
+import type { AtlasObjectModel } from '../../aom';
+import { supportedEventAttributes, supportedEventMap } from '../../events';
+import { BaseObject } from '../../objects/base-object';
+import { Box } from '../../objects/box';
+import { Geometry } from '../../objects/geometry';
+import { Text } from '../../objects/text';
 import { Runtime } from '../../renderer/runtime';
+import { CompositeResource } from '../../spacial-content/composite-resource';
+import { ImageTexture } from '../../spacial-content/image-texture';
+import { MapTiledImage } from '../../spacial-content/map-tiled-image';
 import { SingleImage } from '../../spacial-content/single-image';
+import { TiledImage } from '../../spacial-content/tiled-image';
 import { World } from '../../world';
 import { WorldObject } from '../../world-objects/world-object';
-import { AtlasObjectModel } from '../../aom';
-import { BaseObject } from '../../objects/base-object';
-import { TiledImage } from '../../spacial-content/tiled-image';
-import { CompositeResource } from '../../spacial-content/composite-resource';
-import { Text } from '../../objects/text';
-import { Box } from '../../objects/box';
-import { supportedEventAttributes, supportedEventMap } from '../../events';
-import { ImageTexture } from '../../spacial-content/image-texture';
-import React, { version } from 'react';
-import { Geometry } from '../../objects/geometry';
+import { Zone } from '../../world-objects/zone';
+import { now } from './utility/now';
 
-const Reconciler = typeof Reconciler_ === 'function' ? Reconciler_ : null;
+const Reconciler =
+  typeof Reconciler_ === 'function'
+    ? Reconciler_
+    : typeof (Reconciler_ as any)?.default === 'function'
+    ? (Reconciler_ as any).default
+    : null;
 
 // From react-reconciler/constants;
 // import { ContinuousEventPriority, DiscreteEventPriority, DefaultEventPriority } from 'react-reconciler/constants'
@@ -28,19 +35,135 @@ const IdleEventPriority = 268435456;
 const LegacyRoot = 0;
 const NoEventPriority = 0;
 
+type ZoneHostProps = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  margin?: number;
+};
+
+class ZoneHostInstance implements AtlasObjectModel<ZoneHostProps, any> {
+  world: World;
+  zone: Zone;
+  private isRegistered = false;
+  private directWorldObjects: WorldObject[] = [];
+
+  constructor(world: World) {
+    this.world = world;
+    this.zone = new Zone({ id: '' });
+  }
+
+  applyProps(props: ZoneHostProps): void {
+    this.zone.applyProps({
+      id: props.id,
+      x: props.x,
+      y: props.y,
+      width: props.width,
+      height: props.height,
+      margin: props.margin,
+    });
+  }
+
+  appendChild(item: unknown): void {
+    if (!(item instanceof WorldObject)) {
+      return;
+    }
+    this.registerDirectWorldObject(item);
+    this.world.appendChild(item);
+  }
+
+  removeChild(item: unknown): void {
+    if (!(item instanceof WorldObject)) {
+      return;
+    }
+    this.unregisterDirectWorldObject(item);
+    this.world.removeChild(item);
+  }
+
+  insertBefore(item: unknown, before: unknown): void {
+    if (!(item instanceof WorldObject)) {
+      return;
+    }
+    this.registerDirectWorldObject(item);
+    if (before instanceof WorldObject) {
+      this.world.insertBefore(item, before);
+      return;
+    }
+    this.world.appendChild(item);
+  }
+
+  hideInstance(): void {
+    // no-op
+  }
+
+  attachToWorld(world: World) {
+    if (this.isRegistered && this.world !== world) {
+      this.world.removeZone(this.zone);
+      this.isRegistered = false;
+    }
+    this.world = world;
+    if (!this.isRegistered) {
+      this.world.addZone(this.zone);
+      this.isRegistered = true;
+    }
+  }
+
+  unmount() {
+    this.directWorldObjects = [];
+    if (this.isRegistered) {
+      this.world.removeZone(this.zone);
+      this.isRegistered = false;
+    }
+  }
+
+  private registerDirectWorldObject(item: WorldObject) {
+    if (this.directWorldObjects.indexOf(item) === -1) {
+      this.directWorldObjects.push(item);
+    }
+    this.zone.addObject(item);
+  }
+
+  private unregisterDirectWorldObject(item: WorldObject) {
+    this.directWorldObjects = this.directWorldObjects.filter((zoneObject) => zoneObject !== item);
+    this.zone.removeObject(item);
+  }
+}
+
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
+  if (parent instanceof World && child instanceof ZoneHostInstance) {
+    child.attachToWorld(parent);
+    return;
+  }
+  if (parent instanceof ZoneHostInstance) {
+    parent.appendChild(child);
+    return;
+  }
   if (parent && parent.appendChild && child) {
     parent.appendChild(child);
   }
 }
 
 function removeChild(parent: AtlasObjectModel<any, any>, child: any) {
+  if (parent instanceof World && child instanceof ZoneHostInstance) {
+    child.unmount();
+    return;
+  }
+  if (parent instanceof ZoneHostInstance) {
+    parent.removeChild(child);
+    return;
+  }
   if (parent && parent.removeChild && child) {
     parent.removeChild(child);
   }
 }
 
 function removeChildFromContainer(parent: Runtime, child: any) {
+  if (child instanceof ZoneHostInstance) {
+    child.unmount();
+    return;
+  }
   return removeChild(parent.world, child);
 }
 function insertInContainerBefore(
@@ -48,12 +171,23 @@ function insertInContainerBefore(
   child: AtlasObjectModel<any, any>,
   beforeChild: AtlasObjectModel<any, any>
 ) {
+  if (child instanceof ZoneHostInstance) {
+    child.attachToWorld(container.world);
+    return;
+  }
   return insertBefore(container.world, child, beforeChild);
 }
 
 function insertBefore(parent: Runtime | AtlasObjectModel<any, any>, child: any, before: any) {
   if (parent && parent instanceof Runtime) {
     parent = parent.world;
+  }
+  if (parent instanceof World && child instanceof ZoneHostInstance) {
+    return;
+  }
+  if (parent instanceof ZoneHostInstance) {
+    parent.insertBefore(child, before);
+    return;
   }
   if (parent && parent.insertBefore) {
     parent.insertBefore(child, before);
@@ -117,11 +251,15 @@ function createInstance(
     runtime = fn(internalInstanceHandle);
   }
 
-  let instance: BaseObject<any, any>;
+  let instance: BaseObject<any, any> | ZoneHostInstance;
   let world: World = runtime.world;
   switch (type) {
     case 'world':
-      instance = World.withProps({ width: props.width, height: props.height, viewingDirection: 'left-to-right' });
+      instance = World.withProps({
+        width: props.width,
+        height: props.height,
+        viewingDirection: 'left-to-right',
+      });
       (instance as World).activatedEvents = world.activatedEvents;
       (instance as World).eventHandlers = world.eventHandlers;
       (instance as World).subscriptions = world.subscriptions;
@@ -137,6 +275,9 @@ function createInstance(
     case 'worldObject':
     case 'world-object':
       instance = new WorldObject();
+      break;
+    case 'zone':
+      instance = new ZoneHostInstance(world);
       break;
     case 'worldImage':
     case 'world-image':
@@ -169,6 +310,21 @@ function createInstance(
         props.version3
       );
       break;
+    case 'mapTiledImage':
+    case 'map-tiled-image':
+      instance = new MapTiledImage({
+        id: props.id,
+        bounds: props.bounds,
+        worldWidth: props.worldWidth,
+        worldHeight: props.worldHeight,
+        zoom: props.zoom,
+        tileSize: props.tileSize,
+        scaleFactor: props.scaleFactor,
+        tileSource: props.tileSource,
+        tileUrlTemplate: props.tileUrlTemplate,
+        subdomains: props.subdomains,
+      });
+      break;
     case 'paragraph':
       instance = new Text();
       (instance as Text).text = props.children;
@@ -187,6 +343,8 @@ function createInstance(
 function appendChildToContainer(runtime: Runtime, world: any) {
   if (world instanceof World) {
     runtime.world = world;
+  } else if (world instanceof ZoneHostInstance) {
+    world.attachToWorld(runtime.world);
   } else if (world instanceof WorldObject) {
     runtime.world.appendChild(world);
   } else if (world) {
@@ -212,9 +370,9 @@ const reconciler = Reconciler
       unknown, // TimeoutHandle,
       unknown // NoTimeout
     >({
-      // @ts-ignore
+      // @ts-expect-error
       unstable_now: now,
-      // @ts-ignore
+      // @ts-expect-error
       now,
       createInstance,
       removeChild,
@@ -224,9 +382,9 @@ const reconciler = Reconciler
       warnsIfNotActing: true,
       supportsMutation: true,
       isPrimaryRenderer: false,
-      // @ts-ignore
+      // @ts-expect-error
       scheduleTimeout: typeof setTimeout !== 'undefined' ? setTimeout : undefined,
-      // @ts-ignore
+      // @ts-expect-error
       cancelTimeout: typeof clearTimeout !== 'undefined' ? clearTimeout : undefined,
       setTimeout: typeof setTimeout !== 'undefined' ? setTimeout : undefined,
       clearTimeout: typeof clearTimeout !== 'undefined' ? clearTimeout : undefined,
@@ -244,7 +402,7 @@ const reconciler = Reconciler
       commitUpdate(instance: any, type_: any, prevProps_: any, updatePayload_: any, internalHandle: OpaqueHandle) {
         let type = type_,
           updatePayload = updatePayload_;
-        let prevProps = prevProps_;
+        const prevProps = prevProps_;
         if (typeof updatePayload === 'string') {
           // react <= 18
           type = updatePayload_;
@@ -402,7 +560,7 @@ const reconciler = Reconciler
   : null;
 
 if (reconciler) {
-  // @ts-ignore DefinitelyTyped is not up to date
+  // @ts-expect-error DefinitelyTyped is not up to date
   reconciler.injectIntoDevTools();
 }
 

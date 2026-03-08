@@ -104,7 +104,7 @@ export const TileSet: React.FC<{
           (tile.scaleFactors || []).map((size: number) => {
             return (
               <tiled-image
-                key={`${props.tiles.imageService.id}-tile-${size}`}
+                key={`${props.tiles.imageService.id}-tile-${size}-${tile.width}x${tile.height || tile.width}`}
                 uri={props.tiles.imageService.id}
                 display={{ width: props.tiles.width, height: props.tiles.height }}
                 tile={tile}

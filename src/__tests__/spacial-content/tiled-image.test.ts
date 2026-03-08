@@ -39,4 +39,38 @@ describe('TiledImage', () => {
     );
     expect(image.display.scale).toEqual(2);
   });
+
+  test('v3 URL uses width and height constraints for rectangular tiles', () => {
+    const image = TiledImage.fromTile(
+      'https://example.org/tiled-image',
+      { width: 1024, height: 1024 },
+      { width: 512, height: 256 },
+      1,
+      undefined,
+      'jpg',
+      undefined,
+      true
+    );
+
+    expect(image.getImageUrl(0)).toContain('/512,256/0/default.jpg');
+  });
+
+  test('default id includes tile profile to avoid collisions', () => {
+    const a = TiledImage.fromTile(
+      'https://example.org/tiled-image',
+      { width: 1024, height: 1024 },
+      { width: 256, height: 256 },
+      2
+    );
+    const b = TiledImage.fromTile(
+      'https://example.org/tiled-image',
+      { width: 1024, height: 1024 },
+      { width: 512, height: 512 },
+      2
+    );
+
+    expect(a.id).not.toEqual(b.id);
+    expect(a.columns).toBeGreaterThan(0);
+    expect(a.rows).toBeGreaterThan(0);
+  });
 });

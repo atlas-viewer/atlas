@@ -1,20 +1,24 @@
-import { Projection, RuntimeController, Viewer } from '../types';
-import { World } from '../world';
 import {
+  compose,
   DnaFactory,
+  dna,
   mutate,
+  type Strand,
   scale,
   scaleAtOrigin,
   transform,
-  Strand,
-  dna,
   translate,
-  compose,
 } from '@atlas-viewer/dna';
-import { Renderer } from './renderer';
-import { Paint } from '../world-objects/paint';
-import { TransitionManager } from '../modules/transition-manager/transition-manager';
 import { nanoid } from 'nanoid';
+import type { RuntimeDebugEvent } from '../modules/react-reconciler/devtools/types';
+import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
+import { TransitionManager } from '../modules/transition-manager/transition-manager';
+import type { Projection, RuntimeController, Viewer } from '../types';
+import { easingFunctions } from '../utility/easing-functions';
+import { getZoneConstrainedBounds } from '../utility/get-zone-constrained-bounds';
+import type { World } from '../world';
+import type { Paint } from '../world-objects/paint';
+import type { Renderer } from './renderer';
 
 export type RuntimeHooks = {
   useFrame: Array<(time: number) => void>;
@@ -51,9 +55,19 @@ export type RuntimeOptions = {
   maxUnderZoom: number;
 };
 
+export type RuntimeZoneState = {
+  zoneId: string;
+  exists: boolean;
+  active: boolean;
+  visibleInViewport: boolean;
+};
+
 export class Runtime {
   id = nanoid();
   ready = false;
+  readyCycle = 0;
+  readyReason: AtlasReadyResetReason = 'initial';
+  readyTimestamp: number | undefined;
   // Helper getters.
   get x(): number {
     return this.target[1];
@@ -129,6 +143,8 @@ export class Runtime {
   maxScaleFactor = 1;
   _viewerToWorld = { x: 0, y: 0 };
   _lastGoodScale = 1;
+  debugFrame = 0;
+  debugSubscribers = new Set<(event: RuntimeDebugEvent) => void>();
   hooks: RuntimeHooks = {
     useFrame: [],
     useBeforeFrame: [],
@@ -175,7 +191,7 @@ export class Runtime {
     this.transitionManager = new TransitionManager(this);
     this.aggregate = scale(1);
     this.world.addLayoutSubscriber((type: string) => {
-      if (type === 'repaint') {
+      if (type === 'repaint' || type === 'zone-changed') {
         this.pendingUpdate = true;
       }
       if (type === 'recalculate-world-size') {
@@ -278,7 +294,12 @@ export class Runtime {
     bottom: number;
   } {
     if (typeof paddingPx === 'number') {
-      return { left: paddingPx, right: paddingPx, top: paddingPx, bottom: paddingPx };
+      return {
+        left: paddingPx,
+        right: paddingPx,
+        top: paddingPx,
+        bottom: paddingPx,
+      };
     }
     if (paddingPx) {
       return {
@@ -593,7 +614,10 @@ export class Runtime {
   };
 
   constrainBounds(target: Strand, { panPadding = 0, ref = false }: { ref?: boolean; panPadding?: number } = {}) {
-    const { minX, maxX, minY, maxY } = this.getBounds({ target, padding: panPadding });
+    const { minX, maxX, minY, maxY } = this.getBounds({
+      target,
+      padding: panPadding,
+    });
 
     let isConstrained = false;
     const constrained = ref ? target : dna(target);
@@ -641,22 +665,11 @@ export class Runtime {
       const zone = this.world.getActiveZone();
 
       if (zone) {
-        const xCon = target[3] - target[1] < zone.points[3] - zone.points[1];
-        const yCon = target[4] - target[2] < zone.points[4] - zone.points[2];
-        return {
-          minX: xCon
-            ? zone.points[1] - padding
-            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-          maxX: yCon
-            ? zone.points[2] - padding
-            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-          minY: xCon
-            ? zone.points[3] + padding
-            : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-          maxY: yCon
-            ? zone.points[4] + padding
-            : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-        };
+        zone.recalculateBounds();
+        const zoneBounds = getZoneConstrainedBounds(target, zone.points, padding);
+        if (zoneBounds) {
+          return zoneBounds;
+        }
       }
     }
 
@@ -793,7 +806,11 @@ export class Runtime {
       this.zoomBuffer
     );
 
-    this.constrainBounds(proposedStrand, { ref: true, panPadding: 100 });
+    const zoomPanPadding = this.world.hasActiveZone() ? 0 : 100;
+    this.constrainBounds(proposedStrand, {
+      ref: true,
+      panPadding: zoomPanPadding,
+    });
 
     return proposedStrand;
   }
@@ -937,6 +954,32 @@ export class Runtime {
 
   reset() {
     this.renderer.reset();
+    this.resetReadyState('runtime-reset');
+  }
+
+  resetReadyState(reason: AtlasReadyResetReason = 'manual') {
+    this.ready = false;
+    this.readyCycle += 1;
+    this.readyReason = reason;
+    this.readyTimestamp = undefined;
+    if (this.renderer.resetReadyState) {
+      this.renderer.resetReadyState();
+    }
+    this.pendingUpdate = true;
+  }
+
+  getReadyState(): {
+    ready: boolean;
+    cycle: number;
+    reason: AtlasReadyResetReason;
+    timestamp?: number;
+  } {
+    return {
+      ready: this.ready,
+      cycle: this.readyCycle,
+      reason: this.readyReason,
+      timestamp: this.readyTimestamp,
+    };
   }
 
   selectZone(zone: number | string) {
@@ -944,9 +987,98 @@ export class Runtime {
     this.pendingUpdate = true;
   }
 
+  goToZone(
+    id: string,
+    options: {
+      paddingPx?: number | { left?: number; right?: number; top?: number; bottom?: number };
+      immediate?: boolean;
+    } = {}
+  ): boolean {
+    const zone = this.world.getZoneById(id);
+    if (!zone) {
+      return false;
+    }
+
+    zone.recalculateBounds();
+    if (zone.points[0] === 0) {
+      return false;
+    }
+
+    this.world.selectZone(id);
+
+    const homeTarget = this.getHomeTarget({
+      position: zone.points,
+      paddingPx: options.paddingPx,
+    });
+
+    if (options.immediate) {
+      this.transitionManager.stopTransition();
+      this.setViewport(homeTarget);
+      this.constrainBounds(this.target, { ref: true });
+      this.updateControllerPosition();
+      this.pendingUpdate = true;
+      return true;
+    }
+
+    this.transitionManager.applyTransition(
+      DnaFactory.singleBox(homeTarget.width, homeTarget.height, homeTarget.x, homeTarget.y),
+      undefined,
+      {
+        duration: 1000,
+        easing: easingFunctions.easeOutExpo,
+        constrain: false,
+      }
+    );
+    this.updateNextFrame();
+    this.pendingUpdate = true;
+
+    return true;
+  }
+
   deselectZone() {
     this.world.deselectZone();
     this.pendingUpdate = true;
+  }
+
+  getZoneRuntimeState(zoneId: string, viewport: Projection = this.getViewport()): RuntimeZoneState {
+    const zone = this.world.getZoneById(zoneId);
+    if (!zone) {
+      return {
+        zoneId,
+        exists: false,
+        active: false,
+        visibleInViewport: false,
+      };
+    }
+
+    zone.recalculateBounds();
+    const active = this.world.getActiveZone()?.id === zoneId;
+
+    if (zone.points[0] === 0) {
+      return {
+        zoneId,
+        exists: true,
+        active,
+        visibleInViewport: false,
+      };
+    }
+
+    const zoneX = zone.points[1];
+    const zoneY = zone.points[2];
+    const zoneWidth = zone.points[3] - zone.points[1];
+    const zoneHeight = zone.points[4] - zone.points[2];
+    const visibleInViewport =
+      zoneX < viewport.x + viewport.width &&
+      zoneX + zoneWidth > viewport.x &&
+      zoneY < viewport.y + viewport.height &&
+      zoneY + zoneHeight > viewport.y;
+
+    return {
+      zoneId,
+      exists: true,
+      active,
+      visibleInViewport,
+    };
   }
 
   hook<Name extends keyof RuntimeHooks, Arg = UnwrapHookArg<Name>>(name: keyof RuntimeHooks, arg: Arg) {
@@ -989,14 +1121,22 @@ export class Runtime {
     // Called every frame.
     this.hook('useFrame', delta);
 
-    const pendingUpdate = this.pendingUpdate;
+    let pendingUpdate = this.pendingUpdate;
     const rendererPendingUpdate = this.renderer.pendingUpdate();
+    const worldPendingUpdate = this.world.hasPendingAnimation();
+    const debugEnabled = this.hasDebugSubscribers();
 
     if (this.transitionManager.hasPending()) {
       this.transitionManager.runTransition(this.target, delta);
 
       this.pendingUpdate = true;
+      pendingUpdate = true;
       this.updateControllerPosition();
+    }
+
+    if (worldPendingUpdate) {
+      this.pendingUpdate = true;
+      pendingUpdate = true;
     }
 
     if (
@@ -1004,6 +1144,7 @@ export class Runtime {
       !pendingUpdate &&
       // Check if there was a pending update from the renderer.
       !rendererPendingUpdate &&
+      !worldPendingUpdate &&
       // Then check the points, the first will catch invalidation.
       this.target[0] === this.lastTarget[0] &&
       // The following are x1, y1, x2, y2 points of the target.
@@ -1018,6 +1159,22 @@ export class Runtime {
 
     // Group.
     // console.groupCollapsed(`Previous frame took ${delta} ${delta > 17 ? '<-' : ''} ${delta > 40 ? '<--' : ''}`);
+    const frame = ++this.debugFrame;
+    let paintCount = 0;
+
+    if (debugEnabled) {
+      this.emitDebug({
+        type: 'frame-start',
+        at: t,
+        runtimeId: this.id,
+        frame,
+        delta,
+        mode: this.mode,
+        pendingUpdate,
+        rendererPendingUpdate,
+        target: [this.target[1], this.target[2], this.target[3], this.target[4]],
+      });
+    }
 
     this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
@@ -1072,6 +1229,34 @@ export class Runtime {
           position[key + 3] - position[key + 1],
           position[key + 4] - position[key + 2]
         );
+        paintCount++;
+        if (debugEnabled) {
+          let imageUrl: string | undefined;
+          if ((paint as any).getImageUrl) {
+            try {
+              imageUrl = (paint as any).getImageUrl(i);
+            } catch (err) {
+              imageUrl = undefined;
+            }
+          }
+          this.emitDebug({
+            type: 'paint',
+            at: t,
+            runtimeId: this.id,
+            frame,
+            layerIndex: p,
+            tileIndex: i,
+            x: position[key + 1],
+            y: position[key + 2],
+            width: position[key + 3] - position[key + 1],
+            height: position[key + 4] - position[key + 2],
+            paintId: (paint as any).id || `${p}:${i}`,
+            paintType: paint?.constructor?.name || paint.type || 'UnknownPaint',
+            ownerId: (paint as any).__owner?.value?.id,
+            compositeId: (paint as any).__parent?.id,
+            imageUrl,
+          });
+        }
         this.hook('useAfterPaint', paint);
       }
 
@@ -1079,6 +1264,8 @@ export class Runtime {
     }
     // A final hook after the entire frame is complete.
     this.renderer.afterFrame(this.world, delta, this.target, this.hookOptions);
+    // Mark this frame as consumed before running after-frame hooks so hooks can request the next frame.
+    this.pendingUpdate = false;
     this.hook('useAfterFrame', delta);
     // Finally at the end, we set up the frame we just rendered.
     this.lastTarget[0] = this.target[0];
@@ -1088,11 +1275,28 @@ export class Runtime {
     this.lastTarget[4] = this.target[4];
     // We've just finished our first render.
     this.firstRender = false;
-    this.pendingUpdate = false;
     this.logNextRender = false;
-    if (this.renderer.isReady()) {
+    if (!this.ready && this.renderer.isReady()) {
       this.ready = true;
+      this.readyTimestamp = performance.now();
       this.world.trigger('ready');
+    }
+
+    if (debugEnabled) {
+      this.emitDebug({
+        type: 'frame-end',
+        at: t,
+        runtimeId: this.id,
+        frame,
+        delta,
+        scaleFactor,
+        paintCount,
+        ready: this.ready,
+        pendingUpdate: this.pendingUpdate,
+        worldWidth: this.world.width,
+        worldHeight: this.world.height,
+        target: [this.target[1], this.target[2], this.target[3], this.target[4]],
+      });
     }
     // Flush world subscriptions.
     this.world.flushSubscriptions();
@@ -1114,5 +1318,29 @@ export class Runtime {
 
   updateNextFrame() {
     this.pendingUpdate = true;
+  }
+
+  addDebugSubscriber(callback: (event: RuntimeDebugEvent) => void) {
+    this.debugSubscribers.add(callback);
+    return () => {
+      this.removeDebugSubscriber(callback);
+    };
+  }
+
+  removeDebugSubscriber(callback: (event: RuntimeDebugEvent) => void) {
+    this.debugSubscribers.delete(callback);
+  }
+
+  private hasDebugSubscribers() {
+    return this.debugSubscribers.size > 0;
+  }
+
+  private emitDebug(event: RuntimeDebugEvent) {
+    if (this.debugSubscribers.size === 0) {
+      return;
+    }
+    for (const callback of this.debugSubscribers) {
+      callback(event);
+    }
   }
 }

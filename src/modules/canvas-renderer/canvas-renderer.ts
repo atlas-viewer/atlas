@@ -1,17 +1,22 @@
-import { Strand } from '@atlas-viewer/dna';
-import { Paint, Paintable, WorldObject } from '../../world-objects';
-import { PositionPair } from '../../types';
-import { distance } from '../../utils';
-import { Text } from '../../objects/text';
-import { SingleImage } from '../../spacial-content/single-image';
-import { SpacialContent } from '../../spacial-content/spacial-content';
-import { TiledImage } from '../../spacial-content/tiled-image';
-import { Renderer } from '../../renderer/renderer';
-import { World } from '../../world';
-import { Box } from '../../objects/box';
+import type { Strand } from '@atlas-viewer/dna';
 import LRUCache from 'lru-cache';
+import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
-import { HookOptions } from '../../standalone';
+import type { Text } from '../../objects/text';
+import type { Renderer } from '../../renderer/renderer';
+import { SingleImage } from '../../spacial-content/single-image';
+import type { SpacialContent } from '../../spacial-content/spacial-content';
+import { TiledImage } from '../../spacial-content/tiled-image';
+import type { HookOptions } from '../../standalone';
+import type { PositionPair } from '../../types';
+import { getZoneConstrainedBounds } from '../../utility/get-zone-constrained-bounds';
+import { distance } from '../../utils';
+import type { World } from '../../world';
+import type { Paint, Paintable, WorldObject } from '../../world-objects';
+import { buildCssFilter } from '../shared/build-css-filter';
+import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
+import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -28,19 +33,64 @@ export type CanvasRendererOptions = {
   box?: boolean;
   polygon?: boolean;
   lruCache?: boolean;
+  paintImages?: boolean;
+  shouldPaintImage?: (paint: SingleImage | TiledImage, index: number) => boolean;
+  readiness?: 'first-meaningful-paint' | 'immediate';
+  imageLoading?: Partial<ImageLoadingConfig>;
+  onImageError?: (event: AtlasImageLoadErrorEvent) => void;
 };
 
 export type ImageBuffer = {
-  canvas: HTMLCanvasElement;
+  canvas?: HTMLCanvasElement;
   canvases: string[];
+  tiles?: Record<number, TileLoadingState>;
   indices: number[];
   loaded: number[];
   fallback?: ImageBuffer;
   loading: boolean;
 };
 
-// @todo be smarter.
-const imageCache: { [id: string]: HTMLImageElement } = {};
+export type TileLoadingState = {
+  state: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
+  requestedAt?: number;
+  loadedAt?: number;
+  lastUsedAt?: number;
+  url?: string;
+  error?: unknown;
+  attempts?: number;
+  nextRetryAt?: number;
+  lastRequestKey?: string;
+  cancelledAt?: number;
+  skipFade?: boolean;
+};
+
+type QueueTask = {
+  id: string;
+  scale: number;
+  kind: 'network' | 'decode';
+  tileKey?: string;
+  requestKey?: string;
+  network?: boolean;
+  distance: number;
+  shifted?: boolean;
+  paint?: SingleImage | TiledImage;
+  index?: number;
+  prefetch?: boolean;
+  task: () => Promise<any>;
+};
+
+type InFlightTileLoad = {
+  tileKey: string;
+  requestKey: string;
+  url: string;
+  consumerId: string;
+  paint: SingleImage | TiledImage;
+  imageBuffer: ImageBuffer;
+  index: number;
+  release: (opts?: { silent?: boolean }) => void;
+};
+
+const imageCache = new Map<string, HTMLImageElement>();
 const hostCache: Record<string, any> = {};
 
 export class CanvasRenderer implements Renderer {
@@ -80,19 +130,28 @@ export class CanvasRenderer implements Renderer {
   frameIsRendering = false;
   pendingDrawCall = false;
   firstMeaningfulPaint = false;
-  parallelTasks = 8; // @todo configuration.
+  parallelTasks = 6;
+  maxPrefetchPerFrame = 8;
+  imageLoadingConfig: ImageLoadingConfig;
+  imageRequestPool: ImageRequestPool;
   frameTasks = 0;
   loadingQueueOrdered = true;
-  loadingQueue: Array<{
-    id: string;
-    scale: number;
-    network?: boolean;
-    distance: number;
-    shifted?: boolean;
-    task: () => Promise<any>;
-  }> = [];
+  loadingQueue: QueueTask[] = [];
   currentTask: Promise<any> = Promise.resolve();
   tasksRunning = 0;
+  inFlightImageLoads = new Map<string, InFlightTileLoad>();
+  requiredTileKeys = new Set<string>();
+  requiredPrefetchTileKeys = new Set<string>();
+  requestGeneration = 0;
+  frameCounter = 0;
+  pendingTileReveals = new Map<
+    string,
+    {
+      imageBuffer: ImageBuffer;
+      index: number;
+      queuedFrame: number;
+    }
+  >();
   stats?: any;
   averageJobTime = 64; // ms
   lastKnownScale = 1;
@@ -104,19 +163,38 @@ export class CanvasRenderer implements Renderer {
   lastPaintedObject?: WorldObject;
   hostCache: LRUCache<string, HTMLCanvasElement>;
   invalidated: string[] = [];
+  fallbackRevealTimeout: ReturnType<typeof setTimeout> | null = null;
+  framePrefetchCount = 0;
+  hasTilesFading = false;
+  hasActiveLayerClip = false;
 
   constructor(canvas: HTMLCanvasElement, options?: CanvasRendererOptions) {
     this.canvas = canvas;
     this.rendererPosition = canvas.getBoundingClientRect();
     // Not working as expected.
     // this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) as CanvasRenderingContext2D;
-    this.ctx = canvas.getContext('2d', { alpha: true }) as CanvasRenderingContext2D;
+    this.ctx = canvas.getContext('2d', {
+      alpha: true,
+    }) as CanvasRenderingContext2D;
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
+    this.imageLoadingConfig = resolveImageLoadingConfig(this.options.imageLoading);
+    this.parallelTasks = this.imageLoadingConfig.maxConcurrentRequests;
+    this.maxPrefetchPerFrame = this.imageLoadingConfig.maxPrefetchPerFrame;
+    this.imageRequestPool = new ImageRequestPool({
+      timeoutMs: this.imageLoadingConfig.timeoutMs,
+      crossOrigin: this.options.crossOrigin ? 'anonymous' : undefined,
+      useFetch: !!this.options.crossOrigin,
+      cache: imageCache,
+    });
     // Testing fade in.
     // this.canvas.style.opacity = '0';
     this.canvas.style.transition = 'opacity .3s';
     this.dpi = options?.dpi || 1;
+    if (this.options.readiness === 'immediate') {
+      this.firstMeaningfulPaint = true;
+      this.canvas.style.opacity = '1';
+    }
 
     this.hostCache = options?.lruCache
       ? new LRUCache<string, HTMLCanvasElement>({
@@ -154,11 +232,34 @@ export class CanvasRenderer implements Renderer {
   }
 
   getCanvasDims() {
-    return { width: this.canvas.width / this.dpi, height: this.canvas.height / this.dpi };
+    return {
+      width: this.canvas.width / this.dpi,
+      height: this.canvas.height / this.dpi,
+    };
   }
 
   resize() {
     this.rendererPosition = this.canvas.getBoundingClientRect();
+  }
+
+  private getCompositeOwner(paint?: SingleImage | TiledImage): unknown {
+    const parent = paint?.__parent as any;
+    return parent && parent.renderOptions ? parent : undefined;
+  }
+
+  private compareCompositeLoadPriority(
+    aPaint?: SingleImage | TiledImage,
+    bPaint?: SingleImage | TiledImage
+  ): number {
+    const aOwner = this.getCompositeOwner(aPaint);
+    const bOwner = this.getCompositeOwner(bPaint);
+    if (!aOwner || aOwner !== bOwner) {
+      return 0;
+    }
+
+    const aScale = aPaint?.display.scale || 0;
+    const bScale = bPaint?.display.scale || 0;
+    return aScale - bScale;
   }
 
   isReady(): boolean {
@@ -173,23 +274,26 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
-    // After we've rendered, we'll set the pending and loading to correct values.
-    this.imagesPending = Math.max(0, this.imagesPending - this.imagesLoaded);
+    this.imagesPending =
+      this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     this.imagesLoaded = 0;
     if (!this.loadingQueueOrdered /*&& this.loadingQueue.length > this.parallelTasks*/) {
       this.loadingQueue = this.loadingQueue.sort((a, b) => {
-        if (a.network) {
-          if (a.scale === b.scale) {
-            return b.distance - a.distance;
-          }
+        const compositePriority = this.compareCompositeLoadPriority(a.paint, b.paint);
+        if (compositePriority !== 0) {
+          return compositePriority;
         }
-
-        return a.scale < b.scale ? -1 : 1;
+        if (a.network && b.network && a.scale === b.scale) {
+          return b.distance - a.distance;
+        }
+        return a.scale - b.scale;
       });
       this.loadingQueueOrdered = true;
     }
+    this.scheduleSingleImageLookahead(world);
     // Set them.
     this.previousVisible = this.visible;
+    this.pruneStaleTileWork();
     this.pendingDrawCall = !!this.drawCalls.length;
     if (this.pendingDrawCall) {
       for (let i = 0; i < this.drawCalls.length; i++) {
@@ -213,7 +317,7 @@ export class CanvasRenderer implements Renderer {
     if (this.loadingQueue.length) {
       // First call immediately.
       this._worker();
-      if (this.loadingQueue.length /*&& this.tasksRunning < this.parallelTasks*/) {
+      if (this.loadingQueue.length && this.tasksRunning < this.parallelTasks) {
         // Here's our clock for scheduling tasks, every 1ms it will try to call.
         if (!this._scheduled) {
           this._scheduled = setInterval(this._doWork, 0);
@@ -225,9 +329,9 @@ export class CanvasRenderer implements Renderer {
   _worker = () => {
     if (
       // First we check if there is work to do.
-      this.loadingQueue.length /*&&
+      this.loadingQueue.length &&
       this.tasksRunning < this.parallelTasks &&
-      this.frameTasks < this.parallelTasks*/
+      this.frameTasks < this.parallelTasks
     ) {
       // Let's pop something off the loading queue.
       const next = this.loadingQueue.pop();
@@ -271,7 +375,7 @@ export class CanvasRenderer implements Renderer {
     }
     // And here's our working being called. Since JS is blocking, this will complete
     // before the next tick, so its possible that this could be more than 1ms.
-    for (let i = 0; i <= parallel; i++) {
+    for (let i = 0; i < parallel; i++) {
       this._worker();
     }
   };
@@ -303,7 +407,13 @@ export class CanvasRenderer implements Renderer {
       this.stats.begin();
     }
     this.frameIsRendering = true;
+    this.frameCounter += 1;
     this.visible = [];
+    this.framePrefetchCount = 0;
+    this.hasTilesFading = false;
+    this.requiredTileKeys.clear();
+    this.requiredPrefetchTileKeys.clear();
+    this.flushTileRevealBatch();
     // User-facing hook for before frame, contains timing information for
     // animations that might be happening, such as pan/drag.
     if (this.options.beforeFrame) {
@@ -323,48 +433,9 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
 
-    if (
-      options.enableFilters &&
-      (options.filters.brightness ||
-        options.filters.contrast ||
-        options.filters.grayscale ||
-        options.filters.invert ||
-        options.filters.sepia ||
-        options.filters.saturate ||
-        options.filters.hueRotate ||
-        options.filters.blur)
-    ) {
-      let filter = '';
-      if (options.filters.brightness) {
-        filter += `brightness(${~~(100 + options.filters.brightness * 100)}%) `;
-      }
-      if (options.filters.contrast) {
-        filter += `contrast(${~~(100 + options.filters.contrast * 100)}%) `;
-      }
-      if (options.filters.grayscale) {
-        filter += `grayscale(${~~(options.filters.grayscale * 100)}%) `;
-      }
-      if (options.filters.invert) {
-        filter += `invert(${~~(options.filters.invert * 100)}%) `;
-      }
-      if (options.filters.sepia) {
-        filter += `sepia(${~~(options.filters.sepia * 100)}%) `;
-      }
-      if (options.filters.saturate) {
-        filter += `saturate(${~~(100 + options.filters.saturate * 100)}%) `;
-      }
-      if (options.filters.hueRotate) {
-        filter += `hue-rotate(${options.filters.hueRotate}deg) `;
-      }
-      if (options.filters.blur) {
-        filter += `blur(${options.filters.blur}px) `;
-      }
-
-      if (this.ctx.filter !== filter) {
-        this.ctx.filter = filter;
-      }
-    } else {
-      this.ctx.filter = 'none';
+    const filter = buildCssFilter(options);
+    if (this.ctx.filter !== filter) {
+      this.ctx.filter = filter;
     }
   }
 
@@ -391,56 +462,574 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
+  private getTileKey(paint: SingleImage | TiledImage, index: number): string {
+    return `${paint.id}::${paint.display.scale}::${index}`;
+  }
+
+  private nextRequestKey(tileKey: string): string {
+    this.requestGeneration += 1;
+    return `${tileKey}::${this.requestGeneration}`;
+  }
+
+  private markTileRequired(tileKey: string, prefetch: boolean) {
+    if (prefetch) {
+      this.requiredPrefetchTileKeys.add(tileKey);
+      return;
+    }
+    this.requiredTileKeys.add(tileKey);
+  }
+
+  private isTileRequired(tileKey: string): boolean {
+    return this.requiredTileKeys.has(tileKey) || this.requiredPrefetchTileKeys.has(tileKey);
+  }
+
+  private shouldSkipFade(tileState: TileLoadingState | undefined, now = performance.now()): boolean {
+    if (!tileState?.requestedAt) {
+      return false;
+    }
+    return now - tileState.requestedAt <= this.imageLoadingConfig.skipFadeIfLoadedWithinMs;
+  }
+
+  private enqueueTileReveal(tileKey: string, imageBuffer: ImageBuffer, index: number) {
+    const now = performance.now();
+    if (this.imageLoadingConfig.revealDelayFrames === 0 && this.imageLoadingConfig.revealBatchWindowFrames === 0) {
+      const state = this.getTileState(imageBuffer, index);
+      this.setTileState(imageBuffer, index, {
+        ...state,
+        loadedAt: now,
+        skipFade: this.shouldSkipFade(state, now),
+      });
+      return;
+    }
+
+    this.pendingTileReveals.set(tileKey, {
+      imageBuffer,
+      index,
+      queuedFrame: this.frameCounter,
+    });
+  }
+
+  private flushTileRevealBatch() {
+    if (this.pendingTileReveals.size === 0) {
+      return;
+    }
+
+    const delay = this.imageLoadingConfig.revealDelayFrames;
+    const windowFrames = this.imageLoadingConfig.revealBatchWindowFrames;
+    const now = performance.now();
+
+    const entries = [...this.pendingTileReveals.entries()].sort((a, b) => a[1].queuedFrame - b[1].queuedFrame);
+    let cursor = 0;
+
+    while (cursor < entries.length) {
+      const first = entries[cursor];
+      if (this.frameCounter - first[1].queuedFrame < delay) {
+        break;
+      }
+
+      const cutoffFrame = first[1].queuedFrame + windowFrames;
+      while (cursor < entries.length && entries[cursor][1].queuedFrame <= cutoffFrame) {
+        const [tileKey, pending] = entries[cursor];
+        const state = this.getTileState(pending.imageBuffer, pending.index);
+        if (state.state === 'decoded' && !state.loadedAt) {
+          this.setTileState(pending.imageBuffer, pending.index, {
+            ...state,
+            loadedAt: now,
+            skipFade: this.shouldSkipFade(state, now),
+          });
+        }
+        this.pendingTileReveals.delete(tileKey);
+        cursor += 1;
+      }
+    }
+  }
+
+  private emitImageError(event: Omit<AtlasImageLoadErrorEvent, 'renderer'>) {
+    if (this.options.onImageError) {
+      this.options.onImageError({
+        renderer: 'canvas',
+        ...event,
+      });
+    }
+  }
+
+  private releaseInFlightTileLoad(tileKey: string, opts: { silent?: boolean } = {}) {
+    const inFlight = this.inFlightImageLoads.get(tileKey);
+    if (!inFlight) {
+      return;
+    }
+
+    inFlight.release(opts);
+    this.inFlightImageLoads.delete(tileKey);
+  }
+
+  private pruneStaleTileWork() {
+    const nextQueue: QueueTask[] = [];
+    for (const task of this.loadingQueue) {
+      if (!task.tileKey || this.isTileRequired(task.tileKey)) {
+        nextQueue.push(task);
+        continue;
+      }
+
+      if (task.paint && typeof task.index === 'number') {
+        const imageBuffer = this.ensureImageBuffer(task.paint);
+        const state = this.getTileState(imageBuffer, task.index);
+        if (state.lastRequestKey === task.requestKey && (state.state === 'queued' || state.state === 'loading')) {
+          this.setTileState(imageBuffer, task.index, {
+            ...state,
+            state: 'idle',
+            cancelledAt: performance.now(),
+          });
+        }
+      }
+      if (task.tileKey) {
+        this.pendingTileReveals.delete(task.tileKey);
+      }
+    }
+    this.loadingQueue = nextQueue;
+
+    const staleInFlight: string[] = [];
+    for (const [tileKey, inFlight] of this.inFlightImageLoads.entries()) {
+      if (this.isTileRequired(tileKey)) {
+        continue;
+      }
+      staleInFlight.push(tileKey);
+      const state = this.getTileState(inFlight.imageBuffer, inFlight.index);
+      if (state.lastRequestKey === inFlight.requestKey && state.state === 'loading') {
+        this.setTileState(inFlight.imageBuffer, inFlight.index, {
+          ...state,
+          state: 'idle',
+          cancelledAt: performance.now(),
+        });
+      }
+      this.pendingTileReveals.delete(tileKey);
+    }
+
+    for (const tileKey of staleInFlight) {
+      this.releaseInFlightTileLoad(tileKey, { silent: true });
+    }
+  }
+
+  private ensureImageBuffer(paint: SingleImage | TiledImage): ImageBuffer {
+    if (!paint.__host || !paint.__host.canvas) {
+      this.createImageHost(paint);
+    }
+
+    const imageBuffer = paint.__host.canvas as ImageBuffer;
+    if (!imageBuffer.tiles) {
+      imageBuffer.tiles = {};
+    }
+    if (!imageBuffer.indices) {
+      imageBuffer.indices = [];
+    }
+    if (!imageBuffer.loaded) {
+      imageBuffer.loaded = [];
+    }
+    if (!imageBuffer.canvases) {
+      imageBuffer.canvases = [];
+    }
+
+    return imageBuffer;
+  }
+
+  private getTileState(imageBuffer: ImageBuffer, index: number): TileLoadingState {
+    if (!imageBuffer.tiles) {
+      imageBuffer.tiles = {};
+    }
+    if (!imageBuffer.tiles[index]) {
+      imageBuffer.tiles[index] = { state: 'idle' };
+      this.syncBufferState(imageBuffer);
+    }
+    return imageBuffer.tiles[index];
+  }
+
+  private setTileState(imageBuffer: ImageBuffer, index: number, state: TileLoadingState) {
+    if (!imageBuffer.tiles) {
+      imageBuffer.tiles = {};
+    }
+    imageBuffer.tiles[index] = state;
+    this.syncBufferState(imageBuffer);
+  }
+
+  private syncBufferState(imageBuffer: ImageBuffer) {
+    const indices: number[] = [];
+    const loaded: number[] = [];
+    const tiles = imageBuffer.tiles || {};
+    const keys = Object.keys(tiles);
+    for (let i = 0; i < keys.length; i++) {
+      const index = parseInt(keys[i], 10);
+      const state = tiles[index].state;
+      if (state === 'queued' || state === 'loading') {
+        indices.push(index);
+      }
+      if (state === 'decoded') {
+        loaded.push(index);
+      }
+    }
+    imageBuffer.indices = indices;
+    imageBuffer.loaded = loaded;
+    imageBuffer.loading = indices.length > 0;
+  }
+
+  private getCompositeRenderOptions(paint: SingleImage | TiledImage) {
+    return paint.__parent?.renderOptions;
+  }
+
+  private shouldClipLayerToBounds(paint: SpacialContent): boolean {
+    if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+      return false;
+    }
+    return !!this.getCompositeRenderOptions(paint)?.clipToBounds;
+  }
+
+  private getBoundsFromPoints(points: Strand): { x: number; y: number; width: number; height: number } | undefined {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < points.length; i += 5) {
+      if (!points[i]) {
+        continue;
+      }
+      minX = Math.min(minX, points[i + 1]);
+      minY = Math.min(minY, points[i + 2]);
+      maxX = Math.max(maxX, points[i + 3]);
+      maxY = Math.max(maxY, points[i + 4]);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return undefined;
+    }
+    if (maxX <= minX || maxY <= minY) {
+      return undefined;
+    }
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  private getLayerPolicy(paint: SingleImage | TiledImage) {
+    return this.getCompositeRenderOptions(paint)?.layerPolicy || 'fallback-only';
+  }
+
+  private isLayerActive(paint: SingleImage | TiledImage): boolean {
+    const parent = paint.__parent as any;
+    if (!parent) {
+      return true;
+    }
+    const policy = this.getLayerPolicy(paint);
+    if (policy === 'always-blend') {
+      return true;
+    }
+    if (typeof parent.isImageActive === 'function') {
+      return !!parent.isImageActive(paint);
+    }
+    return true;
+  }
+
+  private getPrefetchRadius(paint: SingleImage | TiledImage): number {
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options) {
+      return 0;
+    }
+    if (typeof options.prefetchRadius === 'number') {
+      return Math.max(0, options.prefetchRadius);
+    }
+    if (options.loadingBias === 'speed') {
+      return 2;
+    }
+    if (options.loadingBias === 'data') {
+      return 0;
+    }
+    return 1;
+  }
+
+  private getFadeAlpha(
+    paint: SingleImage | TiledImage,
+    tileState: TileLoadingState | undefined,
+    isActiveLayer: boolean
+  ): number {
+    if (tileState?.skipFade) {
+      return 1;
+    }
+
+    const isRevealDeferred =
+      tileState?.state === 'decoded' &&
+      !tileState.loadedAt &&
+      (this.imageLoadingConfig.revealDelayFrames > 0 || this.imageLoadingConfig.revealBatchWindowFrames > 0);
+    if (isRevealDeferred) {
+      return 0;
+    }
+
+    const options = this.getCompositeRenderOptions(paint);
+    if (!options || !options.fadeInMs || options.fadeInMs <= 0) {
+      return 1;
+    }
+
+    const now = performance.now();
+    let fadeAlpha = 1;
+
+    if (isActiveLayer && options.fadeOnLayerChange && options.layerPolicy !== 'active-only') {
+      const parent = paint.__parent as any;
+      if (parent && typeof parent.getImageActivatedAt === 'function') {
+        const activatedAt = parent.getImageActivatedAt(paint);
+        if (typeof activatedAt === 'number') {
+          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / options.fadeInMs)));
+        }
+      }
+    }
+
+    if (tileState?.loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.loadedAt) / options.fadeInMs)));
+    }
+
+    return fadeAlpha;
+  }
+
+  private schedulePrefetchNeighbours(
+    imageBuffer: ImageBuffer,
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number
+  ) {
+    if (!(paint instanceof TiledImage)) {
+      return;
+    }
+    if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+      return;
+    }
+
+    const options = this.getCompositeRenderOptions(paint);
+    if (options?.loadingBias === 'data') {
+      return;
+    }
+
+    const radius = this.getPrefetchRadius(paint);
+    if (radius <= 0) {
+      return;
+    }
+
+    const columns = paint.columns;
+    const rows = paint.rows;
+    if (!columns || !rows) {
+      return;
+    }
+
+    const x = index % columns;
+    const y = Math.floor(index / columns);
+
+    for (let distance = 1; distance <= radius; distance++) {
+      for (let dy = -distance; dy <= distance; dy++) {
+        for (let dx = -distance; dx <= distance; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== distance) {
+            continue;
+          }
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= columns || ny >= rows) {
+            continue;
+          }
+
+          const neighbourIndex = ny * columns + nx;
+          const neighbourTileKey = this.getTileKey(paint, neighbourIndex);
+          this.markTileRequired(neighbourTileKey, true);
+          if (this.schedulePaintToCanvas(imageBuffer, paint, neighbourIndex, priority + distance * 1000, true)) {
+            this.framePrefetchCount++;
+            if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+              return;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private scheduleSingleImageLookahead(world: World) {
+    if (this.maxPrefetchPerFrame <= 0 || this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+      return;
+    }
+    if (world.hasActiveZone()) {
+      return;
+    }
+
+    let viewportTop = Number.POSITIVE_INFINITY;
+    let viewportBottom = Number.NEGATIVE_INFINITY;
+    const visibleOwners = new Set<WorldObject>();
+    for (let i = 0; i < this.visible.length; i++) {
+      const owner = this.visible[i].__owner?.value;
+      if (!owner || owner.type !== 'world-object' || owner.points[0] === 0) {
+        continue;
+      }
+      visibleOwners.add(owner as WorldObject);
+      viewportTop = Math.min(viewportTop, owner.points[2]);
+      viewportBottom = Math.max(viewportBottom, owner.points[4]);
+    }
+
+    if (!Number.isFinite(viewportTop) || !Number.isFinite(viewportBottom)) {
+      return;
+    }
+    const viewportHeight = viewportBottom - viewportTop;
+    if (viewportHeight <= 0) {
+      return;
+    }
+
+    const lookaheadDistance = viewportHeight * 1.5;
+    const aheadLimit = viewportBottom + lookaheadDistance;
+    const behindLimit = viewportTop - lookaheadDistance;
+
+    let nearestAhead: { image: SingleImage; distance: number } | undefined;
+    let nearestBehind: { image: SingleImage; distance: number } | undefined;
+
+    const objects = world.getObjects() as Array<WorldObject | undefined>;
+    for (let i = 0; i < objects.length; i++) {
+      const object = objects[i];
+      if (!object || object.type !== 'world-object' || object.points[0] === 0) {
+        continue;
+      }
+      if (visibleOwners.has(object)) {
+        continue;
+      }
+
+      const objectTop = object.points[2];
+      const objectBottom = object.points[4];
+
+      const isAhead = objectTop >= viewportBottom && objectTop <= aheadLimit;
+      const isBehind = objectBottom <= viewportTop && objectBottom >= behindLimit;
+
+      if (!isAhead && !isBehind) {
+        continue;
+      }
+
+      let singleImageLayer: SingleImage | undefined;
+      for (let j = 0; j < object.layers.length; j++) {
+        const layer = object.layers[j];
+        if (layer instanceof SingleImage) {
+          singleImageLayer = layer;
+          break;
+        }
+      }
+
+      if (!singleImageLayer) {
+        continue;
+      }
+
+      if (isAhead) {
+        const distance = objectTop - viewportBottom;
+        if (!nearestAhead || distance < nearestAhead.distance) {
+          nearestAhead = { image: singleImageLayer, distance };
+        }
+      }
+      if (isBehind) {
+        const distance = viewportTop - objectBottom;
+        if (!nearestBehind || distance < nearestBehind.distance) {
+          nearestBehind = { image: singleImageLayer, distance };
+        }
+      }
+    }
+
+    const prefetchCandidates = [nearestAhead, nearestBehind].filter(Boolean) as Array<{
+      image: SingleImage;
+      distance: number;
+    }>;
+
+    for (const candidate of prefetchCandidates) {
+      if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
+        break;
+      }
+      const imageBuffer = this.ensureImageBuffer(candidate.image);
+      if (this.schedulePaintToCanvas(imageBuffer, candidate.image, 0, 10000 + candidate.distance, true)) {
+        this.framePrefetchCount++;
+      }
+    }
+  }
+
   paint(paint: SpacialContent | Text | Box, index: number, x: number, y: number, width: number, height: number): void {
     const ga = this.ctx.globalAlpha;
+    const zoneVisibilityAlpha =
+      typeof (paint as any).__zoneVisibilityAlpha === 'number' ? (paint as any).__zoneVisibilityAlpha : 1;
 
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
-      if (paint.display.rotation) {
-        this.ctx.save();
-        let moveX = x + width / 2;
-        let moveY = y + height / 2;
-        if (paint.crop) {
-          moveX -= paint.crop[index * 5 + 1];
-          moveY -= paint.crop[index * 5 + 2];
-        }
-        this.ctx.translate(moveX, moveY);
-        this.ctx.rotate((paint.display.rotation * Math.PI) / 180);
-        this.ctx.translate(-moveX, -moveY);
-      }
-
-      this.visible.push(paint);
-      if (typeof paint.style && (paint.style as any).opacity !== 'undefined') {
-        if (!paint.style.opacity) {
-          return;
-        }
-        this.ctx.globalAlpha = paint.style.opacity;
-      }
+      const rotation = paint.display.rotation || 0;
+      const didRotate = rotation !== 0;
 
       try {
-        // 1) Find cached image buffer.
-        const imageBuffer: ImageBuffer = paint.__host.canvas;
-        const canvas = this.getCanvasDims();
+        if (didRotate) {
+          this.ctx.save();
+          let moveX = x + width / 2;
+          let moveY = y + height / 2;
+          if (paint.crop) {
+            moveX -= paint.crop[index * 5 + 1];
+            moveY -= paint.crop[index * 5 + 2];
+          }
+          this.ctx.translate(moveX, moveY);
+          this.ctx.rotate((rotation * Math.PI) / 180);
+          this.ctx.translate(-moveX, -moveY);
+        }
 
-        // 2) Schedule paint onto local buffer (async, yay!)
-        if (imageBuffer.indices.indexOf(index) === -1 || this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1) {
-          // we need to schedule a paint.
-          this.schedulePaintToCanvas(
-            imageBuffer,
-            paint,
-            index,
-            distance({ x: x + width / 2, y: y + width / 2 }, { x: canvas.width / 2, y: canvas.height / 2 })
-          );
+        const shouldPaintImages = this.options.paintImages !== false;
+        const shouldPaintImage = this.options.shouldPaintImage ? this.options.shouldPaintImage(paint, index) : true;
+        if (!shouldPaintImages || !shouldPaintImage) {
+          return;
+        }
+
+        this.visible.push(paint);
+
+        const baseOpacity =
+          (typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) * zoneVisibilityAlpha;
+        if (!baseOpacity) {
+          return;
+        }
+        this.ctx.globalAlpha = ga * baseOpacity;
+
+        const imageBuffer = this.ensureImageBuffer(paint);
+        const tileState = this.getTileState(imageBuffer, index);
+        tileState.lastUsedAt = performance.now();
+        this.setTileState(imageBuffer, index, tileState);
+        const tileKey = this.getTileKey(paint, index);
+        this.markTileRequired(tileKey, false);
+
+        const isActiveLayer = this.isLayerActive(paint);
+        const canvas = this.getCanvasDims();
+        const priority = distance(
+          { x: x + width / 2, y: y + height / 2 },
+          { x: canvas.width / 2, y: canvas.height / 2 }
+        );
+        const isInvalidated = this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1;
+        const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
+        const hasImage = !!canvasToPaint && !isInvalidated;
+
+        if (isInvalidated) {
+          this.setTileState(imageBuffer, index, {
+            ...tileState,
+            state: 'idle',
+          });
+        }
+
+        if (
+          (isInvalidated || !hasImage || tileState.state === 'idle' || tileState.state === 'error') &&
+          isActiveLayer
+        ) {
+          this.schedulePaintToCanvas(imageBuffer, paint, index, priority, false);
+          this.schedulePrefetchNeighbours(imageBuffer, paint, index, priority);
         }
 
         // If we've not prepared an initial "meaningful paint", then skip the
-        // rendering to avoid tiles loading in, breaking the illusion a bit!
+        // rendering to avoid tiles loading in, breaking the illusion a bit.
         if (!this.firstMeaningfulPaint) {
           return;
         }
 
-        const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
-        if (canvasToPaint) {
+        if (canvasToPaint && !isInvalidated) {
+          const fadeAlpha = this.getFadeAlpha(paint, tileState, isActiveLayer);
+          if (fadeAlpha < 1) {
+            this.hasTilesFading = true;
+          }
+          this.ctx.globalAlpha = ga * baseOpacity * fadeAlpha;
+
           if (paint.crop && paint.cropData) {
             if (paint.crop[index * 5]) {
               const source = [
@@ -457,8 +1046,6 @@ export class CanvasRenderer implements Renderer {
               const translationDeltaY = paint.y * this.lastKnownScale;
 
               const target = [x + translationDeltaX, y + translationDeltaY, width, height];
-
-              // What we need?
               target[0] += translationDeltaX;
               target[1] += translationDeltaY;
 
@@ -468,7 +1055,6 @@ export class CanvasRenderer implements Renderer {
                 source[1],
                 source[2],
                 source[3],
-                //
                 target[0],
                 target[1],
                 target[2] + 1,
@@ -479,8 +1065,8 @@ export class CanvasRenderer implements Renderer {
             if (isFirefox) {
               this.ctx.drawImage(
                 canvasToPaint,
-                0, // paint.display.points[index * 5 + 1],
-                0, // paint.display.points[index * 5 + 2],
+                0,
+                0,
                 paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
                 paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
                 x,
@@ -491,8 +1077,8 @@ export class CanvasRenderer implements Renderer {
             } else {
               this.ctx.drawImage(
                 canvasToPaint,
-                0, // paint.display.points[index * 5 + 1],
-                0, // paint.display.points[index * 5 + 2],
+                0,
+                0,
                 paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
                 paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
                 x,
@@ -505,10 +1091,11 @@ export class CanvasRenderer implements Renderer {
         }
       } catch (err) {
         // nothing to do here, likely that the image isn't loaded yet.
-      }
-
-      if (paint.display.rotation) {
-        this.ctx.restore();
+      } finally {
+        if (didRotate) {
+          this.ctx.restore();
+        }
+        this.ctx.globalAlpha = ga;
       }
     }
 
@@ -526,10 +1113,8 @@ export class CanvasRenderer implements Renderer {
         );
 
         const scale = paint.props.relativeStyle ? 1 : width / paint.width;
-
-        if (typeof style.opacity !== 'undefined') {
-          this.ctx.globalAlpha = style.opacity;
-        }
+        const styleOpacity = typeof style.opacity !== 'undefined' ? style.opacity : 1;
+        this.ctx.globalAlpha = ga * styleOpacity * zoneVisibilityAlpha;
 
         let bw = 0;
         if (typeof style.borderWidth !== 'undefined') {
@@ -616,127 +1201,201 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  loadImage(url: string, callback: (image: HTMLImageElement) => void, err: (e: any) => void, retry = false): void {
-    if (imageCache[url] && imageCache[url].naturalWidth > 0) {
-      callback(imageCache[url]);
-      return;
+  schedulePaintToCanvas(
+    imageBuffer: ImageBuffer,
+    paint: SingleImage | TiledImage,
+    index: number,
+    priority: number,
+    prefetch = false
+  ): boolean {
+    const tileState = this.getTileState(imageBuffer, index);
+    const now = performance.now();
+    const tileKey = this.getTileKey(paint, index);
+    this.markTileRequired(tileKey, prefetch);
+    this.pendingTileReveals.delete(tileKey);
+
+    if (tileState.nextRetryAt && tileState.nextRetryAt > now) {
+      return false;
     }
 
-    try {
-      let loaded = false;
-
-      if (!retry) {
-        setTimeout(() => {
-          if (!loaded) {
-            this.loadImage(url, callback, err, true);
-          }
-        }, 3000);
-      }
-      const image = document.createElement('img');
-      image.decoding = 'auto';
-      image.onload = function () {
-        loaded = true;
-        callback(image);
-        imageCache[url] = image;
-        image.onload = null;
-      };
-      if (this.options.crossOrigin) {
-        image.crossOrigin = 'anonymous';
-      }
-      image.src = url;
-      if (image.complete) {
-        image.onload({} as any);
-      }
-      if (image.width === 0) {
-        // no-op, just want to query width. (possibly bug with browsers)
-      }
-    } catch (e) {
-      console.log('image error', e);
-      err(e);
+    if (tileState.state === 'queued' || tileState.state === 'loading' || tileState.state === 'decoded') {
+      return false;
     }
-  }
 
-  schedulePaintToCanvas(imageBuffer: ImageBuffer, paint: SingleImage | TiledImage, index: number, priority: number) {
-    // This happens during a frame render, and these are most likely to happen in batches,
-    // so it has to be quick.
-    // We increment the images pending, so that we continue getting renders.
-    this.imagesPending++;
-    // We push the index we want to load onto the image buffer.
-    imageBuffer.indices.push(index);
-    // Unique id for paint.
     const id = `${paint.id}--${paint.display.scale}-${index}`;
-
+    const requestKey = this.nextRequestKey(tileKey);
+    imageBuffer.canvases[index] = id;
     const idx = this.invalidated.indexOf(id);
     if (idx !== -1) {
       this.invalidated.splice(idx, 1);
     }
 
-    imageBuffer.canvases[index] = id;
-    // Mark as loading.
-    paint.__host.canvas.loading = true;
-    // Set loading queue ordering to false to trigger re-order.
+    this.setTileState(imageBuffer, index, {
+      ...tileState,
+      state: 'queued',
+      requestedAt: now,
+      error: undefined,
+      lastRequestKey: requestKey,
+      cancelledAt: undefined,
+      skipFade: false,
+    });
+
     this.loadingQueueOrdered = false;
-    // And we push a "unit of work" to perform between frame renders.
     this.loadingQueue.push({
       id,
       scale: paint.display.scale,
+      kind: 'network',
+      tileKey,
+      requestKey,
       network: true,
       distance: priority,
-      task: () =>
-        // The only overhead of creating this is the allocation of the lexical scope. So not much, at all.
-        new Promise<void>((resolve) => {
-          // @todo this is a little slow.
-          if (this.visible.indexOf(paint) === -1) {
-            this.imagesPending--;
-            imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
-            resolve();
+      paint,
+      index,
+      prefetch,
+      task: async () => {
+        const state = this.getTileState(imageBuffer, index);
+        if (state.lastRequestKey !== requestKey) {
+          return;
+        }
+        if (state.state !== 'queued' && state.state !== 'loading') {
+          return;
+        }
+        const isCurrentlyVisible = this.visible.indexOf(paint) !== -1;
+        const wasVisibleLastFrame = this.previousVisible.indexOf(paint) !== -1;
+        if (!prefetch && !isCurrentlyVisible && !wasVisibleLastFrame) {
+          this.setTileState(imageBuffer, index, {
+            ...state,
+            state: 'idle',
+            cancelledAt: performance.now(),
+          });
+          this.pendingTileReveals.delete(tileKey);
+          return;
+        }
+
+        const url = paint.getImageUrl(index);
+        this.setTileState(imageBuffer, index, {
+          ...state,
+          state: 'loading',
+          url,
+          requestedAt: state.requestedAt || performance.now(),
+          error: undefined,
+        });
+
+        try {
+          const consumerId = `${tileKey}::${requestKey}`;
+          const acquired = this.imageRequestPool.acquire(url, consumerId);
+          this.inFlightImageLoads.set(tileKey, {
+            tileKey,
+            requestKey,
+            url,
+            consumerId,
+            paint,
+            imageBuffer,
+            index,
+            release: acquired.release,
+          });
+          const image = await acquired.promise;
+          this.releaseInFlightTileLoad(tileKey, { silent: true });
+          const currentState = this.getTileState(imageBuffer, index);
+          if (currentState.lastRequestKey !== requestKey || currentState.state !== 'loading') {
             return;
           }
-          // When this is task is finally chosen to be done, we
-          const url = paint.getImageUrl(index);
-          // Load our image.
-          this.loadImage(
-            url,
-            (image) => {
-              this.loadingQueue.push({
-                id,
-                scale: paint.display.scale,
-                distance: priority,
-                task: () => {
-                  return new Promise<void>((innerResolve) => {
-                    if (!this.imageIdsLoaded.includes(id)) {
-                      this.imagesLoaded++;
-                      this.imageIdsLoaded.push(id);
-                    }
-                    imageBuffer.loaded.push(index);
-                    if (imageBuffer.loaded.length === imageBuffer.indices.length) {
-                      imageBuffer.loading = false;
-                    }
-                    const points = paint.display.points.slice(index * 5, index * 5 + 5);
-
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-                    canvas.width = points[3] - points[1];
-                    canvas.height = points[4] - points[2];
-                    // document.body.append(canvas);
-                    this.hostCache.set(imageBuffer.canvases[index], canvas);
-                    this.drawCalls.push(() => {
-                      ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
-                      innerResolve();
-                    });
+          this.loadingQueueOrdered = false;
+          this.loadingQueue.push({
+            id: `${id}--decode`,
+            scale: paint.display.scale,
+            kind: 'decode',
+            tileKey,
+            requestKey,
+            distance: priority,
+            paint,
+            index,
+            prefetch,
+            task: () =>
+              new Promise<void>((resolve) => {
+                const stateBeforeDecode = this.getTileState(imageBuffer, index);
+                if (stateBeforeDecode.lastRequestKey !== requestKey || stateBeforeDecode.state !== 'loading') {
+                  resolve();
+                  return;
+                }
+                const points = paint.display.points.slice(index * 5, index * 5 + 5);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+                canvas.width = points[3] - points[1];
+                canvas.height = points[4] - points[2];
+                this.hostCache.set(imageBuffer.canvases[index], canvas);
+                this.drawCalls.push(() => {
+                  const commitState = this.getTileState(imageBuffer, index);
+                  if (commitState.lastRequestKey !== requestKey || commitState.state !== 'loading') {
+                    resolve();
+                    return;
+                  }
+                  ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
+                  const finalState = this.getTileState(imageBuffer, index);
+                  this.setTileState(imageBuffer, index, {
+                    ...finalState,
+                    state: 'decoded',
+                    loadedAt: undefined,
+                    error: undefined,
+                    attempts: 0,
+                    nextRetryAt: undefined,
                   });
-                },
+                  this.enqueueTileReveal(tileKey, imageBuffer, index);
+                  this.imagesLoaded++;
+                  resolve();
+                });
+              }),
+          });
+        } catch (error) {
+          this.releaseInFlightTileLoad(tileKey, { silent: true });
+          if (isImageRequestCancelledError(error)) {
+            const cancelledState = this.getTileState(imageBuffer, index);
+            if (cancelledState.lastRequestKey === requestKey) {
+              this.setTileState(imageBuffer, index, {
+                ...cancelledState,
+                state: 'idle',
+                cancelledAt: performance.now(),
               });
-              resolve();
-            },
-            (err) => {
-              this.imagesPending--;
-              imageBuffer.indices.splice(imageBuffer.indices.indexOf(index), 1);
-              resolve();
             }
-          );
-        }),
+            this.pendingTileReveals.delete(tileKey);
+            return;
+          }
+
+          const failedState = this.getTileState(imageBuffer, index);
+          if (failedState.lastRequestKey !== requestKey) {
+            return;
+          }
+
+          const attempts = (failedState.attempts || 0) + 1;
+          const willRetry = attempts < this.imageLoadingConfig.maxAttempts;
+          const nextRetryAt = willRetry
+            ? performance.now() + getRetryDelayMs(this.imageLoadingConfig, attempts)
+            : performance.now() + this.imageLoadingConfig.errorRetryIntervalMs;
+
+          this.setTileState(imageBuffer, index, {
+            ...failedState,
+            state: willRetry ? 'idle' : 'error',
+            error,
+            attempts,
+            nextRetryAt,
+          });
+          this.pendingTileReveals.delete(tileKey);
+
+          this.emitImageError({
+            severity: 'recoverable',
+            imageUrl: url,
+            contentId: paint.id,
+            tileIndex: index,
+            attempt: attempts,
+            maxAttempts: this.imageLoadingConfig.maxAttempts,
+            willRetry,
+            nextRetryAt,
+            error,
+          });
+        }
+      },
     });
+    return true;
   }
 
   afterPaintLayer(paint: SpacialContent, transform: Strand): void {
@@ -744,6 +1403,8 @@ export class CanvasRenderer implements Renderer {
   }
 
   prepareLayer(paint: SpacialContent, points: Strand): void {
+    this.hasActiveLayerClip = false;
+
     if (paint.__owner.value) {
       if (paint.cropData) {
         const scale = this.lastKnownScale * (1 / paint.display.scale);
@@ -760,6 +1421,17 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
+    if (this.shouldClipLayerToBounds(paint)) {
+      const bounds = this.getBoundsFromPoints(points);
+      if (bounds) {
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        this.ctx.clip();
+        this.hasActiveLayerClip = true;
+      }
+    }
+
     if (!paint.__host || !paint.__host.canvas) {
       if (paint instanceof SingleImage || paint instanceof TiledImage) {
         // create it if it does not exist.
@@ -769,6 +1441,10 @@ export class CanvasRenderer implements Renderer {
   }
 
   finishLayer() {
+    if (this.hasActiveLayerClip) {
+      this.ctx.restore();
+      this.hasActiveLayerClip = false;
+    }
     if (this.lastPaintedObject) {
       this.clearTransform();
     }
@@ -780,7 +1456,14 @@ export class CanvasRenderer implements Renderer {
     // canvas.height = paint.display.height;
     // canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
-    paint.__host.canvas = { canvas: undefined, canvases: [], indices: [], loaded: [], loading: false };
+    paint.__host.canvas = {
+      canvas: undefined,
+      canvases: [],
+      tiles: {},
+      indices: [],
+      loaded: [],
+      loading: false,
+    };
     // hostCache[paint.id] = paint.__host;
   }
 
@@ -792,43 +1475,48 @@ export class CanvasRenderer implements Renderer {
     const zone = world.getActiveZone();
 
     if (zone) {
-      const xCon = target[3] - target[1] < zone.points[3] - zone.points[1];
-      const yCon = target[4] - target[2] < zone.points[4] - zone.points[2];
-      return {
-        x1: xCon
-          ? zone.points[1] - padding
-          : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-        y1: yCon
-          ? zone.points[2] - padding
-          : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-        x2: xCon
-          ? zone.points[3] + padding
-          : zone.points[1] + (zone.points[3] - zone.points[1]) / 2 - (target[3] - target[1]) / 2,
-        y2: yCon
-          ? zone.points[4] + padding
-          : zone.points[2] + (zone.points[4] - zone.points[2]) / 2 - (target[4] - target[2]) / 2,
-      };
+      zone.recalculateBounds();
+      const bounds = getZoneConstrainedBounds(target, zone.points, padding);
+      if (bounds) {
+        const width = target[3] - target[1];
+        const height = target[4] - target[2];
+        return {
+          x1: bounds.minX,
+          y1: bounds.minY,
+          x2: bounds.maxX + width,
+          y2: bounds.maxY + height,
+        };
+      }
     }
     return null;
   }
 
   pendingUpdate(): boolean {
+    this.imagesPending =
+      this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     const ready =
       !this.pendingDrawCall &&
       this.drawCalls.length === 0 &&
-      this.imagesPending === 0 &&
       this.loadingQueue.length === 0 &&
-      this.tasksRunning === 0; /*&& this.visible.length > 0*/
+      this.tasksRunning === 0 &&
+      this.inFlightImageLoads.size === 0 &&
+      this.pendingTileReveals.size === 0;
 
-    if (!ready && this.visible.length === 0) {
+    if (
+      !ready &&
+      this.visible.length === 0 &&
+      this.options.readiness !== 'immediate' &&
+      this.fallbackRevealTimeout === null
+    ) {
       // If its still not ready by 500ms, force it to be.
-      setTimeout(() => {
+      this.fallbackRevealTimeout = setTimeout(() => {
         this.canvas.style.opacity = '1';
         this.firstMeaningfulPaint = true;
+        this.fallbackRevealTimeout = null;
       }, 500);
     }
 
-    if (!this.firstMeaningfulPaint && ready && this.visible.length) {
+    if (!this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
       // We've not rendered yet, can we render this  frame?
@@ -841,6 +1529,10 @@ export class CanvasRenderer implements Renderer {
       return true;
     }
 
+    if (this.hasTilesFading) {
+      return true;
+    }
+
     return !ready;
   }
 
@@ -848,8 +1540,40 @@ export class CanvasRenderer implements Renderer {
     return this.rendererPosition;
   }
 
+  resetReadyState() {
+    if (this.options.readiness === 'immediate') {
+      return;
+    }
+    this.firstMeaningfulPaint = false;
+    if (this.fallbackRevealTimeout) {
+      clearTimeout(this.fallbackRevealTimeout);
+      this.fallbackRevealTimeout = null;
+    }
+  }
+
   reset() {
     this.loadingQueue = [];
     this.drawCalls = [];
+    if (this._scheduled) {
+      clearInterval(this._scheduled);
+      this._scheduled = 0;
+    }
+    for (const tileKey of [...this.inFlightImageLoads.keys()]) {
+      this.releaseInFlightTileLoad(tileKey, { silent: true });
+    }
+    this.imageRequestPool.cancelAll({ silent: true });
+    this.inFlightImageLoads.clear();
+    this.requiredTileKeys.clear();
+    this.requiredPrefetchTileKeys.clear();
+    this.pendingTileReveals.clear();
+    this.requestGeneration += 1;
+    this.frameCounter = 0;
+    if (this.fallbackRevealTimeout) {
+      clearTimeout(this.fallbackRevealTimeout);
+      this.fallbackRevealTimeout = null;
+    }
+    this.imagesPending = 0;
+    this.imagesLoaded = 0;
+    this.hasTilesFading = false;
   }
 }
