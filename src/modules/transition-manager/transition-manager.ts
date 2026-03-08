@@ -167,7 +167,44 @@ export class TransitionManager {
         }
       });
       this.runtime.updateNextFrame();
+      return;
     }
+
+    this.isConstraining = false;
+  }
+
+  constrainTarget(
+    target: Strand,
+    {
+      origin,
+      transition,
+      panPadding = 0,
+    }: {
+      origin?: Position;
+      panPadding?: number;
+      transition?: {
+        duration?: number;
+        easing?: EasingFunction;
+      };
+    } = {}
+  ) {
+    this.isConstraining = true;
+    const [isConstrained, constrained] = this.runtime.constrainTarget(target, { origin, panPadding });
+
+    if (isConstrained) {
+      this.applyTransition(constrained, transition, {
+        duration: 500,
+        easing: easingFunctions.easeOutQuart,
+        constrain: false,
+        callback: () => {
+          this.isConstraining = false;
+        },
+      });
+      this.runtime.updateNextFrame();
+      return;
+    }
+
+    this.isConstraining = false;
   }
 
   applyTransition(

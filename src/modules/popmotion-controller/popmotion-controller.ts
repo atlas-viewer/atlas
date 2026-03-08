@@ -34,6 +34,7 @@ export type PopmotionControllerConfig = {
   devicePixelRatio?: number;
   enableWheel?: boolean;
   enableClickToZoom?: boolean;
+  enableDoubleTapZoom?: boolean;
   ignoreSingleFingerTouch?: boolean;
   enablePanOnWait?: boolean;
   requireMetaKeyForWheelZoom?: boolean;
@@ -67,6 +68,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   // Flags
   enableWheel: true,
   enableClickToZoom: true,
+  enableDoubleTapZoom: true,
   ignoreSingleFingerTouch: false,
   enablePanOnWait: false,
   requireMetaKeyForWheelZoom: false,
@@ -85,6 +87,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         zoomWheelConstant,
         enableWheel,
         enableClickToZoom,
+        enableDoubleTapZoom,
         ignoreSingleFingerTouch,
         enablePanOnWait,
         panOnWaitDelay,
@@ -117,10 +120,20 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         vx: 0,
         vy: 0,
       };
+      let lastGestureTarget: any = null;
+      let lastGestureOrigin: { x: number; y: number } | undefined;
+      let lastTapAt = 0;
+      let lastTapPoint: { x: number; y: number } | undefined;
+      let currentTapPoint: { x: number; y: number } | undefined;
       const MIN_MOMENTUM_SPEED_PX_PER_MS = 0.08;
       const MOMENTUM_STOP_SPEED_PX_PER_MS = 0.02;
       const MOMENTUM_SAMPLE_WINDOW_MS = 80;
       const MOMENTUM_SAMPLE_MAX_AGE_MS = 140;
+      const DOUBLE_TAP_INTERVAL_MS = 350;
+      const DOUBLE_TAP_DISTANCE_PX = 100;
+      const MAX_TAP_DURATION_MS = 250;
+      const DOUBLE_TAP_HOME_ZOOM_TOLERANCE = 0.1;
+      const DOUBLE_TAP_TRANSITION_DURATION_MS = 500;
 
       function clearPanSamples() {
         panSamples.length = 0;
@@ -143,6 +156,48 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         momentum.active = false;
         momentum.vx = 0;
         momentum.vy = 0;
+      }
+
+      function clearGestureState() {
+        lastGestureTarget = null;
+        lastGestureOrigin = undefined;
+      }
+
+      function maybeHandleDoubleTap() {
+        if (!enableDoubleTapZoom || runtime.mode !== 'explore' || state.hasMovedSincePress || !currentTapPoint) {
+          return false;
+        }
+
+        const now = performance.now();
+        if (touchStartTime && now - touchStartTime > MAX_TAP_DURATION_MS) {
+          return false;
+        }
+
+        const isDoubleTap =
+          lastTapPoint &&
+          lastTapAt > 0 &&
+          now - lastTapAt <= DOUBLE_TAP_INTERVAL_MS &&
+          distance(lastTapPoint, currentTapPoint) <= DOUBLE_TAP_DISTANCE_PX;
+
+        lastTapAt = now;
+        lastTapPoint = { ...currentTapPoint };
+
+        if (!isDoubleTap) {
+          return false;
+        }
+
+        const target = runtime.isViewportAtHomeZoomLevel({ tolerance: DOUBLE_TAP_HOME_ZOOM_TOLERANCE })
+          ? runtime.getHomeTarget({ cover: true })
+          : runtime.getHomeTarget();
+        runtime.transitionManager.goToRegion(target, {
+          transition: {
+            duration: DOUBLE_TAP_TRANSITION_DURATION_MS,
+            easing: easingFunctions.easeInOutQuad,
+          },
+        });
+        lastTapAt = 0;
+        lastTapPoint = undefined;
+        return true;
       }
 
       function stepConstrainedMomentumAxis(current: number, velocity: number, deltaMs: number, boundary: number) {
@@ -216,6 +271,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       function releasePointer() {
         if (!state.isPressing) {
+          clearGestureState();
           resetState();
           return;
         }
@@ -226,6 +282,37 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         state.isPressing = false;
         state.hasMovedSincePress = false;
         clearPanSamples();
+        clearGestureState();
+        resetState();
+      }
+
+      function releaseGesturePointer() {
+        if (!state.isPressing) {
+          clearGestureState();
+          resetState();
+          return;
+        }
+
+        stopPanMomentum();
+
+        if (runtime.mode === 'explore') {
+          const pendingTransition = runtime.transitionManager.getPendingTransition();
+          const sourceTarget =
+            lastGestureTarget ||
+            (pendingTransition && pendingTransition.total_time === 0 && !pendingTransition.done
+              ? pendingTransition.to
+              : runtime.target);
+
+          runtime.transitionManager.constrainTarget(sourceTarget, {
+            origin: lastGestureOrigin,
+            panPadding,
+          });
+        }
+
+        state.isPressing = false;
+        state.hasMovedSincePress = false;
+        clearPanSamples();
+        clearGestureState();
         resetState();
       }
 
@@ -236,6 +323,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         'onMouseMove',
         'onTouchStart',
         'onTouchEnd',
+        'onTouchCancel',
         'onTouchMove',
         'onContextMenu'
       );
@@ -249,9 +337,31 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         setDataAttribute();
         setDataAttribute(undefined, 'notice');
         touchStartTime = 0;
+        currentTapPoint = undefined;
       }
 
       function onMouseUp() {
+        releasePointer();
+      }
+
+      function onTouchEnd(e: TouchEvent) {
+        if (intent === INTENT_GESTURE && e.touches.length < 2) {
+          releaseGesturePointer();
+          return;
+        }
+
+        if (e.touches.length === 0) {
+          maybeHandleDoubleTap();
+          releasePointer();
+        }
+      }
+
+      function onTouchCancel(e: TouchEvent) {
+        if (intent === INTENT_GESTURE) {
+          releaseGesturePointer();
+          return;
+        }
+
         releasePointer();
       }
 
@@ -301,6 +411,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             }
             state.pointerStart.x = e.atlasTouches[0].x;
             state.pointerStart.y = e.atlasTouches[0].y;
+            currentTapPoint = { x: e.atlasTouches[0].x, y: e.atlasTouches[0].y };
             recordPanSample(runtime.target[1], runtime.target[2]);
           }
           if (e.atlasTouches.length === 2) {
@@ -318,6 +429,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               { x: e.touches[1].clientX, y: e.touches[1].clientY }
             );
             clearPanSamples();
+            clearGestureState();
           }
 
           runtime.transitionManager.stopTransition();
@@ -411,6 +523,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               recordPanSample(nextTarget[1], nextTarget[2]);
             }
 
+            if (e.touches.length === 2) {
+              lastGestureTarget = dna(nextTarget);
+              lastGestureOrigin = { x, y };
+            }
+
             applyPanTransition(nextTarget);
           }
           currentDistance = newDistance;
@@ -474,7 +591,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       runtime.world.addEventListener('mouseup', onMouseUp);
-      runtime.world.addEventListener('touchend', onMouseUp);
+      runtime.world.addEventListener('touchend', onTouchEnd);
+      runtime.world.addEventListener('touchcancel', onTouchCancel);
       runtime.world.addEventListener('touchstart', onTouchStart);
       runtime.world.addEventListener('mousedown', onMouseDown);
 
@@ -618,7 +736,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       return () => {
         stopPanMomentum();
         runtime.world.removeEventListener('mouseup', onMouseUp);
-        runtime.world.removeEventListener('touchend', onMouseUp);
+        runtime.world.removeEventListener('touchend', onTouchEnd);
+        runtime.world.removeEventListener('touchcancel', onTouchCancel);
         runtime.world.removeEventListener('touchstart', onTouchStart);
         runtime.world.removeEventListener('mousedown', onMouseDown);
 

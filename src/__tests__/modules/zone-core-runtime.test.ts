@@ -39,6 +39,12 @@ class MockRenderer implements Renderer {
   }
 }
 
+class ResponsiveRenderer extends MockRenderer {
+  override getScale(width: number, height: number): number {
+    return Math.min(1000 / width, 800 / height);
+  }
+}
+
 function createWorldObject(props: { id: string; x: number; y: number; width: number; height: number }) {
   const object = new WorldObject();
   object.applyProps(props);
@@ -238,6 +244,19 @@ describe('zone core and runtime zone navigation', () => {
     expect(runtime.transitionManager.getPendingTransition().done).toBe(false);
   });
 
+  test('runtime defaults visibility ratio to 100 percent', () => {
+    const runtime = new Runtime(new MockRenderer(), new World(1000, 1000), {
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 800,
+      scale: 1,
+    });
+    runtime.stop();
+
+    expect(runtime.options.visibilityRatio).toBe(1);
+  });
+
   test('runtime.getBounds uses correct axis math when constrained to a zone', () => {
     const world = new World(1000, 2000);
     const object = createWorldObject({
@@ -342,6 +361,46 @@ describe('zone core and runtime zone navigation', () => {
 
     expect(zoomed[1]).toBeGreaterThanOrEqual(100);
     expect(zoomed[2]).toBeGreaterThanOrEqual(100);
+  });
+
+  test('runtime.getZoomedPosition applies transforms from provided base targets', () => {
+    const runtime = new Runtime(new ResponsiveRenderer(), new World(1000, 1000), {
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 800,
+      scale: 1,
+    });
+    runtime.stop();
+
+    const fromPos = DnaFactory.singleBox(200, 160, 100, 120);
+    const zoomed = runtime.getZoomedPosition(2, { fromPos });
+
+    expect(zoomed[1]).toBe(0);
+    expect(zoomed[2]).toBe(40);
+    expect(zoomed[3]).toBe(400);
+    expect(zoomed[4]).toBe(360);
+  });
+
+  test('runtime.constrainTarget restores zoomed-out targets to the allowed scale', () => {
+    const runtime = new Runtime(new ResponsiveRenderer(), new World(1000, 1000), {
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 800,
+      scale: 1,
+    });
+    runtime.stop();
+
+    const oversized = DnaFactory.singleBox(2000, 1600, -500, -400);
+    const [isConstrained, constrained] = runtime.constrainTarget(oversized, {
+      origin: { x: 500, y: 400 },
+    });
+
+    expect(isConstrained).toBe(true);
+    expect(runtime.renderer.getScale(constrained[3] - constrained[1], constrained[4] - constrained[2])).toBeCloseTo(0.8);
+    expect(constrained[1]).toBeGreaterThanOrEqual(-250);
+    expect(constrained[2]).toBeGreaterThanOrEqual(-200);
   });
 
   test('runtime.goToZone returns false for unknown zones', () => {

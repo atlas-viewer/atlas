@@ -70,4 +70,19 @@ describe('Transition manager', () => {
     expect(buffer[3]).toBe(100);
     expect(buffer[4]).toBe(100);
   });
+
+  test('constrainTarget animates toward a constrained arbitrary target', () => {
+    const buffer = dna([1, 0, 0, 100, 100]);
+    const tm = new TransitionManager({
+      target: buffer,
+      updateNextFrame: vi.fn(),
+      constrainTarget: vi.fn(() => [true, dna([1, -25, -25, 125, 125])]),
+    } as any);
+
+    tm.constrainTarget(dna([1, -50, -50, 150, 150]));
+
+    expect(tm.getPendingTransition().done).toBe(false);
+    expect(tm.getPendingTransition().to[1]).toBe(-25);
+    expect(tm.getPendingTransition().to[2]).toBe(-25);
+  });
 });

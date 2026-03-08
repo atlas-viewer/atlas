@@ -178,7 +178,7 @@ export class Runtime {
     this.options = {
       maxOverZoom: 1,
       maxUnderZoom: 1,
-      visibilityRatio: 1.5,
+      visibilityRatio: 1,
       ...(options || {}),
     };
     this.target = DnaFactory.projection(target);
@@ -394,6 +394,43 @@ export class Runtime {
       width: viewWidth + padLeftWorld + padRightWorld,
       height: viewHeight + padTopWorld + padBottomWorld,
     };
+  }
+
+  isViewportAtHome(
+    options: {
+      cover?: boolean;
+      tolerance?: number;
+      target?: Projection;
+    } = {}
+  ): boolean {
+    const { cover = false, tolerance = 1, target = this.getViewport() } = options;
+    const homeTarget = this.getHomeTarget({ cover });
+
+    return (
+      Math.abs(target.x - homeTarget.x) <= tolerance &&
+      Math.abs(target.y - homeTarget.y) <= tolerance &&
+      Math.abs(target.width - homeTarget.width) <= tolerance &&
+      Math.abs(target.height - homeTarget.height) <= tolerance
+    );
+  }
+
+  isViewportAtHomeZoomLevel(
+    options: {
+      cover?: boolean;
+      tolerance?: number;
+      target?: Projection;
+    } = {}
+  ): boolean {
+    const { cover = false, tolerance = 0.05, target = this.getViewport() } = options;
+    const homeTarget = this.getHomeTarget({ cover });
+    const targetScale = this.renderer.getScale(target.width, target.height) || this._lastGoodScale;
+    const homeScale = this.renderer.getScale(homeTarget.width, homeTarget.height) || this._lastGoodScale;
+
+    if (homeScale === 0) {
+      return false;
+    }
+
+    return Math.abs(targetScale / homeScale - 1) <= tolerance;
   }
 
   goHome(
@@ -728,6 +765,85 @@ export class Runtime {
     return scale;
   }
 
+  private copyStrandValues(target: Strand, next: Strand) {
+    target[0] = next[0];
+    target[1] = next[1];
+    target[2] = next[2];
+    target[3] = next[3];
+    target[4] = next[4];
+  }
+
+  private getZoomConstraintState(target: Strand) {
+    const width = target[3] - target[1];
+    const height = target[4] - target[2];
+    const nextScale = this.renderer.getScale(width, height);
+    const scaleFactor = nextScale === 0 ? this._lastGoodScale : nextScale;
+
+    if (nextScale !== 0) {
+      this._lastGoodScale = nextScale;
+    }
+
+    const displayWidth = width * scaleFactor;
+    const displayHeight = height * scaleFactor;
+    const widthScale = this.world.width / displayWidth;
+    const heightScale = this.world.height / displayHeight;
+
+    const minScale =
+      widthScale > heightScale
+        ? (displayWidth * this.options.maxUnderZoom) / this.world.width
+        : (displayHeight * this.options.maxUnderZoom) / this.world.height;
+
+    const sWidth = this.getRendererScreenPosition()?.width;
+    const ratio = sWidth ? sWidth / this.world.width : 1;
+    const maxScale = Math.max(ratio || 1, this.options.maxOverZoom);
+
+    return {
+      scaleFactor,
+      minScale,
+      maxScale,
+    };
+  }
+
+  constrainTarget(
+    target: Strand,
+    {
+      origin,
+      panPadding = 0,
+      ref = false,
+    }: {
+      origin?: { x: number; y: number };
+      panPadding?: number;
+      ref?: boolean;
+    } = {}
+  ) {
+    let isConstrained = false;
+    const constrained = ref ? target : dna(target);
+    const { scaleFactor, minScale, maxScale } = this.getZoomConstraintState(constrained);
+    const clampedScale = Math.max(minScale, Math.min(maxScale, scaleFactor));
+
+    if (Math.abs(clampedScale - scaleFactor) > 0.000001) {
+      const zoomOrigin = origin || {
+        x: constrained[1] + (constrained[3] - constrained[1]) / 2,
+        y: constrained[2] + (constrained[4] - constrained[2]) / 2,
+      };
+      const adjusted = transform(
+        constrained,
+        scaleAtOrigin(scaleFactor / clampedScale, zoomOrigin.x, zoomOrigin.y),
+        this.zoomBuffer
+      );
+
+      this.copyStrandValues(constrained, adjusted);
+      isConstrained = true;
+    }
+
+    const [isPanConstrained] = this.constrainBounds(constrained, {
+      ref: true,
+      panPadding,
+    });
+
+    return [isConstrained || isPanConstrained, constrained] as const;
+  }
+
   /**
    * Zoom
    */
@@ -741,67 +857,31 @@ export class Runtime {
       fromPos?: Strand;
     }
   ) {
-    const fromPos = _fromPos ? { width: _fromPos[3] - _fromPos[1], height: _fromPos[4] - _fromPos[2] } : undefined;
-    // Fresh scale factor.
-    const scaleFactor = fromPos ? this.renderer.getScale(fromPos.width, fromPos.height) : this.getScaleFactor();
-    const w = fromPos ? fromPos.width : this.width;
-    const h = fromPos ? fromPos.height : this.height;
-
-    const sWidth = this.getRendererScreenPosition()?.width;
-    const wWidth = this.world.width;
-    const ratio = sWidth ? sWidth / wWidth : 1;
-
-    const maxUnderZoom = this.options.maxUnderZoom;
-    const maxOverZoom = Math.max(ratio || 1, this.options.maxOverZoom);
+    const source = _fromPos || this.target;
+    const { scaleFactor, minScale, maxScale } = this.getZoomConstraintState(source);
 
     const realFactor = 1 / factor;
-    const proposedFactor = scaleFactor * realFactor;
+    const proposedScale = scaleFactor * realFactor;
     const isZoomingOut = realFactor < 1;
 
     if (isZoomingOut) {
-      const width = w * scaleFactor;
-      const height = h * scaleFactor;
-
-      const widthScale = this.world.width / width;
-      const heightScale = this.world.height / height;
-
-      if (widthScale > heightScale) {
-        // Constrain width
-        // If the proposed world display height.
-        const proposedWorldDisplayWidth = this.world.width * proposedFactor;
-        // Is greater than the display width.
-        const displayWidth = ~~(w * scaleFactor);
-        const displayWidthAdjusted = displayWidth * maxUnderZoom;
-
-        if (proposedWorldDisplayWidth < displayWidthAdjusted) {
-          factor = (this.world.width * scaleFactor) / (w * scaleFactor * maxUnderZoom);
-        }
-      } else {
-        // Constrain height.
-        // If the proposed world display height.
-        const proposedWorldDisplayHeight = this.world.height * proposedFactor;
-        // Is greater than the display height.
-        const displayHeight = ~~(h * scaleFactor);
-        const displayHeightAdjusted = displayHeight * maxUnderZoom;
-
-        if (proposedWorldDisplayHeight < displayHeightAdjusted) {
-          factor = (this.world.height * scaleFactor) / (h * scaleFactor * maxUnderZoom);
-        }
+      if (proposedScale < minScale) {
+        factor = scaleFactor / minScale;
       }
     } else {
       // Zooming in.
-      if (proposedFactor > maxOverZoom) {
-        factor = scaleFactor / maxOverZoom;
+      if (proposedScale > maxScale) {
+        factor = scaleFactor / maxScale;
       }
     }
 
     // set the new scale.
     const proposedStrand = transform(
-      this.target,
+      source,
       scaleAtOrigin(
         factor,
-        origin ? origin.x : this.target[1] + (this.target[3] - this.target[1]) / 2,
-        origin ? origin.y : this.target[2] + (this.target[4] - this.target[2]) / 2
+        origin ? origin.x : source[1] + (source[3] - source[1]) / 2,
+        origin ? origin.y : source[2] + (source[4] - source[2]) / 2
       ),
       this.zoomBuffer
     );

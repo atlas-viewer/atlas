@@ -167,6 +167,59 @@ function emitMouseUp(runtime: Runtime) {
   runtime.world.flushSubscriptions();
 }
 
+function createTouchList(touches: Array<{ id: number; clientX: number; clientY: number }>) {
+  const list: any = touches.map((touch) => ({
+    identifier: touch.id,
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+  }));
+  list.item = (index: number) => list[index] ?? null;
+  return list;
+}
+
+function createTouchEvent(touches: Array<{ id: number; clientX: number; clientY: number }>) {
+  const touchList = createTouchList(touches);
+  return {
+    touches: touchList,
+    atlasTouches: touches.map((touch) => ({ id: touch.id, x: touch.clientX, y: touch.clientY })),
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+  };
+}
+
+function emitTouchStart(runtime: Runtime, touches: Array<{ id: number; clientX: number; clientY: number }>) {
+  const event = createTouchEvent(touches);
+  runtime.world.propagateTouchEvent('onTouchStart' as any, event as any, event.atlasTouches);
+  runtime.world.flushSubscriptions();
+  return event;
+}
+
+function emitTouchMove(runtime: Runtime, touches: Array<{ id: number; clientX: number; clientY: number }>) {
+  const event = createTouchEvent(touches);
+  runtime.world.propagateTouchEvent('onTouchMove' as any, event as any, event.atlasTouches);
+  runtime.world.flushSubscriptions();
+  return event;
+}
+
+function emitTouchEnd(
+  runtime: Runtime,
+  activeTouches: Array<{ id: number; clientX: number; clientY: number }> = [],
+  lastTouchTargets: Array<{ x: number; y: number }> = []
+) {
+  const event = createTouchEvent(activeTouches);
+  event.atlasTouches = [];
+  runtime.world.propagateTouchEvent('onTouchEnd' as any, event as any, lastTouchTargets);
+  runtime.world.flushSubscriptions();
+  return event;
+}
+
+function emitTouchCancel(runtime: Runtime, lastTouchTargets: Array<{ x: number; y: number }> = []) {
+  const event = createTouchEvent([]);
+  runtime.world.propagateTouchEvent('onTouchCancel' as any, event as any, lastTouchTargets);
+  runtime.world.flushSubscriptions();
+  return event;
+}
+
 function runFrame(runtime: Runtime, delta = 16) {
   runtime.render(performance.now() + delta);
 }
@@ -250,6 +303,75 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.getViewport().x).toBeCloseTo(startX, 3);
   });
 
+  test('scroll-mode supports one-finger touch drag with scale factor', () => {
+    const runtime = createRuntimeWithPdfController({ rendererScale: 2 });
+    const startY = runtime.getViewport().y;
+
+    emitTouchStart(runtime, [{ id: 1, clientX: 100, clientY: 200 }]);
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 100 }]);
+    emitTouchEnd(runtime, [], [{ x: 100, y: 100 }]);
+
+    expect(runtime.getViewport().y).toBeCloseTo(startY + 50, 3);
+  });
+
+  test('scroll-mode touch release keeps vertical momentum', () => {
+    const runtime = createRuntimeWithPdfController();
+    const startX = runtime.getViewport().x;
+
+    emitTouchStart(runtime, [{ id: 1, clientX: 100, clientY: 300 }]);
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 220 }]);
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 140 }]);
+    const yAfterDrag = runtime.getViewport().y;
+    emitTouchEnd(runtime, [], [{ x: 100, y: 140 }]);
+
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+
+    const yAfterMomentum = runtime.getViewport().y;
+    expect(yAfterMomentum).toBeGreaterThan(yAfterDrag);
+    expect(runtime.getViewport().x).toBeCloseTo(startX, 3);
+  });
+
+  test('duplicate touchend does not cancel scroll momentum', () => {
+    const runtime = createRuntimeWithPdfController();
+
+    emitTouchStart(runtime, [{ id: 1, clientX: 100, clientY: 300 }]);
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 220 }]);
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 140 }]);
+    const yAfterDrag = runtime.getViewport().y;
+    emitTouchEnd(runtime, [], [{ x: 100, y: 140 }]);
+    window.dispatchEvent(new Event('touchend'));
+
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+
+    expect(runtime.getViewport().y).toBeGreaterThan(yAfterDrag);
+  });
+
+  test('scroll-mode touch flick starts momentum at lower mobile threshold', () => {
+    const runtime = createRuntimeWithPdfController();
+    let now = 0;
+    const perf = vi.spyOn(performance, 'now').mockImplementation(() => now);
+
+    emitTouchStart(runtime, [{ id: 1, clientX: 100, clientY: 300 }]);
+    now = 40;
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 297 }]);
+    const yAfterDrag = runtime.getViewport().y;
+    now = 80;
+    emitTouchEnd(runtime, [], [{ x: 100, y: 297 }]);
+
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+
+    expect(runtime.getViewport().y).toBeGreaterThan(yAfterDrag);
+
+    perf.mockRestore();
+  });
+
   test('duplicate mouseup does not cancel scroll momentum', () => {
     const runtime = createRuntimeWithPdfController();
 
@@ -314,6 +436,24 @@ describe('pdf scroll zone controller', () => {
     expect(strict.world.hasActiveZone()).toBe(false);
   });
 
+  test('scroll-mode touch tap enters a zone and drag over threshold suppresses it', () => {
+    const relaxed = createRuntimeWithPdfController({
+      controllerConfig: { clickDragThresholdPx: 20 },
+    });
+    emitTouchStart(relaxed, [{ id: 1, clientX: 100, clientY: 100 }]);
+    emitTouchMove(relaxed, [{ id: 1, clientX: 100, clientY: 108 }]);
+    emitTouchEnd(relaxed, [], [{ x: 100, y: 108 }]);
+    expect(relaxed.world.getActiveZone()?.id).toBe('page-1');
+
+    const strict = createRuntimeWithPdfController({
+      controllerConfig: { clickDragThresholdPx: 2 },
+    });
+    emitTouchStart(strict, [{ id: 1, clientX: 100, clientY: 100 }]);
+    emitTouchMove(strict, [{ id: 1, clientX: 100, clientY: 108 }]);
+    emitTouchEnd(strict, [], [{ x: 100, y: 108 }]);
+    expect(strict.world.hasActiveZone()).toBe(false);
+  });
+
   test('scroll-mode normalizes to vertical-only and keeps restoration target in sync', () => {
     const runtime = createRuntimeWithPdfController();
     const initialViewport = runtime.getViewport();
@@ -375,6 +515,25 @@ describe('pdf scroll zone controller', () => {
 
     emitClick(runtime, 100, 100);
     emitClick(runtime, 2000, 2000);
+
+    expect(runtime.mode).toBe('sketch');
+    expect(runtime.world.hasActiveZone()).toBe(false);
+
+    const pending = runtime.transitionManager.getPendingTransition();
+    expect(pending.to[1]).toBeCloseTo(startViewport.x, 0);
+    expect(pending.to[2]).toBeCloseTo(startViewport.y, 0);
+    expect(pending.to[3] - pending.to[1]).toBeCloseTo(startViewport.width, 0);
+    expect(pending.to[4] - pending.to[2]).toBeCloseTo(startViewport.height, 0);
+  });
+
+  test('exits zone on background touch tap and restores pre-focus viewport', () => {
+    const runtime = createRuntimeWithPdfController();
+    const startViewport = runtime.getViewport();
+
+    emitTouchStart(runtime, [{ id: 1, clientX: 100, clientY: 100 }]);
+    emitTouchEnd(runtime, [], [{ x: 100, y: 100 }]);
+    emitTouchStart(runtime, [{ id: 1, clientX: 2000, clientY: 2000 }]);
+    emitTouchEnd(runtime, [], [{ x: 2000, y: 2000 }]);
 
     expect(runtime.mode).toBe('sketch');
     expect(runtime.world.hasActiveZone()).toBe(false);
@@ -530,5 +689,22 @@ describe('pdf scroll zone controller', () => {
 
     const afterZoneViewport = runtime.getViewport();
     expect(afterZoneViewport.y).toBeCloseTo(600, 0);
+  });
+
+  test('touchcancel clears drag state without entering a zone', () => {
+    const runtime = createRuntimeWithPdfController();
+    const startY = runtime.getViewport().y;
+
+    emitTouchStart(runtime, [{ id: 1, clientX: 100, clientY: 200 }]);
+    emitTouchMove(runtime, [{ id: 1, clientX: 100, clientY: 150 }]);
+    emitTouchCancel(runtime, [{ x: 100, y: 150 }]);
+    emitTouchEnd(runtime, [], [{ x: 100, y: 150 }]);
+
+    runFrame(runtime, 16);
+    runtime.world.flushSubscriptions();
+
+    expect(runtime.world.hasActiveZone()).toBe(false);
+    expect(runtime.getViewport().y).toBeCloseTo(startY + 50, 3);
+    expect(runtime.transitionManager.getPendingTransition().done).toBe(true);
   });
 });
