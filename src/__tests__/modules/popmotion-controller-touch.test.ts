@@ -5,6 +5,7 @@ import {
   type PopmotionControllerConfig,
   popmotionController,
 } from '../../modules/popmotion-controller/popmotion-controller';
+import { easingFunctions } from '../../utility/easing-functions';
 
 type WorldListener = (event: any) => void;
 type LayoutListener = (type: string, data?: any) => void;
@@ -107,6 +108,8 @@ function createTouchHarness(config: PopmotionControllerConfig = {}) {
     registerHook: () => () => undefined,
     updateNextFrame: vi.fn(),
     constrainBounds: (nextTarget: any) => [false, nextTarget] as const,
+    isViewportAtHome: vi.fn(() => true),
+    isViewportAtHomeZoomLevel: vi.fn(() => true),
     getHomeTarget: () => ({ x: 0, y: 0, width: 100, height: 100 }),
   };
 
@@ -256,8 +259,59 @@ describe('popmotion controller touch gestures', () => {
     harness.stop();
   });
 
-  test('double tap zooms in by default', () => {
+  test('single tap does not trigger double tap navigation', () => {
     const harness = createTouchHarness({ enableClickToZoom: false });
+
+    now = 10;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 50, clientY: 50 }]));
+    now = 30;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    expect(harness.runtime.transitionManager.goToRegion).not.toHaveBeenCalled();
+    expect(harness.runtime.world.zoomIn).not.toHaveBeenCalled();
+
+    harness.stop();
+  });
+
+  test('double tap goes to the cover target when already at home', () => {
+    const harness = createTouchHarness({ enableClickToZoom: false });
+    const coverTarget = { x: 5, y: 10, width: 90, height: 80 };
+
+    harness.runtime.isViewportAtHomeZoomLevel.mockReturnValue(true);
+    harness.runtime.getHomeTarget = vi.fn((options?: { cover?: boolean }) =>
+      options?.cover ? coverTarget : { x: 0, y: 0, width: 100, height: 100 }
+    );
+
+    now = 120;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 52, clientY: 52 }]));
+    now = 140;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    now = 220;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 54, clientY: 54 }]));
+    now = 240;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    expect(harness.runtime.isViewportAtHomeZoomLevel).toHaveBeenCalledWith({ tolerance: 0.05 });
+    expect(harness.runtime.getHomeTarget).toHaveBeenCalledWith({ cover: true });
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(1);
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledWith(coverTarget, {
+      transition: {
+        duration: 1400,
+        easing: easingFunctions.easeInOutQuad,
+      },
+    });
+    expect(harness.runtime.world.zoomIn).not.toHaveBeenCalled();
+
+    harness.stop();
+  });
+
+  test('double tap goes home when not at home', () => {
+    const harness = createTouchHarness({ enableClickToZoom: false });
+    const homeTarget = { x: 0, y: 0, width: 100, height: 100 };
+
+    harness.runtime.isViewportAtHomeZoomLevel.mockReturnValue(false);
+    harness.runtime.getHomeTarget = vi.fn(() => homeTarget);
 
     now = 10;
     harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 50, clientY: 50 }]));
@@ -269,8 +323,64 @@ describe('popmotion controller touch gestures', () => {
     now = 140;
     harness.emitWorld('touchend', createTouchEvent([]));
 
-    expect(harness.runtime.world.zoomIn).toHaveBeenCalledTimes(1);
-    expect(harness.runtime.world.zoomIn).toHaveBeenCalledWith({ x: 52, y: 52 });
+    expect(harness.runtime.isViewportAtHomeZoomLevel).toHaveBeenCalledWith({ tolerance: 0.05 });
+    expect(harness.runtime.getHomeTarget).toHaveBeenCalledWith();
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(1);
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledWith(homeTarget, {
+      transition: {
+        duration: 1400,
+        easing: easingFunctions.easeInOutQuad,
+      },
+    });
+    expect(harness.runtime.world.zoomIn).not.toHaveBeenCalled();
+
+    harness.stop();
+  });
+
+  test('double tap toggles from cover back to home on subsequent gestures', () => {
+    const harness = createTouchHarness({ enableClickToZoom: false });
+    const coverTarget = { x: 5, y: 10, width: 90, height: 80 };
+    const homeTarget = { x: 0, y: 0, width: 100, height: 100 };
+
+    harness.runtime.isViewportAtHomeZoomLevel = vi.fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+    harness.runtime.getHomeTarget = vi.fn((options?: { cover?: boolean }) => (options?.cover ? coverTarget : homeTarget));
+
+    now = 10;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 50, clientY: 50 }]));
+    now = 30;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    now = 120;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 52, clientY: 52 }]));
+    now = 140;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    now = 300;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 53, clientY: 53 }]));
+    now = 320;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    now = 420;
+    harness.emitWorld('touchstart', createTouchEvent([{ id: 1, clientX: 55, clientY: 55 }]));
+    now = 440;
+    harness.emitWorld('touchend', createTouchEvent([]));
+
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(2);
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenNthCalledWith(1, coverTarget, {
+      transition: {
+        duration: 1400,
+        easing: easingFunctions.easeInOutQuad,
+      },
+    });
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenNthCalledWith(2, homeTarget, {
+      transition: {
+        duration: 1400,
+        easing: easingFunctions.easeInOutQuad,
+      },
+    });
+    expect(harness.runtime.world.zoomIn).not.toHaveBeenCalled();
 
     harness.stop();
   });

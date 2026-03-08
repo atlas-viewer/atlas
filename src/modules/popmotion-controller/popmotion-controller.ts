@@ -129,9 +129,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       const MOMENTUM_STOP_SPEED_PX_PER_MS = 0.02;
       const MOMENTUM_SAMPLE_WINDOW_MS = 80;
       const MOMENTUM_SAMPLE_MAX_AGE_MS = 140;
-      const DOUBLE_TAP_INTERVAL_MS = 300;
-      const DOUBLE_TAP_DISTANCE_PX = 24;
+      const DOUBLE_TAP_INTERVAL_MS = 350;
+      const DOUBLE_TAP_DISTANCE_PX = 100;
       const MAX_TAP_DURATION_MS = 250;
+      const DOUBLE_TAP_HOME_ZOOM_TOLERANCE = 0.1;
+      const DOUBLE_TAP_TRANSITION_DURATION_MS = 500;
 
       function clearPanSamples() {
         panSamples.length = 0;
@@ -184,7 +186,15 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return false;
         }
 
-        runtime.world.zoomIn(currentTapPoint);
+        const target = runtime.isViewportAtHomeZoomLevel({ tolerance: DOUBLE_TAP_HOME_ZOOM_TOLERANCE })
+          ? runtime.getHomeTarget({ cover: true })
+          : runtime.getHomeTarget();
+        runtime.transitionManager.goToRegion(target, {
+          transition: {
+            duration: DOUBLE_TAP_TRANSITION_DURATION_MS,
+            easing: easingFunctions.easeInOutQuad,
+          },
+        });
         lastTapAt = 0;
         lastTapPoint = undefined;
         return true;

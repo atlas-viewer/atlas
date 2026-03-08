@@ -1,7 +1,7 @@
-import { Runtime } from '../../renderer/runtime';
-import { distance } from '../../utils';
-import { BaseObject } from '../../objects/base-object';
 import { supportedEventMap } from '../../events';
+import type { BaseObject } from '../../objects/base-object';
+import type { Runtime } from '../../renderer/runtime';
+import { distance } from '../../utils';
 
 export type BrowserEventManagerOptions = {
   /** Default 50ms **/
@@ -123,7 +123,7 @@ export class BrowserEventManager {
 
     this.onPointerEvent(e);
   };
-  
+
   onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
     const ev = 'onContextMenu';
@@ -154,7 +154,7 @@ export class BrowserEventManager {
       this.assignToEvent(e, atlasTouches[0].x, atlasTouches[0].y);
     }
 
-    if (type !== 'onTouchEnd') {
+    if (type !== 'onTouchEnd' && type !== 'onTouchCancel') {
       this.pointerEventState.lastTouches = atlasTouches;
       (e as any).atlasTouches = atlasTouches;
       this.runtime.world.propagateTouchEvent(type, e as any, atlasTouches);
@@ -166,8 +166,8 @@ export class BrowserEventManager {
   };
 
   onPointerEvent = (e: PointerEvent | MouseEvent) => {
-    if(e.button === 2){
-        return;
+    if (e.button === 2) {
+      return;
     }
     const ev = (supportedEventMap as any)[e.type as any];
     if (ev && this.runtime.world.activatedEvents.indexOf(ev) !== -1) {
@@ -178,8 +178,8 @@ export class BrowserEventManager {
   };
 
   onPointerDown = (e: PointerEvent | MouseEvent) => {
-    if(e.button === 2){
-        return;
+    if (e.button === 2) {
+      return;
     }
     this.pointerEventState.isPressed = true;
     this.pointerEventState.isClicking = true;
@@ -211,8 +211,8 @@ export class BrowserEventManager {
   };
 
   onPointerUp = (e: PointerEvent | MouseEvent) => {
-    if(e.button === 2){
-        return;
+    if (e.button === 2) {
+      return;
     }
     if (this.pointerEventState.isClicking) {
       const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
@@ -289,7 +289,10 @@ export class BrowserEventManager {
     if (
       this.pointerEventState.isPressed &&
       !this.pointerEventState.isDragging &&
-      distance(this.pointerEventState.mouseDownStart, { x: e.clientX, y: e.clientY }) > 50
+      distance(this.pointerEventState.mouseDownStart, {
+        x: e.clientX,
+        y: e.clientY,
+      }) > 50
     ) {
       const dragStart = this.runtime.viewerToWorld(
         this.pointerEventState.mouseDownStart.x - this.bounds.left,

@@ -54,19 +54,6 @@ function getReadyRenderer(renderer: unknown): AtlasReadyRenderer {
 
 const NAVIGATOR_HOME_TOLERANCE = 1;
 
-function isProjectionWithinTolerance(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-  tolerance = NAVIGATOR_HOME_TOLERANCE
-): boolean {
-  return (
-    Math.abs(a.x - b.x) <= tolerance &&
-    Math.abs(a.y - b.y) <= tolerance &&
-    Math.abs(a.width - b.width) <= tolerance &&
-    Math.abs(a.height - b.height) <= tolerance
-  );
-}
-
 export type AtlasProps = {
   debug?: boolean;
   mode?: ViewerMode;
@@ -710,14 +697,7 @@ export const Atlas: React.FC<
   );
 
   const shouldHideNavigatorAtHome = useCallback(
-    (runtime: Runtime) => {
-      const viewport = runtime.getViewport();
-      const homeTarget = runtime.getHomeTarget({
-        cover: !!homeCover,
-        paddingPx: homePaddingPx,
-      });
-      return isProjectionWithinTolerance(viewport, homeTarget);
-    },
+    (runtime: Runtime) => runtime.isViewportAtHome({ cover: !!homeCover, tolerance: NAVIGATOR_HOME_TOLERANCE }),
     [homeCover, homePaddingPx]
   );
 
@@ -1216,6 +1196,7 @@ export const Atlas: React.FC<
       ref={ref}
       className={[
         'atlas',
+        `atlas-interaction-${interactionMode}`,
         hideInlineStyle ? '' : `atlas-width-${widthClassName}`,
         containerClassName,
         className,
@@ -1318,6 +1299,8 @@ export const Atlas: React.FC<
         .atlas { position: relative; display: flex; background: ${background}; z-index: var(--atlas-z-index, 10); -webkit-touch-callout: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
         .atlas-width-${widthClassName} { width: ${restProps.width}px; height: ${restProps.height}px; }
         .atlas-canvas { flex: 1 1 0px; }
+        .atlas-interaction-pdf-scroll-zone .atlas-canvas,
+        .atlas-interaction-pdf-scroll-zone .atlas-static-container { touch-action: none; }
         .atlas-parity-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
         .atlas-canvas:focus, .atlas-static-container:focus { outline: none }
         .atlas-canvas:focus-visible, .atlas-canvas-container:focus-visible { outline: var(--atlas-focus, 2px solid darkorange) }

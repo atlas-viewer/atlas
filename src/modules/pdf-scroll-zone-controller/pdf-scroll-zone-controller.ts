@@ -6,19 +6,31 @@ import { type PopmotionControllerConfig, popmotionController } from '../popmotio
 
 type ScrollViewport = { x: number; y: number; width: number; height: number };
 type ControllerMode = 'scroll-mode' | 'zone-active';
+type WorldPoint = { x: number; y: number };
 
 export type PdfScrollZoneControllerConfig = PopmotionControllerConfig & {
   scrollWheelFactor?: number;
   scrollLoadAheadFactor?: number;
   clickDragThresholdPx?: number;
+  touchScrollMomentumStrength?: number;
+  touchScrollMomentumMinStartPxPerMs?: number;
 };
 
 const defaultConfig: Required<
-  Pick<PdfScrollZoneControllerConfig, 'scrollWheelFactor' | 'scrollLoadAheadFactor' | 'clickDragThresholdPx'>
+  Pick<
+    PdfScrollZoneControllerConfig,
+    | 'scrollWheelFactor'
+    | 'scrollLoadAheadFactor'
+    | 'clickDragThresholdPx'
+    | 'touchScrollMomentumStrength'
+    | 'touchScrollMomentumMinStartPxPerMs'
+  >
 > = {
   scrollWheelFactor: 1,
   scrollLoadAheadFactor: 1,
   clickDragThresholdPx: 6,
+  touchScrollMomentumStrength: 1.4,
+  touchScrollMomentumMinStartPxPerMs: 0.04,
 };
 const ZONE_VIEWPORT_HEIGHT_RATIO = 0.9;
 const ZONE_VIEWPORT_VERTICAL_PADDING_RATIO = (1 - ZONE_VIEWPORT_HEIGHT_RATIO) / 2;
@@ -55,6 +67,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         scrollWheelFactor,
         scrollLoadAheadFactor,
         clickDragThresholdPx,
+        touchScrollMomentumStrength,
+        touchScrollMomentumMinStartPxPerMs,
         enablePanMomentum = true,
         panMomentumStrength = 1,
         panTimeConstant = 325,
@@ -92,6 +106,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       let dragStartViewportY = 0;
       let pointerDownClientX = 0;
       let pointerDownClientY = 0;
+      let activeTouchId: number | null = null;
+      let isTouchTapCandidate = false;
+      let lastTouchPoint: WorldPoint | null = null;
       let suppressNextClick = false;
       let isDragging = false;
       let scrollViewY = 0;
@@ -165,7 +182,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         }
         return dy / dt;
       };
-      const maybeStartScrollMomentum = () => {
+      const maybeStartScrollMomentum = ({
+        strengthMultiplier = 1,
+        minStartPxPerMs = SCROLL_MOMENTUM_MIN_START_PX_PER_MS,
+      }: {
+        strengthMultiplier?: number;
+        minStartPxPerMs?: number;
+      } = {}) => {
         if (!enablePanMomentum || panSamples.length < 2) {
           return false;
         }
@@ -174,9 +197,9 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return false;
         }
         const strength = Math.max(0, panMomentumStrength);
-        const vy = releaseVelocityY * strength;
+        const vy = releaseVelocityY * strength * Math.max(0, strengthMultiplier);
         const speedPxPerMs = Math.abs(vy) * runtime.getScaleFactor();
-        if (speedPxPerMs < SCROLL_MOMENTUM_MIN_START_PX_PER_MS) {
+        if (speedPxPerMs < minStartPxPerMs) {
           return false;
         }
         momentum.active = true;
@@ -546,31 +569,114 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         restoreScrollViewport();
       };
 
-      const onClick = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
+      const beginScrollDrag = (clientX: number, clientY: number) => {
+        stopScrollMomentum();
+        clearPanSamples();
+        initialHomeAnchorLocked = true;
+        isDragging = true;
+        suppressNextClick = false;
+        pointerDownClientX = clientX;
+        pointerDownClientY = clientY;
+        dragStartClientY = clientY;
+        dragStartViewportY = scrollViewY;
+        recordPanSample(scrollViewY);
+      };
+
+      const updateScrollDrag = (clientX: number, clientY: number) => {
+        if (!isDragging) {
+          return false;
+        }
+        const movedPx = Math.hypot(clientX - pointerDownClientX, clientY - pointerDownClientY);
+        if (movedPx > clickDragThresholdPx) {
+          suppressNextClick = true;
+        }
+        const deltaPx = clientY - dragStartClientY;
+        const deltaWorld = deltaPx / Math.max(0.0001, runtime.getScaleFactor());
+        applyScrollViewport(dragStartViewportY - deltaWorld);
+        recordPanSample(scrollViewY);
+        return true;
+      };
+
+      const endScrollDrag = ({
+        allowMomentum = true,
+        momentumStrengthMultiplier = 1,
+        momentumMinStartPxPerMs = SCROLL_MOMENTUM_MIN_START_PX_PER_MS,
+      }: {
+        allowMomentum?: boolean;
+        momentumStrengthMultiplier?: number;
+        momentumMinStartPxPerMs?: number;
+      } = {}) => {
+        const releasedDrag = isDragging;
+        const tapSuppressed = suppressNextClick;
+        isDragging = false;
+        suppressNextClick = false;
+
+        if (!releasedDrag) {
+          clearPanSamples();
+          return {
+            releasedDrag: false,
+            tapSuppressed,
+          };
+        }
+
+        if (allowMomentum && mode === 'scroll-mode' && !exitTransitionInFlight) {
+          maybeStartScrollMomentum({
+            strengthMultiplier: momentumStrengthMultiplier,
+            minStartPxPerMs: momentumMinStartPxPerMs,
+          });
+        } else {
+          stopScrollMomentum();
+        }
+        clearPanSamples();
+        return {
+          releasedDrag: true,
+          tapSuppressed,
+        };
+      };
+
+      const cancelScrollDrag = () => {
+        isDragging = false;
+        suppressNextClick = false;
+        clearPanSamples();
+        stopScrollMomentum();
+      };
+
+      const clearTouchTapCandidate = () => {
+        activeTouchId = null;
+        isTouchTapCandidate = false;
+        lastTouchPoint = null;
+        suppressNextClick = false;
+      };
+
+      const handleTapAtPoint = (point: WorldPoint) => {
         if (!isActiveSession()) {
           return;
         }
         syncRuntimeModeToController();
-        if (suppressNextClick) {
-          return;
-        }
-        if (!e.atlas) {
-          return;
-        }
-        if (exitTransitionInFlight) {
+        if (suppressNextClick || exitTransitionInFlight) {
           return;
         }
         if (mode === 'scroll-mode') {
-          const zone = findZoneAtPoint(e.atlas.x, e.atlas.y);
+          const zone = findZoneAtPoint(point.x, point.y);
           if (zone) {
             enterZone(zone.id);
           }
           return;
         }
         const activeZone = runtime.world.getActiveZone();
-        if (!activeZone || !pointInZone(activeZone, e.atlas.x, e.atlas.y)) {
+        if (!activeZone || !pointInZone(activeZone, point.x, point.y)) {
           exitZone();
         }
+      };
+
+      const onClick = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
+        if (!isActiveSession()) {
+          return;
+        }
+        if (!e.atlas) {
+          return;
+        }
+        handleTapAtPoint(e.atlas);
       };
 
       const onWheel = (e: WheelEvent) => {
@@ -602,17 +708,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         if (mode !== 'scroll-mode' || exitTransitionInFlight || !e.atlas) {
           return;
         }
-        stopScrollMomentum();
-        clearPanSamples();
-        initialHomeAnchorLocked = true;
         e.stopPropagation();
-        isDragging = true;
-        suppressNextClick = false;
-        pointerDownClientX = typeof e.clientX === 'number' ? e.clientX : 0;
-        pointerDownClientY = typeof e.clientY === 'number' ? e.clientY : 0;
-        dragStartClientY = e.clientY;
-        dragStartViewportY = scrollViewY;
-        recordPanSample(scrollViewY);
+        beginScrollDrag(typeof e.clientX === 'number' ? e.clientX : 0, e.clientY);
       };
 
       const onMouseMove = (e: MouseEvent & { atlas: { x: number; y: number } }) => {
@@ -624,37 +721,172 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
           return;
         }
         e.stopPropagation();
-        if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
-          const movedPx = Math.hypot(e.clientX - pointerDownClientX, e.clientY - pointerDownClientY);
-          if (movedPx > clickDragThresholdPx) {
-            suppressNextClick = true;
-          }
-        }
-        const deltaPx = e.clientY - dragStartClientY;
-        const deltaWorld = deltaPx / Math.max(0.0001, runtime.getScaleFactor());
-        applyScrollViewport(dragStartViewportY - deltaWorld);
-        recordPanSample(scrollViewY);
+        updateScrollDrag(typeof e.clientX === 'number' ? e.clientX : 0, e.clientY);
       };
 
       const onMouseUp = () => {
         if (!isActiveSession()) {
           return;
         }
-        const releasedDrag = isDragging;
-        isDragging = false;
-        suppressNextClick = false;
+        endScrollDrag();
+      };
 
-        if (!releasedDrag) {
-          clearPanSamples();
+      const onTouchStart = (
+        e: TouchEvent & {
+          atlasTouches?: Array<{ id: number; x: number; y: number }>;
+        }
+      ) => {
+        if (!isActiveSession()) {
           return;
         }
-
-        if (mode === 'scroll-mode' && !exitTransitionInFlight) {
-          maybeStartScrollMomentum();
-        } else {
-          stopScrollMomentum();
+        syncRuntimeModeToController();
+        if (mode === 'zone-active') {
+          if (!e.atlasTouches || e.atlasTouches.length !== 1 || e.touches.length !== 1) {
+            clearTouchTapCandidate();
+            return;
+          }
+          const touch = e.touches[0];
+          const atlasTouch = e.atlasTouches[0];
+          activeTouchId = atlasTouch.id;
+          isTouchTapCandidate = true;
+          suppressNextClick = false;
+          pointerDownClientX = touch.clientX;
+          pointerDownClientY = touch.clientY;
+          lastTouchPoint = { x: atlasTouch.x, y: atlasTouch.y };
+          return;
         }
-        clearPanSamples();
+        if (mode !== 'scroll-mode' || exitTransitionInFlight) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation?.();
+        if (!e.atlasTouches || e.atlasTouches.length !== 1 || e.touches.length !== 1) {
+          clearTouchTapCandidate();
+          cancelScrollDrag();
+          return;
+        }
+        const touch = e.touches[0];
+        const atlasTouch = e.atlasTouches[0];
+        activeTouchId = atlasTouch.id;
+        isTouchTapCandidate = true;
+        lastTouchPoint = { x: atlasTouch.x, y: atlasTouch.y };
+        beginScrollDrag(touch.clientX, touch.clientY);
+      };
+
+      const onTouchMove = (
+        e: TouchEvent & {
+          atlasTouches?: Array<{ id: number; x: number; y: number }>;
+        }
+      ) => {
+        if (!isActiveSession()) {
+          return;
+        }
+        syncRuntimeModeToController();
+        if (mode === 'zone-active') {
+          if (!isTouchTapCandidate) {
+            return;
+          }
+          if (!e.atlasTouches || e.atlasTouches.length !== 1 || e.touches.length !== 1) {
+            clearTouchTapCandidate();
+            return;
+          }
+          const atlasTouch = e.atlasTouches.find((touch) => touch.id === activeTouchId) || e.atlasTouches[0];
+          const touch = Array.from(e.touches).find((entry) => entry.identifier === atlasTouch.id) || e.touches[0];
+          lastTouchPoint = { x: atlasTouch.x, y: atlasTouch.y };
+          if (
+            Math.hypot(touch.clientX - pointerDownClientX, touch.clientY - pointerDownClientY) > clickDragThresholdPx
+          ) {
+            suppressNextClick = true;
+          }
+          return;
+        }
+        if (mode !== 'scroll-mode' || exitTransitionInFlight || !isDragging) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation?.();
+        if (!e.atlasTouches || e.atlasTouches.length !== 1 || e.touches.length !== 1) {
+          clearTouchTapCandidate();
+          cancelScrollDrag();
+          return;
+        }
+        const atlasTouch = e.atlasTouches.find((touch) => touch.id === activeTouchId) || e.atlasTouches[0];
+        const touch = Array.from(e.touches).find((entry) => entry.identifier === atlasTouch.id) || e.touches[0];
+        activeTouchId = atlasTouch.id;
+        lastTouchPoint = { x: atlasTouch.x, y: atlasTouch.y };
+        updateScrollDrag(touch.clientX, touch.clientY);
+      };
+
+      const onTouchEnd = (
+        e: TouchEvent & {
+          atlasTouches?: Array<{ id: number; x: number; y: number }>;
+        }
+      ) => {
+        if (!isActiveSession()) {
+          return;
+        }
+        syncRuntimeModeToController();
+        if (mode === 'zone-active') {
+          const tapPoint = lastTouchPoint;
+          const shouldHandleTap = isTouchTapCandidate && !suppressNextClick && e.touches.length === 0;
+          clearTouchTapCandidate();
+          if (tapPoint && shouldHandleTap) {
+            handleTapAtPoint(tapPoint);
+          }
+          return;
+        }
+        if (mode !== 'scroll-mode') {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation?.();
+        if (e.touches.length > 0) {
+          clearTouchTapCandidate();
+          cancelScrollDrag();
+          return;
+        }
+        const tapPoint = lastTouchPoint;
+        const result = endScrollDrag({
+          momentumStrengthMultiplier: touchScrollMomentumStrength,
+          momentumMinStartPxPerMs: touchScrollMomentumMinStartPxPerMs,
+        });
+        clearTouchTapCandidate();
+        if (tapPoint && !result.tapSuppressed) {
+          handleTapAtPoint(tapPoint);
+        }
+      };
+
+      const onTouchCancel = (e: TouchEvent) => {
+        if (!isActiveSession()) {
+          return;
+        }
+        syncRuntimeModeToController();
+        if (mode === 'zone-active') {
+          clearTouchTapCandidate();
+          return;
+        }
+        if (mode !== 'scroll-mode') {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation?.();
+        clearTouchTapCandidate();
+        cancelScrollDrag();
+      };
+
+      const onWindowTouchEnd = () => {
+        if (!isActiveSession()) {
+          return;
+        }
+        if (mode === 'zone-active') {
+          clearTouchTapCandidate();
+          return;
+        }
+        endScrollDrag({
+          momentumStrengthMultiplier: touchScrollMomentumStrength,
+          momentumMinStartPxPerMs: touchScrollMomentumMinStartPxPerMs,
+        });
+        clearTouchTapCandidate();
       };
 
       const onKeyDown = (e: KeyboardEvent) => {
@@ -671,14 +903,24 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
       ensureEventActivated('onMouseDown');
       ensureEventActivated('onMouseMove');
       ensureEventActivated('onMouseUp');
+      ensureEventActivated('onTouchStart');
+      ensureEventActivated('onTouchMove');
+      ensureEventActivated('onTouchEnd');
+      ensureEventActivated('onTouchCancel');
 
       runtime.world.addEventListener('click', onClick);
       runtime.world.addEventListener('wheel', onWheel);
       runtime.world.addEventListener('mousedown', onMouseDown);
       runtime.world.addEventListener('mousemove', onMouseMove);
       runtime.world.addEventListener('mouseup', onMouseUp);
+      runtime.world.addEventListener('touchstart', onTouchStart);
+      runtime.world.addEventListener('touchmove', onTouchMove);
+      runtime.world.addEventListener('touchend', onTouchEnd);
+      runtime.world.addEventListener('touchcancel', onTouchCancel);
 
       window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('touchend', onWindowTouchEnd);
+      window.addEventListener('touchcancel', onTouchCancel);
       window.addEventListener('keydown', onKeyDown);
 
       runtime.manualHomePosition = true;
@@ -813,7 +1055,13 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         runtime.world.removeEventListener('mousedown', onMouseDown);
         runtime.world.removeEventListener('mousemove', onMouseMove);
         runtime.world.removeEventListener('mouseup', onMouseUp);
+        runtime.world.removeEventListener('touchstart', onTouchStart);
+        runtime.world.removeEventListener('touchmove', onTouchMove);
+        runtime.world.removeEventListener('touchend', onTouchEnd);
+        runtime.world.removeEventListener('touchcancel', onTouchCancel);
         window.removeEventListener('mouseup', onMouseUp);
+        window.removeEventListener('touchend', onWindowTouchEnd);
+        window.removeEventListener('touchcancel', onTouchCancel);
         window.removeEventListener('keydown', onKeyDown);
         if (isActiveSession()) {
           activePdfControllerSessionByRuntime.delete(runtime as object);

@@ -396,6 +396,43 @@ export class Runtime {
     };
   }
 
+  isViewportAtHome(
+    options: {
+      cover?: boolean;
+      tolerance?: number;
+      target?: Projection;
+    } = {}
+  ): boolean {
+    const { cover = false, tolerance = 1, target = this.getViewport() } = options;
+    const homeTarget = this.getHomeTarget({ cover });
+
+    return (
+      Math.abs(target.x - homeTarget.x) <= tolerance &&
+      Math.abs(target.y - homeTarget.y) <= tolerance &&
+      Math.abs(target.width - homeTarget.width) <= tolerance &&
+      Math.abs(target.height - homeTarget.height) <= tolerance
+    );
+  }
+
+  isViewportAtHomeZoomLevel(
+    options: {
+      cover?: boolean;
+      tolerance?: number;
+      target?: Projection;
+    } = {}
+  ): boolean {
+    const { cover = false, tolerance = 0.05, target = this.getViewport() } = options;
+    const homeTarget = this.getHomeTarget({ cover });
+    const targetScale = this.renderer.getScale(target.width, target.height) || this._lastGoodScale;
+    const homeScale = this.renderer.getScale(homeTarget.width, homeTarget.height) || this._lastGoodScale;
+
+    if (homeScale === 0) {
+      return false;
+    }
+
+    return Math.abs(targetScale / homeScale - 1) <= tolerance;
+  }
+
   goHome(
     options: {
       cover?: boolean;
