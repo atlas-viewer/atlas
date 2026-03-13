@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebGLRenderer } from '../../modules/webgl-renderer/webgl-renderer';
+import { CompositeResource } from '../../spacial-content/composite-resource';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
@@ -105,6 +106,57 @@ const defaultHookOptions = {
   },
   enableFilters: false,
 };
+
+function installMockImageFactory() {
+  const originalCreateElement = document.createElement.bind(document);
+  const requestedImages: Array<
+    HTMLImageElement & {
+      triggerLoad: () => void;
+    }
+  > = [];
+
+  vi.spyOn(document, 'createElement').mockImplementation(((tagName: string, options?: any) => {
+    if (tagName.toLowerCase() !== 'img') {
+      return originalCreateElement(tagName as any, options);
+    }
+
+    let src = '';
+    const image = {
+      onload: null,
+      onerror: null,
+      decoding: 'async',
+      crossOrigin: undefined,
+      complete: false,
+      naturalWidth: 0,
+      get src() {
+        return src;
+      },
+      set src(value: string) {
+        src = value;
+        if (value && requestedImages.indexOf(image as any) === -1) {
+          requestedImages.push(image as any);
+        }
+      },
+      triggerLoad() {
+        image.complete = true;
+        image.naturalWidth = 100;
+        if (typeof image.onload === 'function') {
+          image.onload(new Event('load'));
+        }
+      },
+    } as any;
+
+    return image as HTMLImageElement;
+  }) as any);
+
+  return requestedImages;
+}
+
+async function flushMicrotasks(count = 6) {
+  for (let i = 0; i < count; i++) {
+    await Promise.resolve();
+  }
+}
 
 describe('WebGLRenderer fallback events', () => {
   afterEach(() => {
@@ -526,6 +578,105 @@ describe('WebGLRenderer fallback events', () => {
     expect(acquire).toHaveBeenCalledTimes(6);
     expect((renderer as any).loadingCount).toBe(6);
     expect((renderer as any).tileRequestQueue.length).toBe(3);
+  });
+
+  test('keeps composite tile loading alive after a cancelled request is needed again', async () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const requestedImages = installMockImageFactory();
+    const originalFetch = (globalThis as any).fetch;
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    (globalThis as any).fetch = vi.fn(async () => ({
+      ok: true,
+      blob: async () => ({}),
+    }));
+    URL.createObjectURL = vi.fn(() => `blob:${Math.random()}`);
+    URL.revokeObjectURL = vi.fn();
+
+    try {
+      const onFatalImageError = vi.fn();
+      const renderer = new WebGLRenderer(canvas, {
+        dpi: 1,
+        fallbackOnImageLoadError: true,
+        onFatalImageError,
+        imageLoading: {
+          maxAttempts: 1,
+          maxConcurrentRequests: 2,
+          maxPrefetchPerFrame: 0,
+        },
+      });
+      const image = TiledImage.fromTile(
+        'https://example.org/composite-image',
+        { width: 200, height: 100 },
+        { width: 100, height: 100 },
+        1
+      );
+      const composite = new CompositeResource({
+        id: 'composite',
+        width: 200,
+        height: 100,
+        images: [image],
+        renderOptions: {
+          loadingBias: 'data',
+          prefetchRadius: 0,
+        },
+      });
+
+      composite.getAllPointsAt(new Float32Array([1, 0, 0, 200, 100]) as any, undefined, 1);
+      renderer.prepareLayer(image);
+
+      renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+      renderer.paint(image, 0, 0, 0, 100, 100);
+      renderer.afterFrame();
+      await flushMicrotasks();
+
+      const tileKey = `${image.id}::${image.display.scale}::0`;
+      expect(requestedImages.length).toBe(1);
+      expect((renderer as any).inFlightImageLoads.has(tileKey)).toBe(true);
+
+      (renderer as any).requiredTileKeys.clear();
+      (renderer as any).requiredPrefetchTileKeys.clear();
+      (renderer as any).pruneStaleTileWork();
+      await flushMicrotasks();
+
+      expect(image.__host.webgl.tileState[0].state).toBe('idle');
+      expect((renderer as any).inFlightImageLoads.has(tileKey)).toBe(false);
+      expect(onFatalImageError).not.toHaveBeenCalled();
+
+      renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+      renderer.paint(image, 0, 0, 0, 100, 100);
+      renderer.paint(image, 1, 100, 0, 100, 100);
+      renderer.afterFrame();
+      await flushMicrotasks();
+
+      expect(requestedImages.length).toBe(3);
+
+      requestedImages[1].triggerLoad();
+      requestedImages[2].triggerLoad();
+      await flushMicrotasks();
+
+      expect(image.__host.webgl.textures[0]).toBeDefined();
+      expect(image.__host.webgl.textures[1]).toBeDefined();
+      expect(image.__host.webgl.tileState[0].state).toBe('decoded');
+      expect(image.__host.webgl.tileState[1].state).toBe('decoded');
+      expect(onFatalImageError).not.toHaveBeenCalled();
+    } finally {
+      if (typeof originalFetch === 'undefined') {
+        delete (globalThis as any).fetch;
+      } else {
+        (globalThis as any).fetch = originalFetch;
+      }
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    }
   });
 
   test('holds decoded textures until batched reveal frame', () => {
