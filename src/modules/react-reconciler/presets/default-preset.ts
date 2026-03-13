@@ -48,6 +48,7 @@ export function defaultPreset({
   webglFallbackOnImageLoadError,
   webglReadiness,
   navigatorRendererOptions,
+  staging = false,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -155,12 +156,16 @@ export function defaultPreset({
     runtimeOptions
   );
   runtimeRef.current = runtime;
+  if (staging) {
+    runtime.stopControllers();
+  }
 
-  const em = new BrowserEventManager(canvasElement, runtime);
-
-  return {
+  const preset: Preset = {
     name: 'default-preset',
-    em,
+    em: undefined,
+    setInteractivity: () => {
+      // Replaced below after closure initialization.
+    },
     runtime,
     renderer,
     controller,
@@ -177,4 +182,29 @@ export function defaultPreset({
       }
     },
   };
+
+  let em: BrowserEventManager | undefined = staging ? undefined : new BrowserEventManager(canvasElement, runtime);
+  preset.em = em;
+
+  const setInteractivity = (interactive: boolean) => {
+    if (interactive) {
+      runtime.startControllers();
+      if (!em) {
+        em = new BrowserEventManager(canvasElement, runtime);
+        preset.em = em;
+      }
+      em.updateBounds();
+      return;
+    }
+
+    runtime.stopControllers();
+    if (em) {
+      em.stop();
+      em = undefined;
+      preset.em = undefined;
+    }
+  };
+  preset.setInteractivity = setInteractivity;
+
+  return preset;
 }

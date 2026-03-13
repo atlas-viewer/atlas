@@ -2,6 +2,7 @@ export * from '../shared/image-load-events';
 export * from '../shared/image-loading-config';
 export * from '../shared/ready-events';
 export * from './Atlas';
+export * from './atlas-shared';
 // Components
 export * from './components/AtlasAuto';
 export * from './components/AtlasContext';

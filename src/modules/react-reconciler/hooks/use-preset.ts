@@ -20,6 +20,7 @@ export function usePreset(
     webglFallbackOnImageLoadError?: PresetArgs['webglFallbackOnImageLoadError'];
     webglReadiness?: PresetArgs['webglReadiness'];
     runtimeOptions?: PresetArgs['runtimeOptions'];
+    staging?: PresetArgs['staging'];
   }
 ) {
   const overlayRef = useRef<HTMLDivElement>();
@@ -52,11 +53,16 @@ export function usePreset(
     : [renderPreset];
 
   const [preset, setPreset] = useState<Preset | null>(null);
+  const creationStageRef = useRef(options.staging);
 
   useLayoutEffect(() => {
     liveCallbacksRef.current.onWebGLFallback = options.onWebGLFallback;
     liveCallbacksRef.current.onImageError = options.onImageError;
   }, [options.onImageError, options.onWebGLFallback]);
+
+  useLayoutEffect(() => {
+    creationStageRef.current = options.staging;
+  }, [options.staging]);
 
   useLayoutEffect(() => {
     const canvasElement = canvasRef.current;
@@ -91,6 +97,7 @@ export function usePreset(
       webglFallbackOnImageLoadError: options.webglFallbackOnImageLoadError,
       webglReadiness: options.webglReadiness,
       runtimeOptions: options.runtimeOptions,
+      staging: creationStageRef.current,
       ...(presetArgs || {}),
     });
 

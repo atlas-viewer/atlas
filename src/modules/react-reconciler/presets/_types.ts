@@ -13,6 +13,7 @@ export type Preset = {
   renderer: Renderer;
   controller?: RuntimeController;
   em?: BrowserEventManager;
+  setInteractivity?: (interactive: boolean) => void;
 
   // Lifecycle.
   ready?: boolean;
@@ -31,7 +32,7 @@ export type PresetArgs = {
   forceRefresh: () => void;
   controllerConfig?: any;
   interactionMode?: 'popmotion' | 'pdf-scroll-zone';
-  runtimeOptions?: RuntimeOptions;
+  runtimeOptions?: Partial<RuntimeOptions>;
   containerElement?: HTMLDivElement;
   canvasElement?: HTMLCanvasElement;
   parityCanvasElement?: HTMLCanvasElement;
@@ -42,4 +43,5 @@ export type PresetArgs = {
   imageLoading?: Partial<ImageLoadingConfig>;
   webglFallbackOnImageLoadError?: boolean;
   webglReadiness?: 'first-meaningful-paint' | 'immediate';
+  staging?: boolean;
 };

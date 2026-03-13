@@ -10,12 +10,13 @@ import { ModeContext } from './use-mode';
 import { Preset } from '../presets/_types';
 import { usePreset } from './use-preset';
 import { useIsomorphicLayoutEffect } from '../utility/react';
+import type { AtlasOnCreated } from '../atlas-shared';
 
 type AtlasProps = {
   width: number;
   height: number;
   mode?: ViewerMode;
-  onCreated?: (ctx: Preset) => void | Promise<void>;
+  onCreated?: AtlasOnCreated;
   containerRef?: { current?: HTMLElement };
   cover?: boolean;
   resetWorldOnChange?: boolean;

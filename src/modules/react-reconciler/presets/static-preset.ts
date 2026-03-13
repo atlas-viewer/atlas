@@ -25,6 +25,7 @@ export function staticPreset({
   overlayElement,
   controllerConfig,
   interactionMode = 'popmotion',
+  staging = false,
 }: PresetArgs & StaticPresetOptions): Preset {
   if (!containerElement) {
     throw new Error('Invalid container');
@@ -59,12 +60,16 @@ export function staticPreset({
     : staticRenderer;
 
   const runtime = new Runtime(renderer, new World(1024, 1024), viewport, controller ? [controller] : []);
+  if (staging) {
+    runtime.stopControllers();
+  }
 
-  const em = new BrowserEventManager(containerElement, runtime);
-
-  return {
+  const preset: Preset = {
     name: 'static-preset',
-    em,
+    em: undefined,
+    setInteractivity: () => {
+      // Replaced below after closure initialization.
+    },
     runtime,
     renderer,
     controller,
@@ -79,4 +84,29 @@ export function staticPreset({
       }
     },
   };
+
+  let em: BrowserEventManager | undefined = staging ? undefined : new BrowserEventManager(containerElement, runtime);
+  preset.em = em;
+
+  const setInteractivity = (nextInteractive: boolean) => {
+    if (nextInteractive) {
+      runtime.startControllers();
+      if (!em) {
+        em = new BrowserEventManager(containerElement, runtime);
+        preset.em = em;
+      }
+      em.updateBounds();
+      return;
+    }
+
+    runtime.stopControllers();
+    if (em) {
+      em.stop();
+      em = undefined;
+      preset.em = undefined;
+    }
+  };
+  preset.setInteractivity = setInteractivity;
+
+  return preset;
 }
