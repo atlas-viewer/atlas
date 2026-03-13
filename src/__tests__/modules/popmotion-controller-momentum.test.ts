@@ -309,6 +309,7 @@ describe('popmotion controller pan momentum', () => {
     });
 
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 50 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 70, clientY: 50 }));
 
     expect(harness.runtime.target[1]).not.toBe(0);
 
