@@ -92,6 +92,10 @@ export class BrowserEventManager {
     e.atlas = BrowserEventManager.eventPool.atlas;
   }
 
+  isHoldToHomeIntentActive() {
+    return this.element.dataset.intent === 'hold-home';
+  }
+
   activateEvents() {
     this.listening = true;
     this.element.addEventListener('pointermove', this._realPointerMove);
@@ -192,6 +196,9 @@ export class BrowserEventManager {
     }, 250);
     setTimeout(() => {
       if (this.runtime && this.pointerEventState.isPressed && !this.pointerEventState.isDragging) {
+        if (this.isHoldToHomeIntentActive()) {
+          return;
+        }
         const dragStart = this.runtime.viewerToWorld(
           this.pointerEventState.mouseDownStart.x - this.bounds.left,
           this.pointerEventState.mouseDownStart.y - this.bounds.top
@@ -289,6 +296,7 @@ export class BrowserEventManager {
     if (
       this.pointerEventState.isPressed &&
       !this.pointerEventState.isDragging &&
+      !this.isHoldToHomeIntentActive() &&
       distance(this.pointerEventState.mouseDownStart, {
         x: e.clientX,
         y: e.clientY,

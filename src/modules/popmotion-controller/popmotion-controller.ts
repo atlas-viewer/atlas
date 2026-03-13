@@ -34,11 +34,15 @@ export type PopmotionControllerConfig = {
   devicePixelRatio?: number;
   enableWheel?: boolean;
   enableClickToZoom?: boolean;
+  enableDoubleClickZoom?: boolean;
   enableDoubleTapZoom?: boolean;
+  enableHoldToHome?: boolean;
   ignoreSingleFingerTouch?: boolean;
   enablePanOnWait?: boolean;
   requireMetaKeyForWheelZoom?: boolean;
   wheelInExploreModeOnly?: boolean;
+  holdToHomeDelayMs?: number;
+  holdToHomeMoveTolerancePx?: number;
   panOnWaitDelay?: number;
   parentElement?: HTMLElement | null;
   onPanInSketchMode?: () => void;
@@ -67,12 +71,16 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   devicePixelRatio: 1,
   // Flags
   enableWheel: true,
-  enableClickToZoom: true,
+  enableClickToZoom: false,
+  enableDoubleClickZoom: true,
   enableDoubleTapZoom: true,
+  enableHoldToHome: true,
   ignoreSingleFingerTouch: false,
   enablePanOnWait: false,
   requireMetaKeyForWheelZoom: false,
   wheelInExploreModeOnly: false,
+  holdToHomeDelayMs: 1000,
+  holdToHomeMoveTolerancePx: 12,
   panOnWaitDelay: 40,
   onPanInSketchMode: () => {
     // no-op
@@ -87,13 +95,17 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         zoomWheelConstant,
         enableWheel,
         enableClickToZoom,
+        enableDoubleClickZoom,
         enableDoubleTapZoom,
+        enableHoldToHome,
         ignoreSingleFingerTouch,
         enablePanOnWait,
         panOnWaitDelay,
         parentElement,
         requireMetaKeyForWheelZoom,
         wheelInExploreModeOnly,
+        holdToHomeDelayMs,
+        holdToHomeMoveTolerancePx,
         enablePanMomentum,
         panMomentumStrength,
         panBounceStiffness,
@@ -125,6 +137,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       let lastTapAt = 0;
       let lastTapPoint: { x: number; y: number } | undefined;
       let currentTapPoint: { x: number; y: number } | undefined;
+      let lastMouseClickAt = 0;
+      let lastMouseClickPoint: { x: number; y: number } | undefined;
+      let holdToHomeTimer: number | null = null;
+      let holdToHomePending = false;
+      let holdToHomeConsumed = false;
+      let holdToHomeClientX = 0;
+      let holdToHomeClientY = 0;
       const MIN_MOMENTUM_SPEED_PX_PER_MS = 0.08;
       const MOMENTUM_STOP_SPEED_PX_PER_MS = 0.02;
       const MOMENTUM_SAMPLE_WINDOW_MS = 80;
@@ -161,6 +180,114 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       function clearGestureState() {
         lastGestureTarget = null;
         lastGestureOrigin = undefined;
+      }
+
+      function clearMouseClickState() {
+        lastMouseClickAt = 0;
+        lastMouseClickPoint = undefined;
+      }
+
+      function clearHoldToHomeIntent() {
+        if (holdToHomePending || holdToHomeConsumed) {
+          setDataAttribute(undefined);
+        }
+      }
+
+      function clearHoldToHomeTimer() {
+        if (holdToHomeTimer !== null) {
+          window.clearTimeout(holdToHomeTimer);
+          holdToHomeTimer = null;
+        }
+      }
+
+      function resetHoldToHomeState() {
+        clearHoldToHomeTimer();
+        clearHoldToHomeIntent();
+        holdToHomePending = false;
+        holdToHomeConsumed = false;
+      }
+
+      function maybeHandleDoubleClick(point?: { x: number; y: number }) {
+        if (!enableDoubleClickZoom || runtime.mode !== 'explore' || state.hasMovedSincePress || !point) {
+          clearMouseClickState();
+          return false;
+        }
+
+        const now = performance.now();
+        const isDoubleClick =
+          lastMouseClickPoint &&
+          lastMouseClickAt > 0 &&
+          now - lastMouseClickAt <= DOUBLE_TAP_INTERVAL_MS &&
+          distance(lastMouseClickPoint, point) <= DOUBLE_TAP_DISTANCE_PX;
+
+        lastMouseClickAt = now;
+        lastMouseClickPoint = { ...point };
+
+        if (!isDoubleClick) {
+          return false;
+        }
+
+        runtime.world.zoomIn(point);
+        clearMouseClickState();
+        return true;
+      }
+
+      function armHoldToHome(clientX: number, clientY: number) {
+        if (!enableHoldToHome || runtime.mode !== 'explore') {
+          holdToHomeConsumed = false;
+          return;
+        }
+
+        clearHoldToHomeTimer();
+        holdToHomePending = true;
+        holdToHomeConsumed = false;
+        holdToHomeClientX = clientX;
+        holdToHomeClientY = clientY;
+        setDataAttribute('hold-home');
+
+        holdToHomeTimer = window.setTimeout(() => {
+          holdToHomeTimer = null;
+          if (!holdToHomePending || runtime.mode !== 'explore' || !state.isPressing) {
+            resetHoldToHomeState();
+            return;
+          }
+
+          holdToHomePending = false;
+          holdToHomeConsumed = true;
+          stopPanMomentum();
+          clearPanSamples();
+          clearGestureState();
+          runtime.transitionManager.stopTransition();
+          state.isPressing = false;
+          state.hasMovedSincePress = false;
+          clearMouseClickState();
+          intent = '';
+          touchStartTime = 0;
+          currentTapPoint = undefined;
+          setDataAttribute('hold-home');
+          setDataAttribute(undefined, 'notice');
+          runtime.world.goHome();
+        }, holdToHomeDelayMs);
+      }
+
+      function shouldSuppressPanForHoldToHome(clientX: number, clientY: number) {
+        if (holdToHomeConsumed) {
+          return true;
+        }
+        if (!holdToHomePending) {
+          return false;
+        }
+        if (runtime.mode !== 'explore') {
+          resetHoldToHomeState();
+          return false;
+        }
+        if (Math.hypot(clientX - holdToHomeClientX, clientY - holdToHomeClientY) <= holdToHomeMoveTolerancePx) {
+          return true;
+        }
+        clearHoldToHomeTimer();
+        clearHoldToHomeIntent();
+        holdToHomePending = false;
+        return false;
       }
 
       function maybeHandleDoubleTap() {
@@ -270,6 +397,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function releasePointer() {
+        if (holdToHomePending || holdToHomeConsumed) {
+          resetHoldToHomeState();
+        }
         if (!state.isPressing) {
           clearGestureState();
           resetState();
@@ -341,6 +471,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onMouseUp() {
+        if (holdToHomePending || holdToHomeConsumed) {
+          resetHoldToHomeState();
+        }
         releasePointer();
       }
 
@@ -367,6 +500,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       function onMouseDown(e: MouseEvent & { atlas: { x: number; y: number } }) {
         if (e.which > 1) {
+          resetHoldToHomeState();
           state.isPressing = false;
           return;
         }
@@ -382,10 +516,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.transitionManager.stopTransition();
 
           state.isPressing = true;
+          armHoldToHome(typeof e.clientX === 'number' ? e.clientX : 0, typeof e.clientY === 'number' ? e.clientY : 0);
         }
       }
 
       function onWindowMouseUp() {
+        if (holdToHomePending || holdToHomeConsumed) {
+          resetHoldToHomeState();
+        }
         releasePointer();
       }
 
@@ -541,7 +679,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onMouseMove(e: MouseEvent | PointerEvent) {
+        if (runtime.mode !== 'explore' && (holdToHomePending || holdToHomeConsumed)) {
+          resetHoldToHomeState();
+        }
         if (state.isPressing) {
+          if (shouldSuppressPanForHoldToHome(e.clientX, e.clientY)) {
+            return;
+          }
           const bounds = runtime.getRendererScreenPosition();
           if (bounds) {
             const { x, y } = runtime.viewerToWorld(e.clientX - bounds.x, e.clientY - bounds.y);
@@ -561,14 +705,32 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onClick(e: MouseEvent & { atlas: { x: number; y: number } }) {
+        if (holdToHomeConsumed || state.hasMovedSincePress) {
+          clearMouseClickState();
+          return;
+        }
         if (runtime.mode === 'explore') {
-          runtime.world.zoomIn(e.atlas);
+          if (maybeHandleDoubleClick(e.atlas)) {
+            return;
+          }
+          if (enableDoubleClickZoom) {
+            return;
+          }
+          if (enableClickToZoom) {
+            runtime.world.zoomIn(e.atlas);
+          }
+        } else {
+          clearMouseClickState();
         }
       }
 
       function onWheel(e: WheelEvent & { atlas: { x: number; y: number } }) {
         if (wheelInExploreModeOnly && runtime.mode !== 'explore') {
+          clearMouseClickState();
           return;
+        }
+        if (holdToHomePending || holdToHomeConsumed) {
+          resetHoldToHomeState();
         }
         stopPanMomentum();
         const normalized = normalizeWheel(e);
@@ -607,7 +769,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         parentElement.addEventListener('touchmove', onTouchMove as any);
       }
 
-      if (enableClickToZoom) {
+      if (enableClickToZoom || enableDoubleClickZoom) {
         runtime.world.activatedEvents.push('onClick');
         runtime.world.addEventListener('click', onClick);
       }
@@ -626,6 +788,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       // Layout subscriber - move more into here.
       const removeLayout = runtime.world.addLayoutSubscriber((type, data?: any) => {
+        if ((holdToHomePending || holdToHomeConsumed) && runtime.mode !== 'explore') {
+          resetHoldToHomeState();
+        }
         if (type === 'zone-changed') {
           stopPanMomentum();
           // Avoid overriding an in-flight zone-fit transition (e.g. goToZone).
@@ -675,6 +840,9 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       });
 
       const removeMomentumHook = runtime.registerHook('useFrame', (delta: number) => {
+        if ((holdToHomePending || holdToHomeConsumed) && runtime.mode !== 'explore') {
+          resetHoldToHomeState();
+        }
         if (!momentum.active) {
           return;
         }
@@ -735,6 +903,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
       return () => {
         stopPanMomentum();
+        resetHoldToHomeState();
         runtime.world.removeEventListener('mouseup', onMouseUp);
         runtime.world.removeEventListener('touchend', onTouchEnd);
         runtime.world.removeEventListener('touchcancel', onTouchCancel);
@@ -752,7 +921,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             capture: true,
           });
         }
-        if (enableClickToZoom) {
+        if (enableClickToZoom || enableDoubleClickZoom) {
           runtime.world.removeEventListener('click', onClick);
         }
 
