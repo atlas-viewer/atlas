@@ -607,6 +607,9 @@ describe('WebGLRenderer fallback events', () => {
         promise: third.promise,
       }));
 
+    for (const update of composite.getScheduledUpdates(new Float32Array([1, 0, 0, 200, 100]) as any, 1)) {
+      update();
+    }
     composite.getAllPointsAt(new Float32Array([1, 0, 0, 200, 100]) as any, undefined, 1);
     renderer.prepareLayer(image);
 
