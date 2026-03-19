@@ -54,6 +54,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     SRC_ALPHA: 21,
     ONE_MINUS_SRC_ALPHA: 22,
     SCISSOR_TEST: 23,
+    ONE: 24,
     canvas,
     createShader: vi.fn(() => ({})),
     shaderSource: vi.fn(),
@@ -80,6 +81,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     enable: vi.fn(),
     disable: vi.fn(),
     blendFunc: vi.fn(),
+    blendFuncSeparate: vi.fn(),
     enableVertexAttribArray: vi.fn(),
     vertexAttribPointer: vi.fn(),
     uniform2f: vi.fn(),
@@ -279,6 +281,26 @@ describe('WebGLRenderer fallback events', () => {
     });
 
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.resolution, 120, 80);
+  });
+
+  test('uses separate alpha blending so tile fades do not leak atlas background', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    new WebGLRenderer(canvas, { dpi: 1 });
+
+    expect(gl.blendFuncSeparate).toHaveBeenCalledWith(
+      gl.SRC_ALPHA,
+      gl.ONE_MINUS_SRC_ALPHA,
+      gl.ONE,
+      gl.ONE_MINUS_SRC_ALPHA
+    );
   });
 
   test('keeps pending update while tile alpha fade is in progress', () => {
