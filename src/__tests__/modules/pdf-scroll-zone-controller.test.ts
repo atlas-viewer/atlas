@@ -13,6 +13,11 @@ import type { Paint } from '../../world-objects/paint';
 import { WorldObject } from '../../world-objects/world-object';
 import { Zone } from '../../world-objects/zone';
 
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
 class MockRenderer implements Renderer {
   constructor(private readonly scale = 1) {}
   beforeFrame(): void {}
@@ -507,6 +512,26 @@ describe('pdf scroll zone controller', () => {
     expect(runtime.mode).toBe('explore');
     expect(runtime.world.getActiveZone()?.id).toBe('page-1');
     expect(after).not.toEqual(before);
+  });
+
+  test('pdf scroll-zone keeps click entry while ignoring popmotion double-click and hold-home defaults', () => {
+    vi.useFakeTimers();
+    const runtime = createRuntimeWithPdfController();
+    const zoomInSpy = vi.spyOn(runtime.world, 'zoomIn');
+    const goHomeSpy = vi.spyOn(runtime.world, 'goHome');
+
+    emitClick(runtime, 100, 100);
+    emitClick(runtime, 100, 100);
+
+    expect(runtime.world.getActiveZone()?.id).toBe('page-1');
+    expect(zoomInSpy).not.toHaveBeenCalled();
+
+    emitMouseDown(runtime, 100, 100, 200, 100);
+    vi.advanceTimersByTime(1000);
+    emitMouseUp(runtime);
+
+    expect(goHomeSpy).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   test('exits zone on background click and restores pre-focus viewport', () => {

@@ -229,7 +229,12 @@ export class WebGLRenderer implements Renderer {
     this.gl.useProgram(this.program);
     this.gl.enableVertexAttribArray(this.attributes.position);
     this.gl.enable(this.gl.BLEND);
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    this.gl.blendFuncSeparate(
+      this.gl.SRC_ALPHA,
+      this.gl.ONE_MINUS_SRC_ALPHA,
+      this.gl.ONE,
+      this.gl.ONE_MINUS_SRC_ALPHA
+    );
 
     if (this.isImmediateReadiness()) {
       this.firstMeaningfulPaint = true;

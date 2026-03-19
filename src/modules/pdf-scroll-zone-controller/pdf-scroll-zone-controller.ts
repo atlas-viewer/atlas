@@ -131,6 +131,8 @@ export const pdfScrollZoneController = (config: PdfScrollZoneControllerConfig = 
         // Scroll-mode wheel is guarded via wheelInExploreModeOnly + controller mode sync.
         enableWheel: true,
         enableClickToZoom: false,
+        enableDoubleClickZoom: false,
+        enableHoldToHome: false,
         wheelInExploreModeOnly: true,
       });
 

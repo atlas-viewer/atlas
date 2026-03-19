@@ -12,6 +12,8 @@ export function isImageRequestCancelledError(error: unknown): error is ImageRequ
   return error instanceof ImageRequestCancelledError;
 }
 
+type RequestAbortReason = 'release' | 'timeout';
+
 type AcquireResult = {
   requestKey: string;
   promise: Promise<HTMLImageElement>;
@@ -28,6 +30,7 @@ type RequestEntry = {
   settled: boolean;
   cancelled: boolean;
   silentCancellation: boolean;
+  abortReason?: RequestAbortReason;
 };
 
 export type ImageRequestPoolOptions = {
@@ -48,6 +51,30 @@ function createTimeoutError(url: string): Error {
   return new Error(`Image load timeout: ${url}`);
 }
 
+function createAbortError(url: string): Error {
+  const error = new Error(`Image request aborted: ${url}`);
+  error.name = 'AbortError';
+  return error;
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  if (isImageRequestCancelledError(error)) {
+    return true;
+  }
+
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const name = 'name' in error ? (error as { name?: unknown }).name : undefined;
+  if (name === 'AbortError' || name === 'CanceledError') {
+    return true;
+  }
+
+  const message = 'message' in error ? (error as { message?: unknown }).message : undefined;
+  return typeof message === 'string' && /(aborted|abort|cancelled|canceled)/i.test(message);
+}
+
 function loadDomImage(url: string, options: { timeoutMs: number; crossOrigin?: 'anonymous' | 'use-credentials' }) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const image = document.createElement('img');
@@ -57,15 +84,21 @@ function loadDomImage(url: string, options: { timeoutMs: number; crossOrigin?: '
   }
 
   let settled = false;
+  let rejectPromise: ((reason?: unknown) => void) | undefined;
+
+  const cleanup = (clearSrc = false) => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    image.onload = null;
+    image.onerror = null;
+    if (clearSrc) {
+      image.src = '';
+    }
+  };
 
   const promise = new Promise<HTMLImageElement>((resolve, reject) => {
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      image.onload = null;
-      image.onerror = null;
-    };
+    rejectPromise = reject;
 
     image.onload = () => {
       if (settled) {
@@ -108,12 +141,10 @@ function loadDomImage(url: string, options: { timeoutMs: number; crossOrigin?: '
       return;
     }
     settled = true;
-    if (timeout) {
-      clearTimeout(timeout);
+    cleanup(true);
+    if (rejectPromise) {
+      rejectPromise(createAbortError(url));
     }
-    image.onload = null;
-    image.onerror = null;
-    image.src = '';
   };
 
   return { promise, abort };
@@ -158,22 +189,26 @@ export class ImageRequestPool {
         settled: false,
         cancelled: false,
         silentCancellation: true,
+        abortReason: undefined,
       };
 
       entry.promise = this.createRequest(entry)
         .then((image) => {
           entry!.settled = true;
+          entry!.abortReason = undefined;
           this.cache.set(url, image);
           return image;
         })
         .catch((error) => {
           entry!.settled = true;
-          if (entry!.cancelled) {
-            throw new ImageRequestCancelledError('Image request cancelled', entry!.silentCancellation);
-          }
-          throw error;
+          throw this.normalizeRequestError(entry!, error);
         })
         .finally(() => {
+          if (entry) {
+            entry.abortController = undefined;
+            entry.abortDomImage = undefined;
+            entry.abortReason = undefined;
+          }
           if (entry && entry.consumers.size === 0) {
             this.inFlight.delete(url);
           }
@@ -221,6 +256,9 @@ export class ImageRequestPool {
 
     if (!entry.settled) {
       entry.cancelled = true;
+      if (!entry.abortReason) {
+        entry.abortReason = 'release';
+      }
       if (entry.abortController) {
         entry.abortController.abort();
       }
@@ -251,11 +289,27 @@ export class ImageRequestPool {
     }
   }
 
+  private normalizeRequestError(entry: RequestEntry, error: unknown): unknown {
+    if (entry.abortReason === 'timeout') {
+      return isAbortLikeError(error) ? createTimeoutError(entry.url) : error;
+    }
+
+    if (entry.abortReason === 'release' || entry.cancelled || isAbortLikeError(error)) {
+      return new ImageRequestCancelledError('Image request cancelled', entry.silentCancellation);
+    }
+
+    return error;
+  }
+
   private async createRequest(entry: RequestEntry): Promise<HTMLImageElement> {
     if (this.useFetch) {
       const abortController = new AbortController();
       entry.abortController = abortController;
       const timeout = setTimeout(() => {
+        if (entry.abortReason === 'release' || entry.settled) {
+          return;
+        }
+        entry.abortReason = 'timeout';
         abortController.abort(createTimeoutError(entry.url));
       }, this.timeoutMs);
       try {
