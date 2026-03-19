@@ -45,7 +45,7 @@ export const AtlasAuto: React.FC<
             display: var(--atlas-container-display, block);
             flex: var(--atlas-container-flex, none);
             width: var(--atlas-container-width, ${toPx(width ?? '100%')});
-            height: var(--atlas-container-height, ${toPx(height ? height : aspectRatio ? bounds.height : 512)})
+            height: var(--atlas-container-height, ${toPx(height ? height : bounds.height)})
           }`,
     [aspectRatio, autoClassName, bounds.height, height, width]
   );
