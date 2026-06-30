@@ -36,7 +36,7 @@ export const AtlasAuto: React.FC<
 
   const autoClassName = useMemo(() => `atlas-auto-${autoId.replace(/[^a-zA-Z0-9_-]/g, '')}`, [autoId]);
   const combinedClassName = useMemo(
-    () => [autoClassName, containerProps.className].filter(Boolean).join(' ').trim(),
+    () => ['atlas-container', autoClassName, containerProps.className].filter(Boolean).join(' ').trim(),
     [autoClassName, containerProps.className]
   );
   const inlineStyle = useMemo(
