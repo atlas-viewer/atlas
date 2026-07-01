@@ -60,6 +60,7 @@ export const HTMLPortal: React.FC<
       }
     }
     async function renderHost() {
+      const box = boxRef.current;
       if (box && box.__host) {
         const toRender = props.relative ? <div ref={ref as any}>{children as any}</div> : (children as any);
 
