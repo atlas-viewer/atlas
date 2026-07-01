@@ -1128,7 +1128,7 @@ export class CanvasRenderer implements Renderer {
 
         // border-box is the default: target dimensions include the border.
         // content-box: target dimensions are the content area; border expands outward.
-        const isBorderBox = style.boxSizing !== 'content-box';
+        const isBorderBox = (style as any).boxSizing !== 'content-box';
 
         let bw = 0;
         if (typeof style.borderWidth !== 'undefined') {
