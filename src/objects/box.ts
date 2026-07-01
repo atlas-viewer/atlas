@@ -4,8 +4,9 @@ import { SpacialContent } from '../spacial-content/spacial-content';
 import { Paint } from '../world-objects/paint';
 import { nanoid } from 'nanoid';
 
-const borderRegex = /([0-9]+(px|em)\s+)+(solid)\s+(.*)/g;
-const borderRegexCache: any = {};
+// Use non-global regex to avoid stateful lastIndex issues with the /g flag.
+const borderRegex = /([0-9]+(px|em)\s+)+(solid)\s+(.*)/;
+const borderRegexCache: Record<string, RegExpExecArray> = {};
 
 export type BoxProps = {
   id: string;
@@ -50,6 +51,17 @@ type _BoxStyle = Partial<{
   outlineOffset: string;
   outlineStyle: string; // 'solid' only
 
+  /**
+   * Controls how the border width is accounted for relative to the target
+   * dimensions.
+   *
+   * - `'border-box'` (default): the target width/height include the border.
+   *   The border is drawn inset, the fill covers the interior.
+   * - `'content-box'`: the target width/height define the content area.
+   *   The border is drawn outside the content rect, expanding the painted area.
+   */
+  boxSizing: 'border-box' | 'content-box';
+
   // Parsed.
   border: string;
   outline: string;
@@ -62,7 +74,7 @@ type _BoxStyle = Partial<{
   //borderRadius: string; // maybe? Future?
 }>;
 
-const styleProps: Array<keyof BoxStyle> = [
+const styleProps: Array<keyof _BoxStyle> = [
   'backgroundColor',
   'opacity',
   'boxShadow',
@@ -73,29 +85,18 @@ const styleProps: Array<keyof BoxStyle> = [
   'outlineWidth',
   'outlineOffset',
   'outlineStyle',
+  'boxSizing',
 ];
 
-// const mapping = [
-//     // Common
-//     ['opacity', 'globalAlpha'],
-//     ['transform', ['translate', 'scale', 'rotate']],
-//
-//     // Fill rect
-//     [
-//       'backgroundColor',
-//       ['fillStyle', 'createLinearGradient', 'createRadialGradient', 'createConicGradient', 'createPattern'],
-//     ],
-//     ['boxShadow', ['shadowOffsetX', 'shadowOffsetY', 'shadowBlur', 'shadowColor']],
-//
-//     // Stroke rect
-//     ['outline', 'same-as-below'],
-//     [
-//       'borderColor',
-//       ['strokeStyle', 'createLinearGradient', 'createRadialGradient', 'createConicGradient', 'createPattern'],
-//     ],
-//     ['borderWidth', 'strokeWidth'],
-//     ['borderStyle', ['setLineDash', 'lineDashOffset']],
-//   ];
+function parseBorderString(value: string): RegExpExecArray | null {
+  if (borderRegexCache[value]) return borderRegexCache[value];
+  const match = borderRegex.exec(value);
+  if (match) {
+    borderRegexCache[value] = match;
+    return match;
+  }
+  return null;
+}
 
 export class Box extends BaseObject<BoxProps> implements SpacialContent {
   id: string;
@@ -112,6 +113,12 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     height: -1,
     points: dna(5),
   };
+
+  // Imperative translation/size offsets applied outside of React's render pipeline.
+  _imperativeTranslateX = 0;
+  _imperativeTranslateY = 0;
+  _imperativeDeltaWidth = 0;
+  _imperativeDeltaHeight = 0;
 
   _parsed: { border: { id: string | null; match: string[] }; outline: { id: string | null; match: string[] } } = {
     border: { id: null, match: [] },
@@ -168,6 +175,52 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     this.__revision++;
   };
 
+  /**
+   * Imperatively translate the box by (dx, dy) relative to its current
+   * React-managed position. Additive — each call accumulates. Triggers a
+   * repaint without going through React's render pipeline.
+   */
+  translate(dx: number, dy: number): void {
+    this._imperativeTranslateX += dx;
+    this._imperativeTranslateY += dy;
+    if (this.points) {
+      this.points[1] += dx;
+      this.points[2] += dy;
+      this.points[3] += dx;
+      this.points[4] += dy;
+    }
+    this.__revision++;
+  }
+
+  /**
+   * Imperatively add (dw, dh) to the box's React-managed size. Additive —
+   * each call accumulates on top of prior imperative resizes. Triggers a
+   * repaint without going through React's render pipeline.
+   */
+  resize(dw: number, dh: number): void {
+    this._imperativeDeltaWidth += dw;
+    this._imperativeDeltaHeight += dh;
+    if (this.points) {
+      this.points[3] += dw;
+      this.points[4] += dh;
+    }
+    this.__revision++;
+  }
+
+  /**
+   * Clear any imperative size offsets accumulated via `resize()`, restoring
+   * the box to its React-managed dimensions. Does NOT affect translation.
+   */
+  clearSize(): void {
+    if (this.points && (this._imperativeDeltaWidth !== 0 || this._imperativeDeltaHeight !== 0)) {
+      this.points[3] -= this._imperativeDeltaWidth;
+      this.points[4] -= this._imperativeDeltaHeight;
+    }
+    this._imperativeDeltaWidth = 0;
+    this._imperativeDeltaHeight = 0;
+    this.__revision++;
+  }
+
   applyProps(props: Partial<BoxProps> = {}) {
     let didUpdate = false;
 
@@ -176,85 +229,106 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
       this.props.interactive = props.interactive;
     }
 
-    if (props.style) {
-      // pre-process props.
-      const borderStyle = props.border || props.style.border;
-      if (borderStyle !== this._parsed.border.id) {
-        if (!borderStyle) {
-          this._parsed.border.id = null;
-          this._parsed.border.match = [];
-        } else {
-          const match = borderRegexCache[borderStyle] || borderRegex.exec(borderStyle) || borderRegex.exec(borderStyle);
-          if (match) {
-            this._parsed.border.id = borderStyle;
-            this._parsed.border.match = borderRegexCache[borderStyle] = match;
-          }
+    // Build a resolved style object from scratch each render so removed props
+    // are never silently carried over from the previous render. When props.style
+    // is absent (or undefined) we treat it as an empty object so that any
+    // previously-stored style is fully replaced.
+    const incomingStyle: BoxStyle = props.style ? { ...props.style } : {};
+
+    // --- Border shorthand parsing ---
+    const borderShorthand = props.border || incomingStyle.border;
+    if (borderShorthand !== this._parsed.border.id) {
+      if (!borderShorthand) {
+        this._parsed.border.id = null;
+        this._parsed.border.match = [];
+      } else {
+        const match = parseBorderString(borderShorthand);
+        if (match) {
+          this._parsed.border.id = borderShorthand;
+          this._parsed.border.match = match as unknown as string[];
         }
       }
-      if (this._parsed.border.id) {
-        props.style.borderWidth = this._parsed.border.match[1];
-        props.style.borderStyle = 'solid'; // only support this.
-        props.style.borderColor = this._parsed.border.match[4];
-      }
+    }
 
-      if (props.style.outline !== this._parsed.outline.id) {
-        if (!props.style.outline) {
-          this._parsed.outline.id = null;
-          this._parsed.outline.match = [];
-        } else {
-          const match =
-            borderRegexCache[props.style.outline] ||
-            borderRegex.exec(props.style.outline) ||
-            borderRegex.exec(props.style.outline);
+    if (this._parsed.border.id) {
+      // Expand parsed shorthand into the resolved style.
+      incomingStyle.borderWidth = this._parsed.border.match[1];
+      incomingStyle.borderStyle = 'solid';
+      incomingStyle.borderColor = this._parsed.border.match[4];
+    } else {
+      // Border was removed — ensure the expanded sub-properties are absent.
+      delete incomingStyle.borderWidth;
+      delete incomingStyle.borderStyle;
+      delete incomingStyle.borderColor;
+    }
 
-          if (match) {
-            this._parsed.outline.id = props.style.outline;
-            this._parsed.outline.match = borderRegexCache[props.style.outline] = match;
-          }
+    // --- Outline shorthand parsing ---
+    if (incomingStyle.outline !== this._parsed.outline.id) {
+      if (!incomingStyle.outline) {
+        this._parsed.outline.id = null;
+        this._parsed.outline.match = [];
+      } else {
+        const match = parseBorderString(incomingStyle.outline);
+        if (match) {
+          this._parsed.outline.id = incomingStyle.outline;
+          this._parsed.outline.match = match as unknown as string[];
         }
       }
-      if (this._parsed.outline.id) {
-        props.style.outlineWidth = this._parsed.outline.match[1];
-        props.style.outlineStyle = 'solid'; // only support this.
-        props.style.outlineColor = this._parsed.outline.match[4];
-      }
+    }
 
-      this.props.style = props.style;
-      // BC fix.
-      if (props.backgroundColor && !this.props.style.backgroundColor) {
-        this.props.style.backgroundColor = props.backgroundColor;
+    if (this._parsed.outline.id) {
+      incomingStyle.outlineWidth = this._parsed.outline.match[1];
+      incomingStyle.outlineStyle = 'solid';
+      incomingStyle.outlineColor = this._parsed.outline.match[4];
+    } else {
+      // Outline was removed — ensure the expanded sub-properties are absent.
+      delete incomingStyle.outlineWidth;
+      delete incomingStyle.outlineStyle;
+      delete incomingStyle.outlineColor;
+    }
+
+    // BC fix: legacy top-level backgroundColor / background props.
+    if (props.backgroundColor && !incomingStyle.backgroundColor) {
+      incomingStyle.backgroundColor = props.backgroundColor;
+    }
+    if (incomingStyle.background && !incomingStyle.backgroundColor) {
+      incomingStyle.backgroundColor = incomingStyle.background;
+    }
+
+    // Detect style changes by comparing against the previously stored style.
+    const prevStyle: BoxStyle = this.props.style || {};
+    for (const prop of styleProps) {
+      if ((prevStyle as any)[prop] !== (incomingStyle as any)[prop]) {
         didUpdate = true;
+        break;
       }
-      if (props.style.background && !this.props.style.backgroundColor) {
-        this.props.style.backgroundColor = props.style.background;
-        didUpdate = true;
-      }
+    }
+    // Also check for style being added or removed entirely.
+    if (!!this.props.style !== !!props.style) {
+      didUpdate = true;
+    }
 
-      for (const prop of styleProps) {
-        if (this.props.style[prop] !== props.style[prop]) {
-          didUpdate = true;
-          break;
-        }
-      }
+    // Replace the style wholesale so removed props are not silently kept.
+    this.props.style = incomingStyle as BoxStyle;
 
-      if (props.style[':hover'] !== this.props.hoverStyles) {
-        this.props.hoverStyles = props.style[':hover'];
-        if (!this.hoverEvents) {
-          this.hoverEvents = true;
-          this.addEventListener('pointerenter', this.addHover);
-          this.addEventListener('pointerleave', this.removeHover);
-        }
-        didUpdate = true;
+    // Hover / active pseudo-styles.
+    if (incomingStyle[':hover'] !== this.props.hoverStyles) {
+      this.props.hoverStyles = incomingStyle[':hover'];
+      if (!this.hoverEvents) {
+        this.hoverEvents = true;
+        this.addEventListener('pointerenter', this.addHover);
+        this.addEventListener('pointerleave', this.removeHover);
       }
-      if (props.style[':active'] !== this.props.pressStyles) {
-        this.props.pressStyles = props.style[':active'];
-        if (!this.activeEvents) {
-          this.activeEvents = true;
-          this.addEventListener('mousedown', this.addPress);
-          this.addEventListener('mouseup', this.removePress);
-        }
-        didUpdate = true;
+      didUpdate = true;
+    }
+    if (incomingStyle[':active'] !== this.props.pressStyles) {
+      this.props.pressStyles = incomingStyle[':active'];
+      if (!this.activeEvents) {
+        this.activeEvents = true;
+        this.addEventListener('mousedown', this.addPress);
+        this.addEventListener('mouseup', this.removePress);
       }
+      didUpdate = true;
     }
 
     if (props.href !== this.props.href) {
@@ -302,22 +376,24 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     }
 
     if (props.target) {
+      // Resolve the React-managed position, then re-apply any imperative offsets
+      // so they are preserved across React re-renders.
+      const targetX = (props.target.x ?? 0) + this._imperativeTranslateX;
+      const targetY = (props.target.y ?? 0) + this._imperativeTranslateY;
+      const targetW = props.target.width + this._imperativeDeltaWidth;
+      const targetH = props.target.height + this._imperativeDeltaHeight;
+
       if (
-        props.target.width !== this.display.width ||
-        props.target.height !== this.display.height ||
-        props.target.x !== this.points[1] ||
-        props.target.y !== this.points[2]
+        targetW !== this.display.width ||
+        targetH !== this.display.height ||
+        targetX !== this.points[1] ||
+        targetY !== this.points[2]
       ) {
         didUpdate = true;
-        this.points = DnaFactory.singleBox(props.target.width, props.target.height, props.target.x, props.target.y);
-        this.display.points = DnaFactory.singleBox(
-          props.target.width,
-          props.target.height,
-          props.target.x,
-          props.target.y
-        );
-        this.display.width = props.target.width;
-        this.display.height = props.target.height;
+        this.points = DnaFactory.singleBox(targetW, targetH, targetX, targetY);
+        this.display.points = DnaFactory.singleBox(targetW, targetH, targetX, targetY);
+        this.display.width = targetW;
+        this.display.height = targetH;
       }
     }
 
