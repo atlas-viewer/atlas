@@ -129,6 +129,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       const MOMENTUM_STOP_SPEED_PX_PER_MS = 0.02;
       const MOMENTUM_SAMPLE_WINDOW_MS = 80;
       const MOMENTUM_SAMPLE_MAX_AGE_MS = 140;
+      // If the pointer hasn't moved for this long before release, treat it as a
+      // deliberate placement rather than a flick and don't start momentum.
+      const MOMENTUM_REST_TIMEOUT_MS = 60;
+      // Minimum travel (in screen px) across the velocity window required to
+      // start momentum. Prevents tiny/noisy movements from flinging the view.
+      const MIN_MOMENTUM_TRAVEL_PX = 5;
       const DOUBLE_TAP_INTERVAL_MS = 350;
       const DOUBLE_TAP_DISTANCE_PX = 100;
       const MAX_TAP_DURATION_MS = 250;
@@ -229,7 +235,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         if (panSamples.length < 2) {
           return null;
         }
+        const now = performance.now();
         const last = panSamples[panSamples.length - 1];
+        // The pointer came to rest before release (samples are only recorded on
+        // movement), so there's no real velocity to carry - don't fling.
+        if (now - last.t > MOMENTUM_REST_TIMEOUT_MS) {
+          return null;
+        }
         let first = panSamples[0];
         for (let i = panSamples.length - 2; i >= 0; i--) {
           first = panSamples[i];
@@ -239,6 +251,13 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
         const dt = last.t - first.t;
         if (dt <= 0) {
+          return null;
+        }
+        // Ignore tiny movements. A short window can otherwise turn a couple of
+        // pixels of noisy movement into a high (distance / small-time) velocity
+        // that launches an outsized, jittery glide.
+        const travelPx = Math.hypot(last.x - first.x, last.y - first.y) * runtime.getScaleFactor();
+        if (travelPx < MIN_MOMENTUM_TRAVEL_PX) {
           return null;
         }
         return {
