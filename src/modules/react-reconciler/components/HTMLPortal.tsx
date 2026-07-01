@@ -4,15 +4,6 @@ import { useFrame } from '../hooks/use-frame';
 import { useRuntime } from '../hooks/use-runtime';
 import { renderReactDom } from '../utility/react-dom';
 
-// Flip `globalThis.ATLAS_DEBUG_HTML_PORTAL = true` (e.g. in the browser console)
-// to trace the portal lifecycle. Left off by default so it's silent in prod.
-function portalDebug(...args: any[]) {
-  if (typeof globalThis !== 'undefined' && (globalThis as any).ATLAS_DEBUG_HTML_PORTAL) {
-    // eslint-disable-next-line no-console
-    console.debug('[HTMLPortal]', ...args);
-  }
-}
-
 export const HTMLPortal: React.FC<
   {
     children?: ReactNode;
@@ -99,31 +90,25 @@ export const HTMLPortal: React.FC<
         return;
       }
       if (disposed.current) {
-        portalDebug('renderHost skipped: disposed before render', box.__id);
         return;
       }
       const toRender = props.relative ? <div ref={ref as any}>{children as any}</div> : (children as any);
 
-      portalDebug('renderHost start', box.__id);
       await renderReactDom(box.__host.element, toRender, root);
 
       // The await above yields to the microtask queue; if the component was torn
       // down while we were rendering (and not re-mounted), clean up the root we
       // just created so it doesn't leak.
       if (disposed.current && root.current && !root.current.unmounted) {
-        portalDebug('renderHost disposed during render, unmounting', box.__id);
         const dead = root.current;
         root.current = undefined;
         dead.unmount();
-      } else {
-        portalDebug('renderHost done', box.__id);
       }
     }
 
     if (box && box.__host) {
       renderHost();
     } else if (box) {
-      portalDebug('host not ready, deferring render via __onCreate', box.__id);
       pendingOnCreate.current = renderHost;
       box.__onCreate = renderHost;
     }
@@ -149,7 +134,6 @@ export const HTMLPortal: React.FC<
           const currentRoot = root.current;
           root.current = undefined;
           if (currentRoot) {
-            portalDebug('deferred unmount', box?.__id);
             currentRoot.unmount();
           }
         }, 0);

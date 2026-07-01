@@ -72,7 +72,7 @@ const imageCache = new Map<string, HTMLImageElement>();
 // Hard cap on how long an image fade-in is allowed to run. Beyond this the
 // image is drawn fully opaque regardless of the configured fadeInMs, so a
 // stalled render loop can never leave the viewer showing a blank/faded screen.
-const MAX_FADE_MS = 200;
+const MAX_FADE_MS = 1000;
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
