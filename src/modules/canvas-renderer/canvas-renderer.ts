@@ -50,6 +50,11 @@ export type ImageBuffer = {
   loading: boolean;
 };
 
+// Hard cap on how long an image fade-in is allowed to run. Beyond this the
+// image is drawn fully opaque regardless of the configured fadeInMs, so a
+// stalled render loop can never leave the viewer showing a blank/faded screen.
+const MAX_FADE_MS = 200;
+
 export type TileLoadingState = {
   state: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
   requestedAt?: number;
@@ -198,25 +203,25 @@ export class CanvasRenderer implements Renderer {
 
     this.hostCache = options?.lruCache
       ? new LRUCache<string, HTMLCanvasElement>({
-          maxSize: 1024 * 512 * 512, // 250MB total.
-          dispose: (value, key, reason) => {
-            this.invalidated.push(key);
-            value.width = 0;
-            value.height = 0;
-          },
-          sizeCalculation: (value, key) => {
-            return value.width * value.height;
-          },
-        })
+        maxSize: 1024 * 512 * 512, // 250MB total.
+        dispose: (value, key, reason) => {
+          this.invalidated.push(key);
+          value.width = 0;
+          value.height = 0;
+        },
+        sizeCalculation: (value, key) => {
+          return value.width * value.height;
+        },
+      })
       : ({
-          store: {},
-          get(id: string) {
-            return this.store[id];
-          },
-          set(id: string, value: any) {
-            this.store[id] = value;
-          },
-        } as any);
+        store: {},
+        get(id: string) {
+          return this.store[id];
+        },
+        set(id: string, value: any) {
+          this.store[id] = value;
+        },
+      } as any);
 
     // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
     //   import('stats.js')
@@ -769,6 +774,11 @@ export class CanvasRenderer implements Renderer {
       return 1;
     }
 
+    // Cap the fade duration so a stalled/slow fade can never leave the image
+    // stuck (partially) transparent for long. After MAX_FADE_MS the image is
+    // shown at full opacity regardless of the configured fadeInMs.
+    const fadeMs = Math.min(options.fadeInMs, MAX_FADE_MS);
+
     const now = performance.now();
     let fadeAlpha = 1;
 
@@ -777,13 +787,13 @@ export class CanvasRenderer implements Renderer {
       if (parent && typeof parent.getImageActivatedAt === 'function') {
         const activatedAt = parent.getImageActivatedAt(paint);
         if (typeof activatedAt === 'number') {
-          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / options.fadeInMs)));
+          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / fadeMs)));
         }
       }
     }
 
     if (tileState?.loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
-      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.loadedAt) / options.fadeInMs)));
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.loadedAt) / fadeMs)));
     }
 
     return fadeAlpha;

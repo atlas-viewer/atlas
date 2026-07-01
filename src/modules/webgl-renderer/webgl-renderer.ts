@@ -69,6 +69,11 @@ type ScissorRect = {
 
 const imageCache = new Map<string, HTMLImageElement>();
 
+// Hard cap on how long an image fade-in is allowed to run. Beyond this the
+// image is drawn fully opaque regardless of the configured fadeInMs, so a
+// stalled render loop can never leave the viewer showing a blank/faded screen.
+const MAX_FADE_MS = 200;
+
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
@@ -756,6 +761,11 @@ export class WebGLRenderer implements Renderer {
       return 1;
     }
 
+    // Cap the fade duration so a stalled/slow fade can never leave the image
+    // stuck (partially) transparent for long. After MAX_FADE_MS the image is
+    // shown at full opacity regardless of the configured fadeInMs.
+    const fadeMs = Math.min(options.fadeInMs, MAX_FADE_MS);
+
     const now = performance.now();
     let fadeAlpha = 1;
 
@@ -764,14 +774,14 @@ export class WebGLRenderer implements Renderer {
       if (parent && typeof parent.getImageActivatedAt === 'function') {
         const activatedAt = parent.getImageActivatedAt(paint);
         if (typeof activatedAt === 'number') {
-          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / options.fadeInMs)));
+          fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - activatedAt) / fadeMs)));
         }
       }
     }
 
     const loadedAt = paint.__host?.webgl?.loadedAt?.[index];
     if (loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
-      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - loadedAt) / options.fadeInMs)));
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - loadedAt) / fadeMs)));
     }
 
     return fadeAlpha;
