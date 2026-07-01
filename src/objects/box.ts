@@ -55,10 +55,11 @@ type _BoxStyle = Partial<{
    * Controls how the border width is accounted for relative to the target
    * dimensions.
    *
-   * - `'border-box'` (default): the target width/height include the border.
-   *   The border is drawn inset, the fill covers the interior.
-   * - `'content-box'`: the target width/height define the content area.
-   *   The border is drawn outside the content rect, expanding the painted area.
+   * - `'content-box'` (default): the target width/height define the content
+   *   area. The border is drawn outside, expanding the painted area beyond
+   *   the target rect. This matches the pre-existing behaviour.
+   * - `'border-box'`: the target width/height include the border. The border
+   *   is drawn inset and the fill covers only the interior.
    */
   boxSizing: 'border-box' | 'content-box';
 
@@ -133,15 +134,20 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
     title?: string;
     backgroundColor?: string;
     border?: string;
-    interactive?: boolean;
+    interactive: boolean;
     className?: string;
-    relativeSize?: boolean;
-    relativeStyle?: boolean;
-    html?: boolean;
+    relativeSize: boolean;
+    relativeStyle: boolean;
+    html: boolean;
     style?: BoxStyle;
     hoverStyles?: BoxStyle;
     pressStyles?: BoxStyle;
-  } = {};
+  } = {
+      interactive: false,
+      relativeSize: false,
+      relativeStyle: false,
+      html: false,
+    };
 
   constructor() {
     super();
@@ -224,9 +230,9 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
   applyProps(props: Partial<BoxProps> = {}) {
     let didUpdate = false;
 
-    if (props.interactive !== this.props.interactive) {
+    if (!!props.interactive !== !!this.props.interactive) {
       didUpdate = true;
-      this.props.interactive = props.interactive;
+      this.props.interactive = !!props.interactive;
     }
 
     // Build a resolved style object from scratch each render so removed props
@@ -362,16 +368,16 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
       didUpdate = true;
     }
 
-    if (props.relativeSize !== this.props.relativeSize) {
-      this.props.relativeSize = props.relativeSize;
+    if (!!props.relativeSize !== !!this.props.relativeSize) {
+      this.props.relativeSize = !!props.relativeSize;
       didUpdate = true;
     }
-    if (props.relativeStyle !== this.props.relativeStyle) {
-      this.props.relativeStyle = props.relativeStyle;
+    if (!!props.relativeStyle !== !!this.props.relativeStyle) {
+      this.props.relativeStyle = !!props.relativeStyle;
       didUpdate = true;
     }
-    if (props.html !== this.props.html) {
-      this.props.html = props.html;
+    if (!!props.html !== !!this.props.html) {
+      this.props.html = !!props.html;
       didUpdate = true;
     }
 
