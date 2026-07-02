@@ -103,17 +103,21 @@ export function defaultPreset({
   const usingWebGL = baseRenderer instanceof WebGLRenderer;
 
   if (usingWebGL && parityCanvasElement) {
-    parityCanvasRenderer = new CanvasRenderer(parityCanvasElement, {
-      dpi,
-      debug,
-      box: canvasBox,
-      polygon,
-      paintImages: true,
-      shouldPaintImage: (paint, index) => !isWebGLImageFastPathCandidate(paint, index),
-      readiness: 'immediate',
-      imageLoading,
-      onImageError,
-    });
+    try {
+      parityCanvasRenderer = new CanvasRenderer(parityCanvasElement, {
+        dpi,
+        debug,
+        box: canvasBox,
+        polygon,
+        paintImages: true,
+        shouldPaintImage: (paint, index) => !isWebGLImageFastPathCandidate(paint, index),
+        readiness: 'immediate',
+        imageLoading,
+        onImageError,
+      });
+    } catch {
+      parityCanvasRenderer = undefined;
+    }
   }
 
   const shouldRenderBoxesInOverlay = usingWebGL && !parityCanvasRenderer ? true : !canvasBox;
