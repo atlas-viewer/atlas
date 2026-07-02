@@ -50,6 +50,8 @@ export const DefaultStatic: React.FC = () => {
       minZoomFactor: 0.5,
       maxZoomFactor: 3,
       enableClickToZoom: false,
+      enableDoubleClickZoom: false,
+      enableHoldToHome: false,
     });
 
     // Similar to creating HTML elements, we start from the inside and work our way out appending items.
@@ -114,6 +116,8 @@ export const DefaultStaticTiles: React.FC = () => {
         minZoomFactor: 0.5,
         maxZoomFactor: 3,
         enableClickToZoom: false,
+        enableDoubleClickZoom: false,
+        enableHoldToHome: false,
       });
 
       // Similar to creating HTML elements, we start from the inside and work our way out appending items.

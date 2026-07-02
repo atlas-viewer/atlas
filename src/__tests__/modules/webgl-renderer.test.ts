@@ -2,6 +2,8 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebGLRenderer } from '../../modules/webgl-renderer/webgl-renderer';
+import { ImageRequestCancelledError } from '../../modules/shared/image-request-pool';
+import { CompositeResource } from '../../spacial-content/composite-resource';
 import { ImageTexture } from '../../spacial-content/image-texture';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
@@ -52,6 +54,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     SRC_ALPHA: 21,
     ONE_MINUS_SRC_ALPHA: 22,
     SCISSOR_TEST: 23,
+    ONE: 24,
     canvas,
     createShader: vi.fn(() => ({})),
     shaderSource: vi.fn(),
@@ -78,6 +81,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     enable: vi.fn(),
     disable: vi.fn(),
     blendFunc: vi.fn(),
+    blendFuncSeparate: vi.fn(),
     enableVertexAttribArray: vi.fn(),
     vertexAttribPointer: vi.fn(),
     uniform2f: vi.fn(),
@@ -105,6 +109,22 @@ const defaultHookOptions = {
   },
   enableFilters: false,
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flushMicrotasks(count = 6) {
+  for (let i = 0; i < count; i++) {
+    await Promise.resolve();
+  }
+}
 
 describe('WebGLRenderer fallback events', () => {
   afterEach(() => {
@@ -261,6 +281,26 @@ describe('WebGLRenderer fallback events', () => {
     });
 
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.resolution, 120, 80);
+  });
+
+  test('uses separate alpha blending so tile fades do not leak atlas background', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    new WebGLRenderer(canvas, { dpi: 1 });
+
+    expect(gl.blendFuncSeparate).toHaveBeenCalledWith(
+      gl.SRC_ALPHA,
+      gl.ONE_MINUS_SRC_ALPHA,
+      gl.ONE,
+      gl.ONE_MINUS_SRC_ALPHA
+    );
   });
 
   test('keeps pending update while tile alpha fade is in progress', () => {
@@ -526,6 +566,111 @@ describe('WebGLRenderer fallback events', () => {
     expect(acquire).toHaveBeenCalledTimes(6);
     expect((renderer as any).loadingCount).toBe(6);
     expect((renderer as any).tileRequestQueue.length).toBe(3);
+  });
+
+  test('keeps composite tile loading alive after a cancelled request is needed again', async () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const onFatalImageError = vi.fn();
+    const renderer = new WebGLRenderer(canvas, {
+      dpi: 1,
+      fallbackOnImageLoadError: true,
+      onFatalImageError,
+      imageLoading: {
+        maxAttempts: 1,
+        maxConcurrentRequests: 2,
+        maxPrefetchPerFrame: 0,
+      },
+    });
+    const image = TiledImage.fromTile(
+      'https://example.org/composite-image',
+      { width: 200, height: 100 },
+      { width: 100, height: 100 },
+      1
+    );
+    const composite = new CompositeResource({
+      id: 'composite',
+      width: 200,
+      height: 100,
+      images: [image],
+      renderOptions: {
+        loadingBias: 'data',
+        prefetchRadius: 0,
+      },
+    });
+    const first = deferred<HTMLImageElement>();
+    const second = deferred<HTMLImageElement>();
+    const third = deferred<HTMLImageElement>();
+    const releaseFirst = vi.fn(() => {
+      first.reject(new ImageRequestCancelledError());
+    });
+    const acquire = vi
+      .spyOn((renderer as any).imageRequestPool, 'acquire')
+      .mockImplementationOnce(() => ({
+        requestKey: 'first',
+        release: releaseFirst,
+        promise: first.promise,
+      }))
+      .mockImplementationOnce(() => ({
+        requestKey: 'second',
+        release: vi.fn(),
+        promise: second.promise,
+      }))
+      .mockImplementationOnce(() => ({
+        requestKey: 'third',
+        release: vi.fn(),
+        promise: third.promise,
+      }));
+
+    for (const update of composite.getScheduledUpdates(new Float32Array([1, 0, 0, 200, 100]) as any, 1)) {
+      update();
+    }
+    composite.getAllPointsAt(new Float32Array([1, 0, 0, 200, 100]) as any, undefined, 1);
+    renderer.prepareLayer(image);
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.afterFrame();
+    await flushMicrotasks();
+
+    const tileKey = `${image.id}::${image.display.scale}::0`;
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect((renderer as any).inFlightImageLoads.has(tileKey)).toBe(true);
+
+    (renderer as any).requiredTileKeys.clear();
+    (renderer as any).requiredPrefetchTileKeys.clear();
+    (renderer as any).pruneStaleTileWork();
+    await flushMicrotasks();
+
+    expect(releaseFirst).toHaveBeenCalledTimes(1);
+    expect(image.__host.webgl.tileState[0].state).toBe('idle');
+    expect((renderer as any).inFlightImageLoads.has(tileKey)).toBe(false);
+    expect(onFatalImageError).not.toHaveBeenCalled();
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.paint(image, 1, 100, 0, 100, 100);
+    renderer.afterFrame();
+    await flushMicrotasks();
+
+    expect(acquire).toHaveBeenCalledTimes(3);
+
+    second.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    third.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await flushMicrotasks();
+
+    expect(image.__host.webgl.textures[0]).toBeDefined();
+    expect(image.__host.webgl.textures[1]).toBeDefined();
+    expect(image.__host.webgl.tileState[0].state).toBe('decoded');
+    expect(image.__host.webgl.tileState[1].state).toBe('decoded');
+    expect(onFatalImageError).not.toHaveBeenCalled();
   });
 
   test('holds decoded textures until batched reveal frame', () => {
