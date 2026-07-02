@@ -1,7 +1,7 @@
 import { DnaFactory, type Projection } from '@atlas-viewer/dna';
 import type React from 'react';
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import useMeasure from 'react-use-measure';
+import { useMeasure } from '../../utility/use-measure';
 import type { Runtime, RuntimeOptions, ViewerFilters, ViewerMode } from '../../renderer/runtime';
 import {
   getNavigatorVisibleZoneIdSet,

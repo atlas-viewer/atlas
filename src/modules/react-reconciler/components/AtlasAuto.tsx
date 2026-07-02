@@ -1,8 +1,8 @@
 import { Atlas, AtlasProps } from '../Atlas';
 import React, { memo, useEffect, useId, useMemo } from 'react';
-import useMeasure from 'react-use-measure';
 import { Container } from './Container';
 import { toPx } from '../utility/to-px';
+import { useMeasure } from '../../../utility/use-measure';
 
 export const AtlasAuto: React.FC<
   AtlasProps & {

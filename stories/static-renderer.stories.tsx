@@ -12,7 +12,7 @@ import { popmotionController } from '../src/modules/popmotion-controller/popmoti
 import { TiledImage } from '../src/spacial-content/tiled-image';
 import { CompositeResource } from '../src/spacial-content/composite-resource';
 import { useAtlasImage } from '../src/modules/react-reconciler/hooks/use-atlas-image';
-import useMeasure from 'react-use-measure';
+import { useMeasure } from '../src/utility/use-measure';
 import { ImageService } from '../src/modules/react-reconciler/components/ImageService';
 
 export default { title: 'Static renderer' };
