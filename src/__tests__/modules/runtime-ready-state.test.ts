@@ -10,6 +10,7 @@ import { Paint } from '../../world-objects/paint';
 
 class ReadyRenderer implements Renderer {
   ready = false;
+  resetImageFadeState = vi.fn();
   resetReadyState = vi.fn(() => {
     this.ready = false;
   });
@@ -112,6 +113,32 @@ describe('Runtime ready lifecycle', () => {
     expect(state.reason).toBe('runtime-reset');
     expect(state.cycle).toBe(1);
     expect(renderer.resetReadyState).toHaveBeenCalledTimes(1);
+
+    runtime.stop();
+  });
+
+  test('resource transition key resets renderer fade state after initial baseline', () => {
+    const renderer = new ReadyRenderer();
+    const runtime = new Runtime(renderer, new World(100, 100), {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      scale: 1,
+    });
+
+    runtime.setResourceTransitionKey('one');
+    expect(renderer.resetImageFadeState).not.toHaveBeenCalled();
+    expect(renderer.resetReadyState).not.toHaveBeenCalled();
+
+    runtime.setResourceTransitionKey('one');
+    expect(renderer.resetImageFadeState).not.toHaveBeenCalled();
+    expect(renderer.resetReadyState).not.toHaveBeenCalled();
+
+    runtime.setResourceTransitionKey('two');
+    expect(renderer.resetImageFadeState).toHaveBeenCalledTimes(1);
+    expect(renderer.resetReadyState).toHaveBeenCalledTimes(1);
+    expect(runtime.getReadyState().reason).toBe('resource-transition-key-change');
 
     runtime.stop();
   });

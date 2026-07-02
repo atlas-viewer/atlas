@@ -58,6 +58,7 @@ function createMockPreset(options: any) {
     stop: vi.fn(),
     reset: vi.fn(),
     resetReadyState: vi.fn(),
+    setResourceTransitionKey: vi.fn(),
     getReadyState: vi.fn(() => ({
       cycle: 1,
       reason: 'initial',
@@ -122,6 +123,7 @@ describe('Atlas lifecycle runtime behavior', () => {
     if (originalDefaultPreset) {
       presets['default-preset'] = originalDefaultPreset;
     }
+    vi.restoreAllMocks();
   });
 
   test('callback churn and same-value navigator options do not recreate the preset', async () => {
@@ -253,5 +255,45 @@ describe('Atlas lifecycle runtime behavior', () => {
     expect(createdPresets[0].preset.unmount).toHaveBeenCalledTimes(1);
     expect(createdPresets[1].options.runtimeOptions).toEqual(runtimeOptions);
     expect(createdPresets[1].runtime.setOptions).toHaveBeenCalledWith(runtimeOptions);
+  });
+
+  test('forwards resourceTransitionKey to the runtime', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const createdPresets: MockPresetRecord[] = [];
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      if (record.preset.canvas) {
+        record.preset.canvas.width = 300;
+        record.preset.canvas.height = 200;
+      }
+      createdPresets.push(record);
+      return record.preset as any;
+    }) as any;
+
+    await act(async () => {
+      root.render(
+        <Atlas width={300} height={200} unstable_noReconciler resourceTransitionKey="one">
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+    });
+
+    expect(createdPresets[0].runtime.setResourceTransitionKey).toHaveBeenLastCalledWith('one');
+
+    await act(async () => {
+      root.render(
+        <Atlas width={300} height={200} unstable_noReconciler resourceTransitionKey="two">
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+    });
+
+    expect(createdPresets[0].runtime.setResourceTransitionKey).toHaveBeenLastCalledWith('two');
   });
 });

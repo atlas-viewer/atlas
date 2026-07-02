@@ -826,6 +826,89 @@ describe('WebGLRenderer fallback events', () => {
     expect(alphaArg).toBe(1);
   });
 
+  test('resetImageFadeState re-arms fade for already decoded visible textures', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1, readiness: 'immediate' });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'reset-webgl-fade',
+      uri: 'https://example.com/reset-webgl-fade.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+        fadeInMs: 1000,
+      },
+      isImageActive: () => true,
+    } as any;
+
+    renderer.prepareLayer(image);
+    image.__host.webgl.textures[0] = {};
+    image.__host.webgl.loadedAt[0] = performance.now() - 5000;
+    image.__host.webgl.tileState[0] = {
+      state: 'decoded',
+      skipFade: true,
+    };
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.resetImageFadeState();
+
+    expect(image.__host.webgl.tileState[0].skipFade).toBe(false);
+    expect(image.__host.webgl.loadedAt[0]).toBeGreaterThan(performance.now() - 100);
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('starts texture fade timing on first visible draw instead of decode time', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn((type) => {
+      if (type === 'webgl2') {
+        return gl;
+      }
+      return null as any;
+    });
+
+    const renderer = new WebGLRenderer(canvas, { dpi: 1, readiness: 'immediate' });
+    const image = new SingleImage();
+    image.applyProps({
+      id: 'visible-webgl-fade-start',
+      uri: 'https://example.com/visible-webgl-fade-start.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+      style: { opacity: 1 },
+    } as any);
+    image.__parent = {
+      renderOptions: {
+        layerPolicy: 'fallback-only',
+        fadeInMs: 300,
+      },
+      isImageActive: () => true,
+    } as any;
+
+    renderer.prepareLayer(image);
+    image.__host.webgl.textures[0] = {};
+    image.__host.webgl.loadedAt[0] = performance.now() - 5000;
+    image.__host.webgl.tileState[0] = { state: 'decoded' };
+
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    renderer.paint(image, 0, 0, 0, 100, 100);
+
+    expect(image.__host.webgl.tileState[0].fadeStartedAt).toBeGreaterThan(performance.now() - 100);
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
   test('default readiness waits for first meaningful fast-path paint', () => {
     const canvas = createMockCanvas();
     const gl = createMockGL(canvas);

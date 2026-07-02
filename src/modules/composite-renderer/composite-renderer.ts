@@ -117,4 +117,12 @@ export class CompositeRenderer implements Renderer {
       }
     }
   }
+
+  resetImageFadeState() {
+    for (let i = 0; i < this.length; i++) {
+      if (this.renderers[i].resetImageFadeState) {
+        this.renderers[i].resetImageFadeState();
+      }
+    }
+  }
 }

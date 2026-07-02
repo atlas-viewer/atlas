@@ -64,6 +64,7 @@ export type AtlasProps = {
   onReady?: (event: AtlasReadyEvent) => void;
   onImageError?: (event: AtlasImageLoadErrorEvent) => void;
   readyResetKey?: string | number;
+  resourceTransitionKey?: string | number;
   webglFallbackOnImageLoadError?: boolean;
   // compatibility: webglReadiness?: 'first-meaningful-paint' | 'immediate'
   webglReadiness?: 'first-meaningful-paint' | 'immediate';
@@ -133,6 +134,7 @@ export const Atlas: React.FC<
     onReady,
     onImageError,
     readyResetKey,
+    resourceTransitionKey,
     webglFallbackOnImageLoadError = false,
     webglReadiness,
     imageLoading,
@@ -463,6 +465,12 @@ export const Atlas: React.FC<
       preset.runtime.resetReadyState('ready-reset-key-change');
     }
   }, [preset, readyResetKey]);
+
+  useEffect(() => {
+    if (preset) {
+      preset.runtime.setResourceTransitionKey(resourceTransitionKey);
+    }
+  }, [preset, resourceTransitionKey]);
 
   // This changes the mutable state object with the position (top/left/width/height) of the
   // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing
@@ -1236,7 +1244,6 @@ export const Atlas: React.FC<
           ) : null}
         </>
       )}
-
       <Container
         className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
           .filter(Boolean)
