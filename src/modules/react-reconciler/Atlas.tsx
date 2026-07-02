@@ -1223,6 +1223,7 @@ export const Atlas: React.FC<
       ) : (
         <>
           <canvas
+            key={activeWebGL ? 'webgl-canvas' : 'canvas-canvas'}
             className="atlas-canvas"
             /*@ts-expect-error*/
             part="atlas-canvas"
@@ -1234,6 +1235,7 @@ export const Atlas: React.FC<
           />
           {activeWebGL ? (
             <canvas
+              key="parity-canvas"
               className="atlas-parity-canvas"
               /*@ts-expect-error*/
               part="atlas-parity-canvas"
