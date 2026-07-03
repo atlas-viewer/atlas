@@ -37,6 +37,11 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
         listener('constrain-bounds', { immediate });
       }
     }),
+    goHome: vi.fn((immediate?: boolean, paddingPx?: number) => {
+      for (const listener of layoutListeners) {
+        listener('go-home', { immediate, paddingPx });
+      }
+    }),
     zoomIn: vi.fn(),
     zoomTo: vi.fn(),
   };
@@ -142,6 +147,30 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
   };
 }
 
+function emitClick(
+  harness: ReturnType<typeof createRuntimeHarness>,
+  point: { x: number; y: number }
+) {
+  harness.emitWorld('click', {
+    atlas: point,
+  });
+}
+
+function emitMouseClickCycle(
+  harness: ReturnType<typeof createRuntimeHarness>,
+  point: { x: number; y: number }
+) {
+  harness.emitWorld('mousedown', {
+    which: 1,
+    atlas: point,
+    clientX: point.x,
+    clientY: point.y,
+    preventDefault: vi.fn(),
+  });
+  emitClick(harness, point);
+  harness.emitWorld('mouseup', {});
+}
+
 function dragForMomentum(
   harness: ReturnType<typeof createRuntimeHarness>,
   setNow: (value: number) => void,
@@ -194,7 +223,102 @@ describe('popmotion controller pan momentum', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  test('desktop zoom defaults use double click and hold-to-home', () => {
+    expect(defaultConfig.enableClickToZoom).toBe(false);
+    expect(defaultConfig.enableDoubleClickZoom).toBe(true);
+    expect(defaultConfig.enableHoldToHome).toBe(true);
+  });
+
+  test('single click does not zoom by default', () => {
+    const harness = createRuntimeHarness();
+
+    now = 10;
+    emitMouseClickCycle(harness, { x: 50, y: 50 });
+
+    expect(harness.world.zoomIn).not.toHaveBeenCalled();
+    harness.stop();
+  });
+
+  test('double click zooms in by default', () => {
+    const harness = createRuntimeHarness();
+
+    now = 10;
+    emitMouseClickCycle(harness, { x: 50, y: 50 });
+    now = 120;
+    emitMouseClickCycle(harness, { x: 52, y: 52 });
+
+    expect(harness.world.zoomIn).toHaveBeenCalledTimes(1);
+    expect(harness.world.zoomIn).toHaveBeenCalledWith({ x: 52, y: 52 });
+    harness.stop();
+  });
+
+  test('legacy single-click zoom still works when double click zoom is disabled', () => {
+    const harness = createRuntimeHarness({
+      enableClickToZoom: true,
+      enableDoubleClickZoom: false,
+    });
+
+    now = 10;
+    emitMouseClickCycle(harness, { x: 50, y: 50 });
+
+    expect(harness.world.zoomIn).toHaveBeenCalledTimes(1);
+    expect(harness.world.zoomIn).toHaveBeenCalledWith({ x: 50, y: 50 });
+    harness.stop();
+  });
+
+  test('holding for 1000ms goes home without starting pan or click zoom', () => {
+    vi.useFakeTimers();
+    const harness = createRuntimeHarness({ enablePanMomentum: false });
+
+    harness.emitWorld('mousedown', {
+      which: 1,
+      atlas: { x: 50, y: 50 },
+      clientX: 50,
+      clientY: 50,
+      preventDefault: vi.fn(),
+    });
+
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 54, clientY: 50 }));
+    expect(harness.runtime.target[1]).toBe(0);
+
+    vi.advanceTimersByTime(1000);
+
+    expect(harness.world.goHome).toHaveBeenCalledTimes(1);
+    expect(harness.runtime.transitionManager.goToRegion).toHaveBeenCalledTimes(1);
+    expect(harness.world.zoomIn).not.toHaveBeenCalled();
+
+    harness.emitWorld('mouseup', {});
+    expect(harness.world.constraintBounds).not.toHaveBeenCalled();
+    harness.stop();
+  });
+
+  test('moving beyond hold tolerance cancels hold-to-home and resumes pan', () => {
+    vi.useFakeTimers();
+    const harness = createRuntimeHarness({ enablePanMomentum: false });
+
+    harness.emitWorld('mousedown', {
+      which: 1,
+      atlas: { x: 50, y: 50 },
+      clientX: 50,
+      clientY: 50,
+      preventDefault: vi.fn(),
+    });
+
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 50 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 70, clientY: 50 }));
+
+    expect(harness.runtime.target[1]).not.toBe(0);
+
+    vi.advanceTimersByTime(1000);
+
+    expect(harness.world.goHome).not.toHaveBeenCalled();
+    harness.emitWorld('mouseup', {});
+    expect(harness.world.constraintBounds).toHaveBeenCalledTimes(1);
+    harness.stop();
   });
 
   test('pan momentum is enabled by default', () => {

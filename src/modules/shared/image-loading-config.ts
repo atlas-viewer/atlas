@@ -108,7 +108,7 @@ export function resolveImageLoadingConfig(overrides: ImageLoadingConfigOverrides
     skipFadeIfLoadedWithinMs:
       typeof overrides.skipFadeIfLoadedWithinMs === 'number'
         ? Math.max(0, Math.floor(overrides.skipFadeIfLoadedWithinMs))
-        : 120,
+        : 500,
   };
 }
 

@@ -1,7 +1,7 @@
 import { DnaFactory, type Projection } from '@atlas-viewer/dna';
 import type React from 'react';
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import useMeasure from 'react-use-measure';
+import { useMeasure } from '../../utility/use-measure';
 import type { Runtime, RuntimeOptions, ViewerFilters, ViewerMode } from '../../renderer/runtime';
 import {
   getNavigatorVisibleZoneIdSet,
@@ -64,6 +64,7 @@ export type AtlasProps = {
   onReady?: (event: AtlasReadyEvent) => void;
   onImageError?: (event: AtlasImageLoadErrorEvent) => void;
   readyResetKey?: string | number;
+  resourceTransitionKey?: string | number;
   webglFallbackOnImageLoadError?: boolean;
   // compatibility: webglReadiness?: 'first-meaningful-paint' | 'immediate'
   webglReadiness?: 'first-meaningful-paint' | 'immediate';
@@ -133,6 +134,7 @@ export const Atlas: React.FC<
     onReady,
     onImageError,
     readyResetKey,
+    resourceTransitionKey,
     webglFallbackOnImageLoadError = false,
     webglReadiness,
     imageLoading,
@@ -463,6 +465,12 @@ export const Atlas: React.FC<
       preset.runtime.resetReadyState('ready-reset-key-change');
     }
   }, [preset, readyResetKey]);
+
+  useEffect(() => {
+    if (preset) {
+      preset.runtime.setResourceTransitionKey(resourceTransitionKey);
+    }
+  }, [preset, resourceTransitionKey]);
 
   // This changes the mutable state object with the position (top/left/width/height) of the
   // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing
@@ -1215,6 +1223,7 @@ export const Atlas: React.FC<
       ) : (
         <>
           <canvas
+            key={activeWebGL ? 'webgl-canvas' : 'canvas-canvas'}
             className="atlas-canvas"
             /*@ts-expect-error*/
             part="atlas-canvas"
@@ -1226,6 +1235,7 @@ export const Atlas: React.FC<
           />
           {activeWebGL ? (
             <canvas
+              key="parity-canvas"
               className="atlas-parity-canvas"
               /*@ts-expect-error*/
               part="atlas-parity-canvas"
@@ -1236,7 +1246,6 @@ export const Atlas: React.FC<
           ) : null}
         </>
       )}
-
       <Container
         className={['atlas-overlay', isInteractive ? 'atlas-overlay--interactive' : '']
           .filter(Boolean)

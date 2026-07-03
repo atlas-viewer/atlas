@@ -30,7 +30,7 @@ describe('image loading config', () => {
     expect(config.errorRetryIntervalMs).toBe(30000);
     expect(config.revealDelayFrames).toBe(1);
     expect(config.revealBatchWindowFrames).toBe(1);
-    expect(config.skipFadeIfLoadedWithinMs).toBe(120);
+    expect(config.skipFadeIfLoadedWithinMs).toBe(500);
   });
 
   test('applies slow-network constraints', () => {

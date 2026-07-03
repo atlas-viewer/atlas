@@ -276,6 +276,42 @@ describe('Canvas image loading behavior', () => {
     expect(renderer.pendingUpdate()).toBe(true);
   });
 
+  test('resetImageFadeState re-arms fade for already decoded visible tiles', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('reset-fade');
+    setCompositeState(image, true, { fadeInMs: 1000 });
+
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    buffer.canvases[0] = 'reset-fade-0';
+    buffer.tiles[0] = { state: 'decoded', loadedAt: performance.now() - 5000, skipFade: true };
+    renderer.hostCache.set('reset-fade-0', {} as HTMLCanvasElement);
+
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.resetImageFadeState();
+
+    expect(buffer.tiles[0].skipFade).toBe(false);
+    expect(buffer.tiles[0].loadedAt).toBeGreaterThan(performance.now() - 100);
+    expect(renderer.pendingUpdate()).toBe(true);
+  });
+
+  test('starts fade timing on first visible draw instead of decode time', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('visible-fade-start');
+    setCompositeState(image, true, { fadeInMs: 300 });
+
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    buffer.canvases[0] = 'visible-fade-start-0';
+    buffer.tiles[0] = { state: 'decoded', loadedAt: performance.now() - 5000 };
+    renderer.hostCache.set('visible-fade-start-0', {} as HTMLCanvasElement);
+
+    renderer.paint(image, 0, 0, 0, 100, 100);
+
+    expect(buffer.tiles[0].fadeStartedAt).toBeGreaterThan(performance.now() - 100);
+    expect((renderer as any).hasTilesFading).toBe(true);
+  });
+
   test('fades a newly active layer even when the tile was decoded earlier', () => {
     const { renderer } = createRenderer({ readiness: 'immediate' });
     const image = createImage('active-layer-fade');

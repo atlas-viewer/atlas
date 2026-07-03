@@ -50,15 +50,13 @@ export type ImageBuffer = {
   loading: boolean;
 };
 
-// Hard cap on how long an image fade-in is allowed to run. Beyond this the
-// image is drawn fully opaque regardless of the configured fadeInMs, so a
-// stalled render loop can never leave the viewer showing a blank/faded screen.
-const MAX_FADE_MS = 1000;
+const MAX_WAIT_FOR_MEANINGFUL_PAINT_MS = 500;
 
 export type TileLoadingState = {
   state: 'idle' | 'queued' | 'loading' | 'decoded' | 'error';
   requestedAt?: number;
   loadedAt?: number;
+  fadeStartedAt?: number;
   lastUsedAt?: number;
   url?: string;
   error?: unknown;
@@ -181,6 +179,9 @@ export class CanvasRenderer implements Renderer {
     this.ctx = canvas.getContext('2d', {
       alpha: true,
     }) as CanvasRenderingContext2D;
+    if (!this.ctx) {
+      throw new Error('Canvas 2D context unavailable');
+    }
     this.ctx.imageSmoothingEnabled = true;
     this.options = options || {};
     this.imageLoadingConfig = resolveImageLoadingConfig(this.options.imageLoading);
@@ -774,11 +775,7 @@ export class CanvasRenderer implements Renderer {
       return 1;
     }
 
-    // Cap the fade duration so a stalled/slow fade can never leave the image
-    // stuck (partially) transparent for long. After MAX_FADE_MS the image is
-    // shown at full opacity regardless of the configured fadeInMs.
-    const fadeMs = Math.min(options.fadeInMs, MAX_FADE_MS);
-
+    const fadeMs = options.fadeInMs;
     const now = performance.now();
     let fadeAlpha = 1;
 
@@ -793,7 +790,10 @@ export class CanvasRenderer implements Renderer {
     }
 
     if (tileState?.loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
-      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.loadedAt) / fadeMs)));
+      if (!tileState.fadeStartedAt) {
+        tileState.fadeStartedAt = now;
+      }
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.fadeStartedAt) / fadeMs)));
     }
 
     return fadeAlpha;
@@ -1518,12 +1518,12 @@ export class CanvasRenderer implements Renderer {
       this.options.readiness !== 'immediate' &&
       this.fallbackRevealTimeout === null
     ) {
-      // If its still not ready by 500ms, force it to be.
+      // If it's still not ready after a short wait, reveal what we have and let tile fades begin.
       this.fallbackRevealTimeout = setTimeout(() => {
         this.canvas.style.opacity = '1';
         this.firstMeaningfulPaint = true;
         this.fallbackRevealTimeout = null;
-      }, 500);
+      }, MAX_WAIT_FOR_MEANINGFUL_PAINT_MS);
     }
 
     if (!this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
@@ -1559,6 +1559,34 @@ export class CanvasRenderer implements Renderer {
       clearTimeout(this.fallbackRevealTimeout);
       this.fallbackRevealTimeout = null;
     }
+  }
+
+  resetImageFadeState() {
+    const now = performance.now();
+    for (const paint of this.visible) {
+      if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+        continue;
+      }
+      const imageBuffer = paint.__host?.canvas;
+      const tiles = imageBuffer?.tiles;
+      if (!tiles) {
+        continue;
+      }
+      for (const indexKey of Object.keys(tiles)) {
+        const index = Number(indexKey);
+        const tileState = tiles[index];
+        if (tileState?.state !== 'decoded') {
+          continue;
+        }
+        this.setTileState(imageBuffer, index, {
+          ...tileState,
+          loadedAt: now,
+          fadeStartedAt: undefined,
+          skipFade: false,
+        });
+      }
+    }
+    this.hasTilesFading = true;
   }
 
   reset() {

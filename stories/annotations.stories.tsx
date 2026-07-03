@@ -194,7 +194,6 @@ export const SelectionDemo = () => {
 					<button
 						onClick={() => {
 							setIsImageLoading(true);
-							runtime.current?.resetReadyState();
 							setTileIndex((i) => (i + 1) % staticTiles.length);
 						}}
 					>
@@ -230,18 +229,19 @@ export const SelectionDemo = () => {
 					/>
 					<div style={{ display: "flex" }}>
 						<div style={{ flex: "1 1 0px", minWidth: 0 }}>
-							<div style={{ position: "relative" }}>
+							<div style={{ position: "relative", height: 600 }}>
 								<AtlasAuto
 									devTools
 									unstable_webglRenderer={isWebGL && tileIndex !== 0}
 									key={isWebGL ? "webgl" : "canvas"}
-									readyResetKey={tileIndex}
+									resourceTransitionKey={staticTiles[tileIndex].id}
 									onReady={() => {
 										setIsImageLoading(false);
 									}}
 									onCreated={(rt) => {
 										runtime.current = rt.runtime;
 									}}
+									imageLoading={{ skipFadeIfLoadedWithinMs: 0 }}
 									runtimeOptions={{ maxOverZoom: scale / 100 }}
 									mode={isEditing ? "sketch" : "explore"}
 									renderPreset={renderPreset}
@@ -254,6 +254,7 @@ export const SelectionDemo = () => {
 											key={`tile-${tileIndex}`}
 											{...staticTiles[tileIndex]}
 											rotation={rotation}
+											renderOptions={{ fadeInMs: 300 }}
 										/>
 										{isEditing && !selectedAnnotation ? (
 											<DrawBox onCreate={onCreateNewAnnotation} />

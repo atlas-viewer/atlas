@@ -68,6 +68,8 @@ export class Runtime {
   readyCycle = 0;
   readyReason: AtlasReadyResetReason = 'initial';
   readyTimestamp: number | undefined;
+  resourceTransitionKey: string | number | undefined;
+  private hasResourceTransitionKey = false;
   // Helper getters.
   get x(): number {
     return this.target[1];
@@ -282,6 +284,25 @@ export class Runtime {
 
   setOptions(options: Partial<RuntimeOptions>) {
     this.options = { ...this.options, ...options };
+  }
+
+  setResourceTransitionKey(key: string | number | undefined) {
+    if (!this.hasResourceTransitionKey) {
+      this.hasResourceTransitionKey = true;
+      this.resourceTransitionKey = key;
+      return;
+    }
+    if (this.resourceTransitionKey === key) {
+      return;
+    }
+    this.resourceTransitionKey = key;
+    if (typeof key === 'undefined') {
+      return;
+    }
+    if (this.renderer.resetImageFadeState) {
+      this.renderer.resetImageFadeState();
+    }
+    this.resetReadyState('resource-transition-key-change');
   }
 
   /**

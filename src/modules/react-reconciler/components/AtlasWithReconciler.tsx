@@ -1,5 +1,5 @@
 import React, { type ReactNode, useEffect, useRef } from 'react';
-import type { RectReadOnly } from 'react-use-measure';
+import type { RectReadOnly } from '../../../utility/use-measure';
 import type { ViewerMode } from '../../../renderer/runtime';
 import { ModeContext } from '../hooks/use-mode';
 import type { Preset } from '../presets/_types';

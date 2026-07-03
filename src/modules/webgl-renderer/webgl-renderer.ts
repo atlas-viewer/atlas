@@ -49,6 +49,7 @@ type WebGLTileLoadingState = {
   url?: string;
   requestedAt?: number;
   skipFade?: boolean;
+  fadeStartedAt?: number;
 };
 
 type InFlightTileLoad = {
@@ -68,11 +69,6 @@ type ScissorRect = {
 };
 
 const imageCache = new Map<string, HTMLImageElement>();
-
-// Hard cap on how long an image fade-in is allowed to run. Beyond this the
-// image is drawn fully opaque regardless of the configured fadeInMs, so a
-// stalled render loop can never leave the viewer showing a blank/faded screen.
-const MAX_FADE_MS = 1000;
 
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
@@ -157,6 +153,7 @@ export class WebGLRenderer implements Renderer {
   inFlightImageLoads = new Map<string, InFlightTileLoad>();
   requiredTileKeys = new Set<string>();
   requiredPrefetchTileKeys = new Set<string>();
+  imagePaints = new Set<SingleImage | TiledImage>();
   requestGeneration = 0;
   frameCounter = 0;
   pendingTileReveals = new Map<
@@ -234,7 +231,12 @@ export class WebGLRenderer implements Renderer {
     this.gl.useProgram(this.program);
     this.gl.enableVertexAttribArray(this.attributes.position);
     this.gl.enable(this.gl.BLEND);
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    this.gl.blendFuncSeparate(
+      this.gl.SRC_ALPHA,
+      this.gl.ONE_MINUS_SRC_ALPHA,
+      this.gl.ONE,
+      this.gl.ONE_MINUS_SRC_ALPHA
+    );
 
     if (this.isImmediateReadiness()) {
       this.firstMeaningfulPaint = true;
@@ -428,6 +430,9 @@ export class WebGLRenderer implements Renderer {
       if (paint instanceof ImageTexture) {
         this.createTextureHost(paint);
       }
+    }
+    if (paint instanceof SingleImage || paint instanceof TiledImage) {
+      this.imagePaints.add(paint);
     }
   }
 
@@ -761,11 +766,7 @@ export class WebGLRenderer implements Renderer {
       return 1;
     }
 
-    // Cap the fade duration so a stalled/slow fade can never leave the image
-    // stuck (partially) transparent for long. After MAX_FADE_MS the image is
-    // shown at full opacity regardless of the configured fadeInMs.
-    const fadeMs = Math.min(options.fadeInMs, MAX_FADE_MS);
-
+    const fadeMs = options.fadeInMs;
     const now = performance.now();
     let fadeAlpha = 1;
 
@@ -781,7 +782,11 @@ export class WebGLRenderer implements Renderer {
 
     const loadedAt = paint.__host?.webgl?.loadedAt?.[index];
     if (loadedAt && (isActiveLayer || options.fadeFallbackTiles)) {
-      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - loadedAt) / fadeMs)));
+      const tileState = this.getTileState(paint, index);
+      if (!tileState.fadeStartedAt) {
+        tileState.fadeStartedAt = now;
+      }
+      fadeAlpha = Math.min(fadeAlpha, Math.max(0, Math.min(1, (now - tileState.fadeStartedAt) / fadeMs)));
     }
 
     return fadeAlpha;
@@ -1308,6 +1313,34 @@ export class WebGLRenderer implements Renderer {
     this.firstMeaningfulPaint = false;
   }
 
+  resetImageFadeState() {
+    const now = performance.now();
+    for (const paint of this.imagePaints) {
+      if (!(paint instanceof SingleImage || paint instanceof TiledImage)) {
+        continue;
+      }
+      const host = paint.__host?.webgl;
+      if (!host?.tileState || !host.loadedAt) {
+        continue;
+      }
+      for (const indexKey of Object.keys(host.tileState)) {
+        const index = Number(indexKey);
+        const tileState = this.getTileState(paint, index);
+        if (tileState.state !== 'decoded') {
+          continue;
+        }
+        host.loadedAt[index] = now;
+        this.setTileState(paint, index, {
+          ...tileState,
+          fadeStartedAt: undefined,
+          skipFade: false,
+        });
+      }
+    }
+    this.hasTilesFading = true;
+    this.requiresRepaint = true;
+  }
+
   reset() {
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost as EventListener);
     this.canvas.style.filter = 'none';
@@ -1325,6 +1358,7 @@ export class WebGLRenderer implements Renderer {
     this.requiredTileKeys.clear();
     this.requiredPrefetchTileKeys.clear();
     this.pendingTileReveals.clear();
+    this.imagePaints.clear();
     this.requestGeneration += 1;
     this.frameCounter = 0;
     this.frameSawFastPathCandidate = false;
