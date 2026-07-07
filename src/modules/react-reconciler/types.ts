@@ -1,6 +1,6 @@
 import type React from 'react';
 import type { EventListenerProps } from '../../clean-objects/traits/evented';
-import type { BoxStyle } from '../../objects/box';
+import type { Box, BoxStyle } from '../../objects/box';
 import type { GeometryProps } from '../../objects/geometry';
 import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
 import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
@@ -20,8 +20,11 @@ type ZoneVisibilityProps = {
   onZoneVisibilityChange?: (visible: boolean) => void;
 };
 
+/** The imperative handle exposed via `ref` on a `<box>` element. */
+export type BoxRef = Pick<Box, 'translate' | 'resize' | 'clearSize'>;
+
+// eslint-disable-next-line @typescript-eslint/no-namespace
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
       world: BaseElement & {
