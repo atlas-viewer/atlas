@@ -21,6 +21,10 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./standalone": {
+      "import": "./dist/standalone.js",
+      "require": "./dist/standalone.cjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

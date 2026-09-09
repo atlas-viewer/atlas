@@ -8,6 +8,7 @@ export default defineConfig((options) => ({
   platform: 'browser',
   entry: {
     index: 'src/index.ts',
+    standalone: 'src/standalone.ts',
   },
   minify: !options.watch,
   clean: true,
