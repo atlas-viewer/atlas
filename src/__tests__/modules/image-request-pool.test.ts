@@ -49,6 +49,58 @@ afterEach(() => {
 });
 
 describe('ImageRequestPool', () => {
+  test('can immediately reacquire a cancelled URL without stale cleanup removing the new request', async () => {
+    const pool = new ImageRequestPool({ timeoutMs: 1000 });
+    const firstLoad = deferred<HTMLImageElement>();
+    const secondLoad = deferred<HTMLImageElement>();
+    vi.spyOn(pool as any, 'createRequest').mockReturnValueOnce(firstLoad.promise).mockReturnValueOnce(secondLoad.promise);
+    const first = pool.acquire('https://example.org/same.jpg', 'first');
+    first.release();
+    const second = pool.acquire('https://example.org/same.jpg', 'second');
+    expect(second.requestKey).not.toBe(first.requestKey);
+    firstLoad.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await expect(first.promise).rejects.toBeInstanceOf(ImageRequestCancelledError);
+    expect((pool as any).inFlight.get('https://example.org/same.jpg').requestKey).toBe(second.requestKey);
+    secondLoad.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await second.promise;
+    second.release();
+    expect((pool as any).inFlight.size).toBe(0);
+  });
+
+  test('releases source images after all consumers finish when caching is disabled', async () => {
+    const pool = new ImageRequestPool({ timeoutMs: 1000, cache: false });
+    const createRequest = vi.spyOn(pool as any, 'createRequest').mockImplementation(async () => ({ naturalWidth: 120 }));
+    const a = pool.acquire('https://example.com/a.jpg', 'consumer-a');
+    const firstImage = await a.promise;
+    const b = pool.acquire('https://example.com/a.jpg', 'consumer-b');
+    a.release();
+    await expect(b.promise).resolves.toBe(firstImage);
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    b.release();
+
+    expect((pool as any).inFlight.size).toBe(0);
+    expect((pool as any).knownConsumers.size).toBe(0);
+    const c = pool.acquire('https://example.com/a.jpg', 'consumer-c');
+    expect(await c.promise).not.toBe(firstImage);
+    expect(createRequest).toHaveBeenCalledTimes(2);
+    c.release();
+  });
+
+  test('does not cache an image that finishes loading after cancellation', async () => {
+    const cache = new Map<string, HTMLImageElement>();
+    const pool = new ImageRequestPool({ timeoutMs: 1000, cache });
+    const d = deferred<HTMLImageElement>();
+    vi.spyOn(pool as any, 'createRequest').mockReturnValue(d.promise);
+    const request = pool.acquire('https://example.com/late.jpg', 'consumer-a');
+    pool.cancelAll();
+    d.resolve({ naturalWidth: 120 } as HTMLImageElement);
+
+    await expect(request.promise).rejects.toBeInstanceOf(ImageRequestCancelledError);
+    expect(cache.size).toBe(0);
+    expect((pool as any).inFlight.size).toBe(0);
+    expect((pool as any).knownConsumers.size).toBe(0);
+  });
+
   test('dedupes URL requests across consumers and reuses cache', async () => {
     const pool = new ImageRequestPool({ timeoutMs: 1000 });
     const d = deferred<HTMLImageElement>();
