@@ -54,3 +54,26 @@ runtime.goToZone('page-2', {
 ```
 
 The method returns `true` when the zone exists, otherwise `false`.
+
+## Pausing image loading
+
+`Atlas` and `AtlasAuto` accept two optional props:
+
+```tsx
+<Atlas width={700} height={420} loadWhenVisible idle={paused}>
+  <ImageService id={imageServiceId} width={4093} height={2743} />
+</Atlas>
+```
+
+`loadWhenVisible` uses `IntersectionObserver` to keep offscreen viewers idle, including before their first image
+request. It defaults to `false`; browsers without `IntersectionObserver` retain normal loading behavior.
+`idle={true}` pauses the viewer regardless of visibility. Changing either prop does not remount the viewer.
+Outside React, use `runtime.setIdle(true)` and `runtime.setIdle(false)`.
+
+Idle pauses rendering, prevents new image requests, and cancels pending image loads without treating cancellation
+as an error or consuming retries. Resuming requests the tiles needed for the current viewport. Already loaded
+tiles remain available; unmount viewers to release those canvases. IIIF metadata requests such as `info.json`,
+and requests managed by application components, are not controlled by renderer idle state.
+
+The **Image loading / Idle viewers** stories include 60 viewers, visibility and manual pause controls,
+unmount/remount controls, and live request and tile counts. Use network throttling to inspect cancellation.

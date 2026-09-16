@@ -74,6 +74,7 @@ export function staticPreset({
       unmountComponentAtNode(runtime);
       runtime.stopControllers();
       runtime.stop();
+      runtime.reset();
       if (em) {
         em.stop();
       }

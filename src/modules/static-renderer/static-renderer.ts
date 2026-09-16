@@ -30,6 +30,9 @@ export class StaticRenderer implements Renderer {
   zIndex = 0;
   lastKnownScale = 1;
   rendererPosition: DOMRect;
+  private idle = false;
+  private loadingImages = new Set<HTMLImageElement>();
+  private pausedImages = new Map<HTMLImageElement, string>();
 
   constructor(container: HTMLElement, options?: Partial<StaticRendererOptions>) {
     this.container = container;
@@ -147,18 +150,28 @@ export class StaticRenderer implements Renderer {
     return image;
   }
 
+  private loadImage(image: HTMLImageElement, src: string) {
+    this.loadingImages.add(image);
+    image.onload = image.onerror = () => {
+      this.loadingImages.delete(image);
+      image.onload = image.onerror = null;
+    };
+    image.src = src;
+  }
+
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
+    if (this.idle) return;
     this.zIndex++;
 
     if (paint instanceof SingleImage) {
       if (!paint.__host) {
         const image = this.createImage();
-        image.src = paint.uri;
         paint.__host = image;
         this.container.appendChild(paint.__host);
       }
 
       const element: HTMLImageElement = paint.__host;
+      if (!element.hasAttribute('src')) this.loadImage(element, paint.uri);
       this.currentlyVisible.push(element);
 
       element.style.zIndex = `${this.zIndex}`;
@@ -183,13 +196,12 @@ export class StaticRenderer implements Renderer {
       }
 
       if (!paint.__host.images[index]) {
-        const url = paint.getImageUrl(index);
         const image = this.createImage();
-        image.src = url;
         paint.__host.images[index] = image;
         this.container.appendChild(image);
       }
       const element: HTMLImageElement = paint.__host.images[index];
+      if (!element.hasAttribute('src')) this.loadImage(element, paint.getImageUrl(index));
       element.style.zIndex = `${this.zIndex}`;
       element.style.opacity = `${paint.style.opacity}`;
 
@@ -209,12 +221,37 @@ export class StaticRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
-    return this.pending;
+    return !this.idle && this.pending;
+  }
+
+  setIdle(idle: boolean) {
+    if (this.idle === idle) return;
+    this.idle = idle;
+    if (idle) {
+      for (const image of this.loadingImages) {
+        const src = image.getAttribute('src');
+        if (src && !image.complete) {
+          this.pausedImages.set(image, src);
+          image.onload = image.onerror = null;
+          this.loadingImages.delete(image);
+          image.removeAttribute('src');
+        }
+      }
+    } else {
+      for (const [image, src] of this.pausedImages) this.loadImage(image, src);
+      this.pausedImages.clear();
+      this.pending = true;
+    }
   }
 
   prepareLayer(paint: SpacialContent): void {}
   finishLayer(paint: SpacialContent): void {}
   reset() {
+    this.setIdle(true);
+    for (const image of this.loadingImages) image.onload = image.onerror = null;
+    this.loadingImages.clear();
+    this.pausedImages.clear();
+    this.idle = false;
     this.pending = true;
   }
 }

@@ -65,6 +65,7 @@ export type RuntimeZoneState = {
 export class Runtime {
   id = nanoid();
   ready = false;
+  idle = false;
   readyCycle = 0;
   readyReason: AtlasReadyResetReason = 'initial';
   readyTimestamp: number | undefined;
@@ -1058,6 +1059,15 @@ export class Runtime {
     this.resetReadyState('runtime-reset');
   }
 
+  /** Pause rendering and image requests while retaining the current view. */
+  setIdle(idle: boolean) {
+    if (this.idle === idle) return;
+    this.idle = idle;
+    this.renderer.setIdle?.(idle);
+    this.lastTime = performance.now();
+    this.updateNextFrame();
+  }
+
   resetReadyState(reason: AtlasReadyResetReason = 'manual') {
     this.ready = false;
     this.readyCycle += 1;
@@ -1206,6 +1216,11 @@ export class Runtime {
    * @   param t
    */
   render = (t: number) => {
+    if (this.idle) {
+      this.lastTime = t;
+      this.stopId = window.requestAnimationFrame(this.render);
+      return;
+    }
     const delta = t - this.lastTime;
 
     if (this.isCommitting || (this.fpsLimit && delta < 1000 / this.fpsLimit)) {
