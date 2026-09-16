@@ -160,7 +160,7 @@ describe('WebGLRenderer fallback events', () => {
     const firstLoad = deferred<HTMLImageElement>();
     const secondLoad = deferred<HTMLImageElement>();
     const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
-      .mockReturnValueOnce(firstLoad.promise).mockReturnValueOnce(secondLoad.promise);
+      .mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
     renderer.paint(image, 0, 0, 0, 100, 100);
     renderer.afterFrame();
     expect(createRequest).toHaveBeenCalledTimes(1);

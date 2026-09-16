@@ -53,7 +53,7 @@ describe('ImageRequestPool', () => {
     const pool = new ImageRequestPool({ timeoutMs: 1000 });
     const firstLoad = deferred<HTMLImageElement>();
     const secondLoad = deferred<HTMLImageElement>();
-    vi.spyOn(pool as any, 'createRequest').mockReturnValueOnce(firstLoad.promise).mockReturnValueOnce(secondLoad.promise);
+    vi.spyOn(pool as any, 'createRequest').mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
     const first = pool.acquire('https://example.org/same.jpg', 'first');
     first.release();
     const second = pool.acquire('https://example.org/same.jpg', 'second');

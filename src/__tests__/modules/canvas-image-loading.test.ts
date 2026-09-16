@@ -121,7 +121,7 @@ describe('Canvas image loading behavior', () => {
     const firstLoad = deferred<HTMLImageElement>();
     const secondLoad = deferred<HTMLImageElement>();
     const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
-      .mockReturnValueOnce(firstLoad.promise).mockReturnValueOnce(secondLoad.promise);
+      .mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
 
     renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0);
     renderer._worker();

@@ -55,6 +55,11 @@ runtime.goToZone('page-2', {
 
 The method returns `true` when the zone exists, otherwise `false`.
 
+Zoom limits account for the source resolution of visible images and the scale of their world objects.
+A 1000px image displayed across 100 world units allows a scale of 10. `runtimeOptions.maxOverZoom`
+multiplies that native-resolution limit; it defaults to 1. Tiled composites use their full resolution,
+including while only a thumbnail is available.
+
 ## Pausing image loading
 
 `Atlas` and `AtlasAuto` accept two optional props:
