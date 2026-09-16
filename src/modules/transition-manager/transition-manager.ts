@@ -228,6 +228,7 @@ export class TransitionManager {
       this.pendingTransition.elapsed_time = 0;
     }
     this.pendingTransition.done = false;
+    this.pendingTransition.callback = defaults?.callback;
     this.pendingTransition.total_time =
       typeof transition?.duration !== 'undefined'
         ? transition.duration

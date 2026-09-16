@@ -2,6 +2,24 @@ import { dna } from '@atlas-viewer/dna';
 import { TransitionManager } from '../../modules/transition-manager/transition-manager';
 
 describe('Transition manager', () => {
+  test('runs the completion callback once and does not carry it into the next transition', () => {
+    const target = dna([1, 0, 0, 100, 100]);
+    const tm = new TransitionManager({ target } as any);
+    const callback = vi.fn();
+    tm.applyTransition(dna([1, 10, 10, 110, 110]), undefined, {
+      duration: 100,
+      easing: (t) => t,
+      callback,
+    });
+    tm.runTransition(target, 100);
+    tm.runTransition(target, 100);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    tm.applyTransition(dna([1, 20, 20, 120, 120]), { duration: 100 });
+    tm.runTransition(target, 100);
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
   test('runTransition - left to right', () => {
     const buffer = dna([1, -100, -100, 100, 100]);
     const tm = new TransitionManager({ target: buffer } as any);

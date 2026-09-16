@@ -55,6 +55,38 @@ function createWorldObject(props: { id: string; x: number; y: number; width: num
 }
 
 describe('zone core and runtime zone navigation', () => {
+  test('resizing after a completed zoom does not replay the zoom on every resize', () => {
+    const runtime = new Runtime(
+      new ResponsiveRenderer(),
+      new World(1000, 1000),
+      {
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 800,
+        scale: 1,
+      },
+      [],
+      { maxOverZoom: 10 }
+    );
+    runtime.stop();
+    const tm = runtime.transitionManager;
+    tm.zoomTo(0.5, { transition: { duration: 100 } });
+    tm.runTransition(runtime.target, 100);
+    expect(tm.hasPending()).toBe(false);
+
+    const zoom = vi.spyOn(tm, 'zoomTo');
+    for (let index = 0; index < 10; index++) {
+      // Docking and undocking browser devtools changes the available width.
+      runtime.resize(1000, 900, 800, 800);
+      tm.runTransition(runtime.target, 1000);
+      runtime.resize(900, 1000, 800, 800);
+      tm.runTransition(runtime.target, 1000);
+    }
+    expect(zoom).not.toHaveBeenCalled();
+    expect(tm.lastZoomTo).toBeNull();
+  });
+
   test.each(['single', 'scaled-object', 'composite', 'thumbnail-only'])(
     '%s content sets the native zoom limit for both zoom and pinch constraints',
     (kind) => {
