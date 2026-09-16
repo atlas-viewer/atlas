@@ -93,9 +93,6 @@ type InFlightTileLoad = {
   release: (opts?: { silent?: boolean }) => void;
 };
 
-const imageCache = new Map<string, HTMLImageElement>();
-const hostCache: Record<string, any> = {};
-
 export class CanvasRenderer implements Renderer {
   /**
    * The primary viewing space for the viewer.
@@ -146,6 +143,9 @@ export class CanvasRenderer implements Renderer {
   requiredTileKeys = new Set<string>();
   requiredPrefetchTileKeys = new Set<string>();
   requestGeneration = 0;
+  private resetGeneration = 0;
+  private idle = false;
+  private imageBuffers = new Set<ImageBuffer>();
   frameCounter = 0;
   pendingTileReveals = new Map<
     string,
@@ -164,7 +164,7 @@ export class CanvasRenderer implements Renderer {
   dpi: number;
   drawCalls: Array<() => void> = [];
   lastPaintedObject?: WorldObject;
-  hostCache: LRUCache<string, HTMLCanvasElement>;
+  hostCache: LRUCache<string, HTMLCanvasElement> | Map<string, HTMLCanvasElement>;
   invalidated: string[] = [];
   fallbackRevealTimeout: ReturnType<typeof setTimeout> | null = null;
   framePrefetchCount = 0;
@@ -191,7 +191,8 @@ export class CanvasRenderer implements Renderer {
       timeoutMs: this.imageLoadingConfig.timeoutMs,
       crossOrigin: this.options.crossOrigin ? 'anonymous' : undefined,
       useFetch: !!this.options.crossOrigin,
-      cache: imageCache,
+      // Tiles are retained in hostCache; do not also retain their source images.
+      cache: false,
     });
     // Testing fade in.
     // this.canvas.style.opacity = '0';
@@ -214,15 +215,7 @@ export class CanvasRenderer implements Renderer {
           return value.width * value.height;
         },
       })
-      : ({
-        store: {},
-        get(id: string) {
-          return this.store[id];
-        },
-        set(id: string, value: any) {
-          this.store[id] = value;
-        },
-      } as any);
+      : new Map<string, HTMLCanvasElement>();
 
     // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
     //   import('stats.js')
@@ -316,6 +309,7 @@ export class CanvasRenderer implements Renderer {
   }
 
   doOffscreenWork() {
+    if (this.idle) return;
     this.frameTasks = 0;
     // This is our worker. It is called every 1ms (roughly) and will usually be
     // an async task that can run without blocking the frame. Because of
@@ -333,6 +327,7 @@ export class CanvasRenderer implements Renderer {
   }
 
   _worker = () => {
+    if (this.idle) return;
     if (
       // First we check if there is work to do.
       this.loadingQueue.length &&
@@ -353,15 +348,16 @@ export class CanvasRenderer implements Renderer {
         // We will increment the task count
         this.tasksRunning++;
         this.frameTasks++;
+        const generation = this.resetGeneration;
         // And kick it off. We don't care if it succeeded or not.
         // A task that needs to retry should just add a new task.
         this.currentTask = next
           .task()
           .then(() => {
-            this.tasksRunning--;
+            if (generation === this.resetGeneration) this.tasksRunning--;
           })
           .catch(() => {
-            this.tasksRunning--;
+            if (generation === this.resetGeneration) this.tasksRunning--;
           });
       }
     }
@@ -622,6 +618,7 @@ export class CanvasRenderer implements Renderer {
     }
 
     const imageBuffer = paint.__host.canvas as ImageBuffer;
+    this.imageBuffers.add(imageBuffer);
     if (!imageBuffer.tiles) {
       imageBuffer.tiles = {};
     }
@@ -1218,6 +1215,7 @@ export class CanvasRenderer implements Renderer {
     priority: number,
     prefetch = false
   ): boolean {
+    if (this.idle) return false;
     const tileState = this.getTileState(imageBuffer, index);
     const now = performance.now();
     const tileKey = this.getTileKey(paint, index);
@@ -1305,6 +1303,7 @@ export class CanvasRenderer implements Renderer {
             release: acquired.release,
           });
           const image = await acquired.promise;
+          if (this.inFlightImageLoads.get(tileKey)?.requestKey !== requestKey) return;
           this.releaseInFlightTileLoad(tileKey, { silent: true });
           const currentState = this.getTileState(imageBuffer, index);
           if (currentState.lastRequestKey !== requestKey || currentState.state !== 'loading') {
@@ -1357,6 +1356,7 @@ export class CanvasRenderer implements Renderer {
               }),
           });
         } catch (error) {
+          if (this.inFlightImageLoads.get(tileKey)?.requestKey !== requestKey) return;
           this.releaseInFlightTileLoad(tileKey, { silent: true });
           if (isImageRequestCancelledError(error)) {
             const cancelledState = this.getTileState(imageBuffer, index);
@@ -1474,7 +1474,7 @@ export class CanvasRenderer implements Renderer {
       loaded: [],
       loading: false,
     };
-    // hostCache[paint.id] = paint.__host;
+    this.imageBuffers.add(paint.__host.canvas);
   }
 
   getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
@@ -1502,6 +1502,7 @@ export class CanvasRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
+    if (this.idle) return false;
     this.imagesPending =
       this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     const ready =
@@ -1589,7 +1590,22 @@ export class CanvasRenderer implements Renderer {
     this.hasTilesFading = true;
   }
 
+  setIdle(idle: boolean) {
+    if (this.idle === idle) return;
+    this.idle = idle;
+    if (idle) {
+      this.requiredTileKeys.clear();
+      this.requiredPrefetchTileKeys.clear();
+      this.pruneStaleTileWork();
+      if (this._scheduled) {
+        clearInterval(this._scheduled);
+        this._scheduled = 0;
+      }
+    }
+  }
+
   reset() {
+    this.resetGeneration += 1;
     this.loadingQueue = [];
     this.drawCalls = [];
     if (this._scheduled) {
@@ -1604,6 +1620,29 @@ export class CanvasRenderer implements Renderer {
     this.requiredTileKeys.clear();
     this.requiredPrefetchTileKeys.clear();
     this.pendingTileReveals.clear();
+    for (const canvas of this.hostCache.values()) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    this.hostCache.clear();
+    this.invalidated = [];
+    for (const buffer of this.imageBuffers) {
+      buffer.canvases = [];
+      buffer.tiles = {};
+      buffer.indices = [];
+      buffer.loaded = [];
+      buffer.loading = false;
+    }
+    this.imageBuffers.clear();
+    this.visible = [];
+    this.previousVisible = [];
+    this.lastPaintedObject = undefined;
+    this.imageIdsLoaded = [];
+    this.currentTask = Promise.resolve();
+    this.tasksRunning = 0;
+    this.frameTasks = 0;
+    this.frameIsRendering = false;
+    this.pendingDrawCall = false;
     this.requestGeneration += 1;
     this.frameCounter = 0;
     if (this.fallbackRevealTimeout) {

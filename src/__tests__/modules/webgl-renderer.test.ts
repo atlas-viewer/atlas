@@ -131,6 +131,64 @@ describe('WebGLRenderer fallback events', () => {
     vi.restoreAllMocks();
   });
 
+  test('does not retain source images across viewers', async () => {
+    for (let index = 0; index < 2; index++) {
+      const canvas = createMockCanvas();
+      canvas.getContext = vi.fn(() => createMockGL(canvas));
+      const renderer = new WebGLRenderer(canvas);
+      const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
+        .mockResolvedValue({ naturalWidth: 100 });
+      const request = renderer.imageRequestPool.acquire('https://example.org/shared.jpg', 'viewer');
+      await request.promise;
+      request.release();
+      renderer.reset();
+      expect(createRequest).toHaveBeenCalledTimes(1);
+      expect((renderer.imageRequestPool as any).inFlight.size).toBe(0);
+    }
+  });
+
+  test('idle cancels pending loads and resumes without a stale upload or retry', async () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas);
+    canvas.getContext = vi.fn(() => gl);
+    const onImageError = vi.fn();
+    const renderer = new WebGLRenderer(canvas, { onImageError });
+    const image = new SingleImage();
+    image.applyProps({ uri: 'https://example.org/idle.jpg', target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 } } as any);
+    renderer.prepareLayer(image);
+    const firstLoad = deferred<HTMLImageElement>();
+    const secondLoad = deferred<HTMLImageElement>();
+    const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
+      .mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.afterFrame();
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    renderer.setIdle(true);
+    expect(renderer.inFlightImageLoads.size).toBe(0);
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.afterFrame();
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(renderer.pendingUpdate()).toBe(false);
+
+    renderer.setIdle(false);
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    renderer.afterFrame();
+    expect(createRequest).toHaveBeenCalledTimes(2);
+    firstLoad.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await flushMicrotasks(12);
+    expect(gl.texImage2D).not.toHaveBeenCalled();
+    expect(renderer.inFlightImageLoads.size).toBe(1);
+    secondLoad.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await flushMicrotasks(12);
+    expect(gl.texImage2D).toHaveBeenCalledTimes(1);
+    const texture = image.__host.webgl.textures[0];
+    renderer.setIdle(true);
+    expect(image.__host.webgl.textures[0]).toBe(texture);
+    expect(onImageError).not.toHaveBeenCalled();
+    renderer.reset();
+  });
+
   test('emits webgl-context-unavailable when context creation fails', () => {
     const canvas = createMockCanvas();
     canvas.getContext = vi.fn((type) => {

@@ -68,8 +68,6 @@ type ScissorRect = {
   height: number;
 };
 
-const imageCache = new Map<string, HTMLImageElement>();
-
 export class WebGLRenderer implements Renderer {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
@@ -155,6 +153,7 @@ export class WebGLRenderer implements Renderer {
   requiredPrefetchTileKeys = new Set<string>();
   imagePaints = new Set<SingleImage | TiledImage>();
   requestGeneration = 0;
+  private idle = false;
   frameCounter = 0;
   pendingTileReveals = new Map<
     string,
@@ -184,7 +183,8 @@ export class WebGLRenderer implements Renderer {
       timeoutMs: this.imageLoadingConfig.timeoutMs,
       crossOrigin: 'anonymous',
       useFetch: true,
-      cache: imageCache,
+      // Uploaded textures already retain the pixels needed for rendering.
+      cache: false,
     });
 
     const gl = canvas.getContext('webgl2');
@@ -822,7 +822,7 @@ export class WebGLRenderer implements Renderer {
     priority: number,
     prefetch: boolean
   ): boolean {
-    if (!paint.getImageUrl || !paint.__host?.webgl) {
+    if (this.idle || !paint.getImageUrl || !paint.__host?.webgl) {
       return false;
     }
 
@@ -921,7 +921,7 @@ export class WebGLRenderer implements Renderer {
   }
 
   private processTileQueue() {
-    if (!this.tileRequestQueue.length) {
+    if (this.idle || !this.tileRequestQueue.length) {
       return;
     }
 
@@ -985,6 +985,7 @@ export class WebGLRenderer implements Renderer {
 
       acquired.promise
         .then((image) => {
+          if (this.inFlightImageLoads.get(next.tileKey)?.requestKey !== next.requestKey) return;
           this.releaseInFlightTileLoad(next.tileKey, { silent: true });
           const currentState = this.getTileState(next.paint, next.index);
           if (currentState.lastRequestKey !== next.requestKey || currentState.state !== 'loading') {
@@ -994,6 +995,7 @@ export class WebGLRenderer implements Renderer {
           next.paint.__host?.webgl?.onLoad(next.index, image);
         })
         .catch((error) => {
+          if (this.inFlightImageLoads.get(next.tileKey)?.requestKey !== next.requestKey) return;
           this.releaseInFlightTileLoad(next.tileKey, { silent: true });
           if (isImageRequestCancelledError(error)) {
             const cancelledState = this.getTileState(next.paint, next.index);
@@ -1158,6 +1160,7 @@ export class WebGLRenderer implements Renderer {
   }
 
   pendingUpdate(): boolean {
+    if (this.idle) return false;
     return (
       this.requiresRepaint ||
       this.tileRequestQueue.length > 0 ||
@@ -1339,6 +1342,18 @@ export class WebGLRenderer implements Renderer {
     }
     this.hasTilesFading = true;
     this.requiresRepaint = true;
+  }
+
+  setIdle(idle: boolean) {
+    if (this.idle === idle) return;
+    this.idle = idle;
+    if (idle) {
+      this.requiredTileKeys.clear();
+      this.requiredPrefetchTileKeys.clear();
+      this.pruneStaleTileWork();
+    } else {
+      this.requiresRepaint = true;
+    }
   }
 
   reset() {

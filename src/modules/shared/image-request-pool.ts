@@ -37,7 +37,7 @@ export type ImageRequestPoolOptions = {
   timeoutMs: number;
   crossOrigin?: 'anonymous' | 'use-credentials';
   useFetch?: boolean;
-  cache?: Map<string, HTMLImageElement>;
+  cache?: Map<string, HTMLImageElement> | false;
 };
 
 let requestCounter = 0;
@@ -154,7 +154,7 @@ export class ImageRequestPool {
   private readonly timeoutMs: number;
   private readonly crossOrigin?: 'anonymous' | 'use-credentials';
   private readonly useFetch: boolean;
-  private readonly cache: Map<string, HTMLImageElement>;
+  private readonly cache?: Map<string, HTMLImageElement>;
   private readonly inFlight = new Map<string, RequestEntry>();
   private readonly knownConsumers = new Map<string, Set<string>>();
 
@@ -162,11 +162,11 @@ export class ImageRequestPool {
     this.timeoutMs = options.timeoutMs;
     this.crossOrigin = options.crossOrigin;
     this.useFetch = !!options.useFetch && typeof fetch !== 'undefined' && typeof AbortController !== 'undefined';
-    this.cache = options.cache || new Map<string, HTMLImageElement>();
+    this.cache = options.cache === false ? undefined : options.cache || new Map<string, HTMLImageElement>();
   }
 
   acquire(url: string, consumerId: string): AcquireResult {
-    const cached = this.cache.get(url);
+    const cached = this.cache?.get(url);
     if (cached && cached.naturalWidth > 0) {
       return {
         requestKey: `cached:${url}`,
@@ -195,8 +195,11 @@ export class ImageRequestPool {
       entry.promise = this.createRequest(entry)
         .then((image) => {
           entry!.settled = true;
+          if (entry!.cancelled) {
+            throw new ImageRequestCancelledError('Image request cancelled', entry!.silentCancellation);
+          }
           entry!.abortReason = undefined;
-          this.cache.set(url, image);
+          this.cache?.set(url, image);
           return image;
         })
         .catch((error) => {
@@ -209,7 +212,7 @@ export class ImageRequestPool {
             entry.abortDomImage = undefined;
             entry.abortReason = undefined;
           }
-          if (entry && entry.consumers.size === 0) {
+          if (entry && entry.consumers.size === 0 && this.inFlight.get(url) === entry) {
             this.inFlight.delete(url);
           }
         });
@@ -255,6 +258,7 @@ export class ImageRequestPool {
     }
 
     if (!entry.settled) {
+      this.inFlight.delete(url);
       entry.cancelled = true;
       if (!entry.abortReason) {
         entry.abortReason = 'release';
@@ -323,6 +327,9 @@ export class ImageRequestPool {
         }
 
         const blob = await response.blob();
+        if (abortController.signal.aborted) {
+          throw abortController.signal.reason || createAbortError(entry.url);
+        }
         const objectUrl = URL.createObjectURL(blob);
         try {
           const { promise, abort } = loadDomImage(objectUrl, {

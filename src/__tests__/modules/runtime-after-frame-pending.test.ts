@@ -1,7 +1,8 @@
 /** @vitest-environment happy-dom */
 
 import type { Strand } from '@atlas-viewer/dna';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { CompositeRenderer } from '../../modules/composite-renderer/composite-renderer';
 import type { Renderer } from '../../renderer/renderer';
 import { Runtime } from '../../renderer/runtime';
 import type { PositionPair } from '../../types';
@@ -38,6 +39,30 @@ class StaticRenderer implements Renderer {
 }
 
 describe('Runtime useAfterFrame scheduling', () => {
+  test('idle propagates through composite renderers and suspends frame work until resumed', () => {
+    const renderer = new StaticRenderer();
+    const setIdle = vi.fn();
+    Object.assign(renderer, { setIdle });
+    const runtime = new Runtime(new CompositeRenderer([renderer]), new World(1000, 1000),
+      { x: 0, y: 0, width: 1000, height: 800, scale: 1 });
+    runtime.stop();
+    const beforeFrame = vi.spyOn(renderer, 'beforeFrame');
+    const frameHook = vi.fn();
+    runtime.registerHook('useFrame', frameHook);
+    runtime.setIdle(true);
+    runtime.render(performance.now() + 16);
+    runtime.stop();
+    expect(setIdle).toHaveBeenLastCalledWith(true);
+    expect(beforeFrame).not.toHaveBeenCalled();
+    expect(frameHook).not.toHaveBeenCalled();
+    runtime.setIdle(false);
+    runtime.render(performance.now() + 32);
+    runtime.stop();
+    expect(setIdle).toHaveBeenLastCalledWith(false);
+    expect(beforeFrame).toHaveBeenCalledTimes(1);
+    expect(frameHook).toHaveBeenCalledTimes(1);
+  });
+
   test('preserves updateNextFrame requests made in useAfterFrame', () => {
     const runtime = new Runtime(
       new StaticRenderer(),
