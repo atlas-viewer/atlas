@@ -1126,6 +1126,10 @@ export class CanvasRenderer implements Renderer {
         const styleOpacity = typeof style.opacity !== 'undefined' ? style.opacity : 1;
         this.ctx.globalAlpha = ga * styleOpacity * zoneVisibilityAlpha;
 
+        // border-box is the default: target dimensions include the border.
+        // content-box: target dimensions are the content area; border expands outward.
+        const isBorderBox = (style as any).boxSizing !== 'content-box';
+
         let bw = 0;
         if (typeof style.borderWidth !== 'undefined') {
           bw = parseInt(style.borderWidth, 10) * scale;
@@ -1141,12 +1145,14 @@ export class CanvasRenderer implements Renderer {
           oo = parseInt(style.outlineOffset, 10) * scale;
         }
 
-        if (style.borderColor) {
-          this.ctx.strokeStyle = style.borderColor;
-        }
-
-        // Box shadow
+        // Box shadow — drawn at the fill rect position before the fill.
         if (style.boxShadow) {
+          // Fill rect origin differs by mode (see below).
+          const fillX = isBorderBox ? x + bw : x;
+          const fillY = isBorderBox ? y + bw : y;
+          const fillW = isBorderBox ? width - 2 * bw : width;
+          const fillH = isBorderBox ? height - 2 * bw : height;
+
           const shadows = style.boxShadow.split(/,(?![^(]*\))/);
           for (const shadow of shadows) {
             const parsed = shadowRegexCache[shadow] || shadowRegex.exec(shadow) || shadowRegex.exec(shadow);
@@ -1158,19 +1164,22 @@ export class CanvasRenderer implements Renderer {
               this.ctx.shadowBlur = parseInt(parsed[5]) * this.dpi * scale;
               this.ctx.shadowColor = parsed[9];
               this.ctx.fillStyle = 'rgba(0,0,0,1)';
-              this.ctx.fillRect(x + bw, y + bw, width, height);
+              this.ctx.fillRect(fillX, fillY, fillW, fillH);
               this.ctx.restore();
             }
           }
         }
 
         this.ctx.fillStyle = style.backgroundColor || 'transparent';
-        this.ctx.lineWidth = bw;
 
         if (isGeometry) {
           const shape = (paint as any).shape;
           const points = shape.points || [];
           const len = points.length;
+          this.ctx.lineWidth = bw;
+          if (bw && style.borderColor) {
+            this.ctx.strokeStyle = style.borderColor;
+          }
           this.ctx.beginPath();
           for (let i = 0; i < len; i++) {
             this.ctx.lineTo(x + points[i][0] * this.lastKnownScale, y + points[i][1] * this.lastKnownScale);
@@ -1184,26 +1193,76 @@ export class CanvasRenderer implements Renderer {
           if (!shape.open) {
             this.ctx.fill();
           }
-        } else {
+        } else if (isBorderBox) {
+          // ── border-box ────────────────────────────────────────────────────
+          // The target rect (x, y, width, height) is the outer box including
+          // the border.  The border stroke is drawn inset so its outer edge
+          // aligns with the box boundary; the fill covers the interior.
+          //
+          //  ┌──────────────────┐  ← y               (outer edge)
+          //  │  ╔════════════╗  │  ← y + bw/2        (stroke centre)
+          //  │  ║            ║  │
+          //  │  ║   fill     ║  │
+          //  │  ║            ║  │
+          //  │  ╚════════════╝  │  ← y + height - bw/2
+          //  └──────────────────┘  ← y + height      (outer edge)
           if (bw) {
-            this.ctx.strokeRect(x + bw / 2, y + bw / 2, width + bw, height + bw);
+            this.ctx.strokeStyle = style.borderColor || 'transparent';
+            this.ctx.lineWidth = bw;
+            // Stroke centred at bw/2 from each edge; rect is inset by bw/2
+            // so the outer edge of the stroke lands on the box boundary.
+            this.ctx.strokeRect(x + bw / 2, y + bw / 2, width - bw, height - bw);
           }
-          this.ctx.fillRect(x + bw, y + bw, width, height);
+          // Fill covers the interior (inside the border).
+          this.ctx.fillRect(x + bw, y + bw, Math.max(0, width - 2 * bw), Math.max(0, height - 2 * bw));
+        } else {
+          // ── content-box ───────────────────────────────────────────────────
+          // The target rect is the content area; the border expands outward.
+          // The stroke straddles the content-rect boundary (half in / half out)
+          // which is the standard CSS content-box model.
+          //
+          //  ┌──────────────────┐  ← y - bw/2        (outer edge of border)
+          //  │  ┌────────────┐  │  ← y               (content top)
+          //  │  │            │  │
+          //  │  │   fill     │  │
+          //  │  │            │  │
+          //  │  └────────────┘  │  ← y + height      (content bottom)
+          //  └──────────────────┘  ← y + height + bw/2
+          this.ctx.fillRect(x, y, width, height);
+          if (bw) {
+            this.ctx.strokeStyle = style.borderColor || 'transparent';
+            this.ctx.lineWidth = bw;
+            // Stroke straddles the content rect boundary — no offset needed.
+            this.ctx.strokeRect(x, y, width, height);
+          }
         }
 
+        // ── Outline ───────────────────────────────────────────────────────
+        // The outline always sits outside the border (or outside the content
+        // rect in content-box mode) with an optional outlineOffset gap.
         if (ow) {
-          if (style.outlineColor) {
-            this.ctx.strokeStyle = style.outlineColor;
-          }
+          this.ctx.strokeStyle = style.outlineColor || 'transparent';
           this.ctx.lineWidth = ow;
-          // Outline
-          this.ctx.strokeRect(
-            //
-            x - ow / 2 - oo,
-            y - ow / 2 - oo,
-            width + bw * 2 + ow + oo * 2,
-            height + bw * 2 + ow + oo * 2
-          );
+
+          if (isBorderBox) {
+            // Outer edge of box is at x/y, outline sits outside with gap oo.
+            // Stroke centre is at x - oo - ow/2 from the box edge.
+            this.ctx.strokeRect(
+              x - oo - ow / 2,
+              y - oo - ow / 2,
+              width + oo * 2 + ow,
+              height + oo * 2 + ow
+            );
+          } else {
+            // Outer edge of border is at x - bw/2 (stroke straddles x).
+            // Outline sits beyond the border outer edge.
+            this.ctx.strokeRect(
+              x - bw / 2 - oo - ow / 2,
+              y - bw / 2 - oo - ow / 2,
+              width + bw + oo * 2 + ow,
+              height + bw + oo * 2 + ow
+            );
+          }
         }
       }
 

@@ -39,7 +39,7 @@ export class OverlayRenderer implements Renderer {
     this.htmlContainer.innerHTML = '';
     this.rendererPosition = this.htmlContainer.getBoundingClientRect();
     this.options = {
-      triggerResize: () => {},
+      triggerResize: () => { },
       box: false,
       text: false,
       sheetPrefix: '',
@@ -167,14 +167,40 @@ export class OverlayRenderer implements Renderer {
         div.style.height = `${paint.height}px`;
       }
 
-      const style = (paint.props as any).style;
+      const style = (paint.props as any).style as Record<string, any> | undefined;
       if (style) {
-        Object.assign(
-          div.style,
-          (paint.props as any).style || {},
-          (paint as any).hovering ? (paint.props as any).hoverStyles || {} : {},
-          (paint as any).pressing ? (paint.props as any).pressStyles || {} : {}
-        );
+        // Build the effective style by merging base + hover/active overrides.
+        const effectiveStyle: Record<string, any> = {
+          // Default to border-box to match canvas renderer behaviour.
+          boxSizing: 'border-box',
+          ...style,
+          ...((paint as any).hovering ? (paint.props as any).hoverStyles || {} : {}),
+          ...((paint as any).pressing ? (paint.props as any).pressStyles || {} : {}),
+        };
+
+        // Reset all CSS properties that were previously set but are no longer
+        // present in the new effective style, so removed props are cleared.
+        const prevStyle: Record<string, any> = (paint.__host as any)._prevStyle || {};
+        for (const key of Object.keys(prevStyle)) {
+          if (!(key in effectiveStyle)) {
+            (div.style as any)[key] = '';
+          }
+        }
+
+        // Apply the new effective style.
+        for (const key of Object.keys(effectiveStyle)) {
+          // Skip pseudo-class keys that are not real CSS properties.
+          if (key.startsWith(':')) continue;
+          (div.style as any)[key] = effectiveStyle[key] ?? '';
+        }
+
+        // Remember what we set so we can diff on the next render.
+        (paint.__host as any)._prevStyle = effectiveStyle;
+
+        paint.__host.revision = paint.__revision;
+        const classNames = classes.join(' ');
+        div.className = classNames;
+        div.part = classNames;
         return;
       }
 
@@ -327,7 +353,7 @@ export class OverlayRenderer implements Renderer {
     return this.rendererPosition;
   }
 
-  finishLayer() {}
+  finishLayer() { }
 
-  reset() {}
+  reset() { }
 }

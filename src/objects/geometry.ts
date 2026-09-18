@@ -131,16 +131,21 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     title?: string;
     backgroundColor?: string;
     border?: string;
-    interactive?: boolean;
+    interactive: boolean;
     open?: boolean;
     className?: string;
-    relativeSize?: boolean;
-    relativeStyle?: boolean;
-    html?: boolean;
+    relativeSize: boolean;
+    relativeStyle: boolean;
+    html: boolean;
     style?: GeometryStyle;
     hoverStyles?: GeometryStyle;
     pressStyles?: GeometryStyle;
-  } = {};
+  } = {
+      interactive: false,
+      relativeSize: false,
+      relativeStyle: false,
+      html: false,
+    };
 
   shape: { type: 'none' } | { type: 'polygon'; points: [number, number][]; open?: boolean } = { type: 'none' };
 
@@ -274,9 +279,9 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
       }
     }
 
-    if (props.interactive !== this.props.interactive) {
+    if (!!props.interactive !== !!this.props.interactive) {
       didUpdate = true;
-      this.props.interactive = props.interactive;
+      this.props.interactive = !!props.interactive;
     }
 
     if (props.open || props.open === false) {
@@ -396,16 +401,16 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
       didUpdate = true;
     }
 
-    if (props.relativeSize !== this.props.relativeSize) {
-      this.props.relativeSize = props.relativeSize;
+    if (!!props.relativeSize !== !!this.props.relativeSize) {
+      this.props.relativeSize = !!props.relativeSize;
       didUpdate = true;
     }
-    if (props.relativeStyle !== this.props.relativeStyle) {
-      this.props.relativeStyle = props.relativeStyle;
+    if (!!props.relativeStyle !== !!this.props.relativeStyle) {
+      this.props.relativeStyle = !!props.relativeStyle;
       didUpdate = true;
     }
-    if (props.html !== this.props.html) {
-      this.props.html = props.html;
+    if (!!props.html !== !!this.props.html) {
+      this.props.html = !!props.html;
       didUpdate = true;
     }
 
