@@ -17,7 +17,7 @@ export const AtlasAuto: React.FC<
   const autoId = useId();
   const { className: containerPropsClassName, ...restContainerProps } = containerProps;
 
-  const { height, width, ...restProps } = props as any;
+  const { height, width, rotateFromWorldCenter, ...restProps } = props as any;
 
   useEffect(() => {
     forceRefresh();
@@ -53,7 +53,7 @@ export const AtlasAuto: React.FC<
   return (
     <Container ref={ref} {...restContainerProps} className={combinedClassName}>
       {bounds.width ? (
-        <Atlas width={bounds.width || 100} height={bounds.height || 100} {...restProps}>
+        <Atlas width={bounds.width || 100} height={bounds.height || 100} rotateFromWorldCenter={rotateFromWorldCenter} {...restProps}>
           {props.children}
         </Atlas>
       ) : null}

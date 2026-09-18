@@ -52,6 +52,7 @@ export const CropRotateStaticImageInteractive = () => {
   const rotation = useState(5);
   const x = useState(120);
   const tx = useState(123);
+  const ty = useState(123);
   const utx = useState(0);
   const y = useState(0);
   const scale = useState(100);
@@ -59,8 +60,13 @@ export const CropRotateStaticImageInteractive = () => {
   const [rt, setRt] = useState<Preset>();
   const debug = useRef<HTMLDivElement>(null);
   const [key, setKey] = useState(0);
+  const [rotateFromWorldCenter, setRotateFromWorldCenter] = useState(false);
 
   const scaleFactor = scale[0] / 100;
+
+  const handleCheckboxChange = (event: { target: { checked: boolean | ((prevState: boolean) => boolean); }; }) => {
+    setRotateFromWorldCenter(event.target.checked);
+  };
 
   return (
     <>
@@ -68,8 +74,12 @@ export const CropRotateStaticImageInteractive = () => {
       <Slider control={x} label="x" />
       <Slider control={scale} label="scale" />
       <Slider control={tx} label="tx" />
+      <Slider control={ty} label="ty" />
       <Slider control={utx} label="Unsupported translation" />
       <Slider control={y} label="y" />
+
+      <strong>Rotate From Center? </strong>&nbsp;<input type="checkbox" checked={rotateFromWorldCenter} onChange={handleCheckboxChange} />
+      <br/>
       <button
         onClick={() => {
           setKey((i) => i + 1);
@@ -82,13 +92,14 @@ export const CropRotateStaticImageInteractive = () => {
       <Container style={{ height: 512, width: 512 }}>
         <AtlasAuto
           renderPreset={preset}
+          rotateFromWorldCenter={rotateFromWorldCenter}
           onCreated={(e) => {
             ref.current = e;
             setRt(e);
           }}
         >
           <world>
-            <world-object key={key} scale={scaleFactor} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
+           <world-object key={key} scale={scaleFactor} height={450} width={300} x={tx[0]} y={ty[0]} rotation={rotation[0]}>
               <world-image
                 uri={img}
                 target={{ width: 600, height: 900, x: utx[0], y: 0 }}
@@ -101,7 +112,7 @@ export const CropRotateStaticImageInteractive = () => {
                 }}
               />
               <box style={{ border: '2px solid red' }} target={{ width: 300 - 4, height: 450 - 4, x: utx[0], y: 0 }} />
-            </world-object>
+            </world-object> 
           </world>
         </AtlasAuto>
       </Container>

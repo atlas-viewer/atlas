@@ -445,16 +445,26 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number) {
+  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number, cx?: number, cy?: number) {
     const owner = paint.__owner.value;
     if (owner && owner.rotation) {
       this.ctx.save();
-      const moveX = x + width / 2;
-      const moveY = y + height / 2;
-
-      this.ctx.translate(moveX, moveY);
-      this.ctx.rotate((owner.rotation * Math.PI) / 180);
-      this.ctx.translate(-moveX, -moveY);
+      // x,y are the top left point of the box, not the center of the viewport
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+      const angle = (owner.rotation * Math.PI) / 180;
+      // cx/cy only sent in if there's a unique rotation point
+      if (cx == undefined || cy == undefined) {
+        const moveX = x + halfWidth;
+        const moveY = y + halfHeight;
+        this.ctx.translate(moveX, moveY);
+        this.ctx.rotate(angle);
+        this.ctx.translate(-moveX, -moveY);
+      } else {
+        this.ctx.translate(cx, cy);
+        this.ctx.rotate(angle);
+        this.ctx.translate(-cx, -cy);
+      }
       this.lastPaintedObject = owner;
     }
   }
@@ -1412,13 +1422,13 @@ export class CanvasRenderer implements Renderer {
     // No-op
   }
 
-  prepareLayer(paint: SpacialContent, points: Strand): void {
+  prepareLayer(paint: SpacialContent, points: Strand, cx?: number, cy?: number): void {
     this.hasActiveLayerClip = false;
 
     if (paint.__owner.value) {
-      if (paint.cropData) {
-        const scale = this.lastKnownScale * (1 / paint.display.scale);
-        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+      // if (paint.cropData) {
+      //   // const scale = this.lastKnownScale * (1 / paint.display.scale);
+      //   this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
         // this.applyTransform(
         //   paint,
         //   points[1] - paint.cropData.x * scale + paint.points[1] * scale,
@@ -1426,9 +1436,9 @@ export class CanvasRenderer implements Renderer {
         //   paint.cropData.width * this.lastKnownScale,
         //   paint.cropData.height * this.lastKnownScale
         // );
-      } else {
-        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
-      }
+      // } else {
+        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2],cx,cy);
+      // }
     }
 
     if (this.shouldClipLayerToBounds(paint)) {
