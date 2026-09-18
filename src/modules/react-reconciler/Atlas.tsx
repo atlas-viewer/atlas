@@ -103,6 +103,7 @@ export type AtlasProps = {
   devTools?: boolean | DevToolsProps;
   runtimeOptions?: Partial<RuntimeOptions>;
   filters?: Partial<ViewerFilters>;
+  rotateFromWorldCenter?: boolean;
 };
 
 const filterProperties = [
@@ -159,6 +160,7 @@ export const Atlas: React.FC<
     filters,
     homePaddingPx,
     devTools,
+    rotateFromWorldCenter = false,
     ...restProps
   } = props;
 
@@ -536,6 +538,14 @@ export const Atlas: React.FC<
       }
     }
   }, [preset, restProps.width, restProps.height, viewport]);
+
+  useEffect(() => {
+    if (preset) {
+      const rt: Runtime = preset.runtime;
+
+      rt.rotateFromWorldCenter = rotateFromWorldCenter;
+    }
+  }, [preset, rotateFromWorldCenter])
 
   useEffect(() => {
     if (filters && preset) {

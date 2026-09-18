@@ -96,7 +96,135 @@ type InFlightTileLoad = {
 const imageCache = new Map<string, HTMLImageElement>();
 const hostCache: Record<string, any> = {};
 
+export type ImageStretchDebugEvent = {
+  /** The URL requested for this tile/image, as returned by paint.getImageUrl(index). */
+  url: string;
+  /** The loaded HTMLImageElement's actual intrinsic pixel dimensions. */
+  naturalWidth: number;
+  naturalHeight: number;
+  /** The tile's target canvas dimensions -- what drawImage stretches/squashes the loaded image into. */
+  targetWidth: number;
+  targetHeight: number;
+  /**
+   * The tile's position (paint.display.points[index]'s x1/y1), in the same
+   * local coordinate space as the owning SingleImage/TiledImage's own
+   * width/height -- e.g. what a debug overlay would use to place a label
+   * directly over this specific tile.
+   */
+  x: number;
+  y: number;
+  /** paint.id -- identifies which SpacialContent (SingleImage/TiledImage) this tile belongs to. */
+  paintId: string;
+  /** Index into paint.display.points -- which specific tile, for a TiledImage's grid (always 0 for a SingleImage). */
+  index: number;
+  /** True if the source and target aspect ratios differ beyond isImageStretched's tolerance -- the drawn image will look visibly non-uniformly scaled, not just soft/blurry. */
+  stretched: boolean;
+  /**
+   * Whether paint is currently in this.visible -- the same list the
+   * renderer itself consults for painting decisions. A tile can finish
+   * loading and get drawn (firing this event) well after it's scrolled or
+   * zoomed off screen; this lets debug tooling tell a currently-relevant
+   * distortion apart from a stale one nobody will ever see.
+   */
+  isVisible: boolean;
+};
+
+export type TileLoadDebugEvent = {
+  /** paint.id -- identifies which SpacialContent (SingleImage/TiledImage) this tile belongs to. */
+  paintId: string;
+  /** Index into paint.display.points -- which specific tile, for a TiledImage's grid (always 0 for a SingleImage). */
+  index: number;
+  /** paint.display.scale -- the tile's pyramid scale factor (1 = native resolution). */
+  scale: number;
+  /** The URL requested for this tile, as returned by paint.getImageUrl(index). */
+  url: string;
+  /**
+   * 'requested' fires when the network fetch actually starts
+   * (schedulePaintToCanvas's queued task running, not just being enqueued).
+   * 'loaded' fires once the image has decoded and been drawn into its
+   * tile's canvas. 'failed' fires once schedulePaintToCanvas's own retry
+   * policy (imageLoadingConfig.maxAttempts) has given up for good -- not on
+   * every individual failed attempt, only the terminal one.
+   */
+  status: 'requested' | 'loaded' | 'failed';
+};
+
+/**
+ * Pure aspect-ratio comparison backing the debugImageStretch hook below --
+ * exported so tests can call it directly without going through image
+ * loading. Compares aspect ratios, not raw dimensions: drawImage(image, 0,
+ * 0, targetWidth, targetHeight) always scales uniformly if the source and
+ * target share an aspect ratio, even when the absolute pixel counts differ
+ * (e.g. a server returning 1023px for a requested 1024px, common off-by-one
+ * rounding) -- that's just a slightly softer/sharper image, not distortion.
+ * Only a genuine aspect-ratio mismatch produces visible stretching/squashing
+ * (non-uniform scaling), which is what this flags.
+ */
+export function isImageStretched(
+  naturalWidth: number,
+  naturalHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+  tolerance = 0.01
+): boolean {
+  if (!naturalWidth || !naturalHeight || !targetWidth || !targetHeight) {
+    return false;
+  }
+  const sourceRatio = naturalWidth / naturalHeight;
+  const targetRatio = targetWidth / targetHeight;
+  return Math.abs(sourceRatio - targetRatio) / sourceRatio > tolerance;
+}
+
+/**
+ * Whether a drawImage() call from sourceWidth/Height into
+ * targetWidth/Height is actually resizing the image, as opposed to a ~1:1
+ * blit. Backs the imageSmoothingEnabled toggle in paint(): a rotated world
+ * still passes fractional (sub-pixel) coordinates into drawImage even at a
+ * clean 90deg angle, since the rotation pivot and destination x/y come
+ * from continuous pan/zoom/rotate math rather than integer device pixels.
+ * With smoothing always on, that sub-pixel misalignment gets bilinearly
+ * resampled and visibly softens tiles that are already at native
+ * resolution. Genuinely up/downscaled tiles still want smoothing to avoid
+ * a blocky look, so this only reports true once the size actually differs
+ * by more than a device-pixel's worth of rounding slop.
+ */
+export function needsSmoothing(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+  tolerance = 1
+): boolean {
+  return Math.abs(sourceWidth - targetWidth) > tolerance || Math.abs(sourceHeight - targetHeight) > tolerance;
+}
+
 export class CanvasRenderer implements Renderer {
+  /**
+   * Optional debug hook, set by tests/tooling, fired whenever a loaded tile
+   * image is drawn into its target canvas (schedulePaintToCanvas). Exists
+   * to make image-server aspect-ratio mismatches detectable: drawImage()
+   * here always stretches the loaded image to exactly fill the tile's
+   * target dimensions (computed from paint.display.points), with no check
+   * that the image actually loaded at a compatible aspect ratio -- if an
+   * image server returns something with a meaningfully different aspect
+   * ratio than what was requested (wrong crop parameters, a
+   * misconfigured/non-conformant IIIF service, etc.), the tile silently
+   * renders visibly stretched or squashed. No-op unless a test/tool sets
+   * it.
+   */
+  static debugImageStretch: ((event: ImageStretchDebugEvent) => void) | undefined;
+
+  /**
+   * Optional debug hook, set by tests/tooling, fired at each stage of a
+   * tile's network fetch: 'requested' when the fetch actually starts,
+   * 'loaded' once the image has decoded, 'failed' once loadImage has
+   * given up for good. Exists to make stuck/failed tile loads visible --
+   * normally a failed or endlessly-pending fetch has no on-screen signal
+   * at all, it just leaves whatever lower-resolution tile was already
+   * drawn there in place indefinitely. No-op unless a test/tool sets it.
+   */
+  static debugTileLoad: ((event: TileLoadDebugEvent) => void) | undefined;
+
   /**
    * The primary viewing space for the viewer.
    */
@@ -445,16 +573,26 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number) {
+  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number, cx?: number, cy?: number) {
     const owner = paint.__owner.value;
     if (owner && owner.rotation) {
       this.ctx.save();
-      const moveX = x + width / 2;
-      const moveY = y + height / 2;
-
-      this.ctx.translate(moveX, moveY);
-      this.ctx.rotate((owner.rotation * Math.PI) / 180);
-      this.ctx.translate(-moveX, -moveY);
+      // x,y are the top left point of the box, not the center of the viewport
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+      const angle = (owner.rotation * Math.PI) / 180;
+      // cx/cy only sent in if there's a unique rotation point
+      if (cx == undefined || cy == undefined) {
+        const moveX = x + halfWidth;
+        const moveY = y + halfHeight;
+        this.ctx.translate(moveX, moveY);
+        this.ctx.rotate(angle);
+        this.ctx.translate(-moveX, -moveY);
+      } else {
+        this.ctx.translate(cx, cy);
+        this.ctx.rotate(angle);
+        this.ctx.translate(-cx, -cy);
+      }
       this.lastPaintedObject = owner;
     }
   }
@@ -1059,6 +1197,8 @@ export class CanvasRenderer implements Renderer {
               target[0] += translationDeltaX;
               target[1] += translationDeltaY;
 
+              this.ctx.imageSmoothingEnabled = needsSmoothing(source[2], source[3], target[2], target[3]);
+
               this.ctx.drawImage(
                 canvasToPaint,
                 source[0],
@@ -1072,13 +1212,27 @@ export class CanvasRenderer implements Renderer {
               );
             }
           } else {
+            const sourceWidth = paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1];
+            const sourceHeight = paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2];
+
+            // Tiles are pre-rendered into canvasToPaint at their own native
+            // resolution, so a draw here at ~1:1 (sourceWidth/Height ==
+            // width/height) needs no resampling. Left smoothed, a rotated
+            // world (translate/rotate pivot on sub-pixel screen
+            // coordinates, even at a clean 90deg) still lands every source
+            // pixel off the destination grid, and bilinear filtering
+            // softens an already-native-resolution tile for no reason.
+            // Genuinely up/downscaled tiles still want smoothing to avoid
+            // a blocky look, so only skip it when the draw is ~1:1.
+            this.ctx.imageSmoothingEnabled = needsSmoothing(sourceWidth, sourceHeight, width, height);
+
             if (isFirefox) {
               this.ctx.drawImage(
                 canvasToPaint,
-                0,
-                0,
-                paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
-                paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
+                0, // paint.display.points[index * 5 + 1],
+                0, // paint.display.points[index * 5 + 2],
+                sourceWidth,
+                sourceHeight,
                 x,
                 y,
                 width + 1,
@@ -1087,10 +1241,10 @@ export class CanvasRenderer implements Renderer {
             } else {
               this.ctx.drawImage(
                 canvasToPaint,
-                0,
-                0,
-                paint.display.points[index * 5 + 3] - paint.display.points[index * 5 + 1],
-                paint.display.points[index * 5 + 4] - paint.display.points[index * 5 + 2],
+                0, // paint.display.points[index * 5 + 1],
+                0, // paint.display.points[index * 5 + 2],
+                sourceWidth,
+                sourceHeight,
                 x,
                 y,
                 width + Number.MIN_VALUE + 0.5,
@@ -1291,6 +1445,10 @@ export class CanvasRenderer implements Renderer {
           error: undefined,
         });
 
+        if (CanvasRenderer.debugTileLoad) {
+          CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'requested' });
+        }
+
         try {
           const consumerId = `${tileKey}::${requestKey}`;
           const acquired = this.imageRequestPool.acquire(url, consumerId);
@@ -1340,6 +1498,23 @@ export class CanvasRenderer implements Renderer {
                     resolve();
                     return;
                   }
+                  if (CanvasRenderer.debugImageStretch) {
+                    const targetWidth = points[3] - points[1];
+                    const targetHeight = points[4] - points[2];
+                    CanvasRenderer.debugImageStretch({
+                      url,
+                      naturalWidth: image.naturalWidth,
+                      naturalHeight: image.naturalHeight,
+                      targetWidth,
+                      targetHeight,
+                      x: points[1],
+                      y: points[2],
+                      paintId: paint.id,
+                      index,
+                      stretched: isImageStretched(image.naturalWidth, image.naturalHeight, targetWidth, targetHeight),
+                      isVisible: this.visible.indexOf(paint) !== -1,
+                    });
+                  }
                   ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
                   const finalState = this.getTileState(imageBuffer, index);
                   this.setTileState(imageBuffer, index, {
@@ -1352,6 +1527,9 @@ export class CanvasRenderer implements Renderer {
                   });
                   this.enqueueTileReveal(tileKey, imageBuffer, index);
                   this.imagesLoaded++;
+                  if (CanvasRenderer.debugTileLoad) {
+                    CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'loaded' });
+                  }
                   resolve();
                 });
               }),
@@ -1391,6 +1569,10 @@ export class CanvasRenderer implements Renderer {
           });
           this.pendingTileReveals.delete(tileKey);
 
+          if (!willRetry && CanvasRenderer.debugTileLoad) {
+            CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'failed' });
+          }
+
           this.emitImageError({
             severity: 'recoverable',
             imageUrl: url,
@@ -1407,28 +1589,15 @@ export class CanvasRenderer implements Renderer {
     });
     return true;
   }
-
   afterPaintLayer(paint: SpacialContent, transform: Strand): void {
     // No-op
   }
 
-  prepareLayer(paint: SpacialContent, points: Strand): void {
+  prepareLayer(paint: SpacialContent, points: Strand, cx?: number, cy?: number): void {
     this.hasActiveLayerClip = false;
 
     if (paint.__owner.value) {
-      if (paint.cropData) {
-        const scale = this.lastKnownScale * (1 / paint.display.scale);
-        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
-        // this.applyTransform(
-        //   paint,
-        //   points[1] - paint.cropData.x * scale + paint.points[1] * scale,
-        //   points[2] - paint.cropData.y * scale + paint.points[2] * scale,
-        //   paint.cropData.width * this.lastKnownScale,
-        //   paint.cropData.height * this.lastKnownScale
-        // );
-      } else {
-        this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
-      }
+      this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2], cx, cy);
     }
 
     if (this.shouldClipLayerToBounds(paint)) {

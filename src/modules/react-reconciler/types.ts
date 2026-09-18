@@ -28,6 +28,7 @@ declare global {
         width?: number;
         height?: number;
         children?: React.ReactNode;
+        rotateFromWorldCenter?: boolean;
       } & AllEvents;
       worldObject: BaseElement & {
         children?: React.ReactNode;

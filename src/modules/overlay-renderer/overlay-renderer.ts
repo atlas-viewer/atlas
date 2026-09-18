@@ -72,15 +72,32 @@ export class OverlayRenderer implements Renderer {
     this.stylesheet.updateSheet();
   }
 
+  /**
+   * Whether this paint should get an HTML overlay host at all -- must stay
+   * in sync with what paint() below treats as "has a host" (it reads
+   * paint.__host.tx unconditionally once this is true), since createHtmlHost
+   * is the only thing that ever sets __host. They used to be two separately
+   * written conditions that quietly drifted apart: this one didn't check
+   * options.text, so a plain <paragraph>/Text with none of
+   * className/html/href never got __host created, and paint() then threw
+   * reading .tx off it. Sharing one method removes that failure mode.
+   *
+   * Must include paint.props.href in the Box branch: createHtmlHost below
+   * still special-cases href to build an <a> host even with no
+   * className/html/options.box, and that host is what HTMLPortal.tsx's
+   * box.__onCreate hook needs to ever fire for an href-only box. Dropping
+   * it here once made that condition inconsistent with createHtmlHost's own
+   * -- exactly the drift this method exists to prevent.
+   */
+  private shouldHostPaint(paint: SpacialContent): paint is Text | Box {
+    return (
+      (this.options.text && paint instanceof Text) ||
+      (paint instanceof Box && !!(this.options.box || paint.props.className || paint.props.html || paint.props.href))
+    );
+  }
+
   createHtmlHost(paint: Text | Box) {
-    if (
-      this.htmlContainer &&
-      ((paint instanceof Text && this.options.text) ||
-        this.options.box ||
-        paint.props.className ||
-        paint.props.html ||
-        paint.props.href)
-    ) {
+    if (this.htmlContainer && this.shouldHostPaint(paint)) {
       const div = document.createElement(paint.props.href ? 'a' : 'div');
       if (paint.props.href) {
         div.style.display = 'block';
@@ -267,12 +284,14 @@ export class OverlayRenderer implements Renderer {
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
     this.zIndex++;
 
-    if (
-      ((this.options.text && paint instanceof Text) ||
-        (paint instanceof Box && (this.options.box || paint.props.className || paint.props.html))) &&
-      paint.__host &&
-      paint.__host.tx !== this.paintTx
-    ) {
+    // shouldHostPaint's own comment covers why this can no longer diverge
+    // from createHtmlHost's condition -- paint.__host is only ever set
+    // there, so this branch is never taken without a host having already
+    // been created. The paint.__host truthiness check is kept anyway
+    // (main's own independent defense against the same class of crash) as
+    // a cheap extra guard against any other host-creation path this
+    // condition doesn't know about.
+    if (this.shouldHostPaint(paint) && paint.__host && paint.__host.tx !== this.paintTx) {
       this.visible.push(paint);
       paint.__host.tx = this.paintTx;
 

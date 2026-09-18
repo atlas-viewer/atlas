@@ -404,7 +404,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       }
       this.needsRecalculate = false;
     }
-
     return didChange;
   }
 
@@ -508,9 +507,62 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     };
   }
 
+  /**
+   * Forces every rotated (or rotated-descendant-carrying -- see
+   * WorldObject#selectionRotation) top-level object's slot in `filteredPoints`
+   * to stay marked included, undoing hidePointsOutsideRegion's raw-bounds
+   * exclusion for those objects specifically.
+   *
+   * World has no rotation of its own, so getObjectsAt/getScheduledUpdates
+   * otherwise filter top-level objects with a single
+   * hidePointsOutsideRegion(this.points, target) call against each object's
+   * *raw, unrotated* world bounds -- exactly like an unrotated WorldObject
+   * before selectionRotation() existed, just one level higher, with nothing
+   * above World left to widen on its behalf.
+   *
+   * An earlier version of this fix tried widening `target` itself first (by
+   * unioning in applyRotation(target) computed per rotated object, the same
+   * trick WorldObject#getAllPointsAt already uses one level down) rather
+   * than force-including here. That's a real, but *narrower*, technique
+   * than it looks: it only discovers a raw region genuinely reachable by
+   * rotating target around the pivot currently in effect -- while idle,
+   * that pivot is *always* target's own center (see currentWorldPivot's own
+   * doc comment), and rotating any rectangle around its own center can
+   * never move its bounding box beyond swapping its own width and height.
+   * Confirmed live: after dragging (pans target in raw world-space,
+   * uncorrelated with visual rotation -- the controller has no rotation
+   * awareness either) far enough that a top-level object's raw bounds no
+   * longer overlap target at all, no rotation of target around its own
+   * center can ever reach back to it, however the pivot or angle are
+   * chosen -- the widening was geometrically incapable of the one thing it
+   * needed to do. Forcing inclusion instead sidesteps needing that
+   * calculation to be right at all: a rotated object's own
+   * getObjectsAt/getAllPointsAt already does its own correct, precise
+   * filtering against the real target once it actually runs (see
+   * WorldObject#applyRotation and #selectionRotation) -- this only has to
+   * stop the fast, rotation-*unaware* pre-filter up here from silently
+   * dropping a candidate before that downstream logic ever gets a chance.
+   * Only ever adds candidates, never removes any hidePointsOutsideRegion
+   * already kept -- unrotated objects (the common case, and the only case
+   * where the raw-bounds fast path is actually a correctness-preserving
+   * optimization) are entirely unaffected.
+   */
+  private forceIncludeRotatedObjects(filteredPoints: Strand) {
+    const len = this.objects.length;
+    for (let index = 0; index < len; index++) {
+      const object = this.objects[index];
+      if (!object || object.type !== 'world-object') {
+        continue;
+      }
+      if ((object as WorldObject).selectionRotation()) {
+        filteredPoints[index * 5] = 1;
+      }
+    }
+  }
+
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
-
+    this.forceIncludeRotatedObjects(filteredPoints);
     const len = this.objects.length;
     this._updatedList = [];
 
@@ -548,6 +600,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const zone = this.getActiveZone();
     const includeOutsideObjects = zone && includeZoneFade ? this.getZoneOutsideVisibility(zone) > 0 : false;
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
+    this.forceIncludeRotatedObjects(filteredPoints);
 
     const len = this.renderOrder.length;
     const objects: Array<[WorldObject, Paintable[]]> = [];

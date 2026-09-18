@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type PresetNames, type Presets, presets } from '../presets';
 import type { Preset, PresetArgs } from '../presets/_types';
 import { defaultPreset } from '../presets/default-preset';
+import { deferToMicrotask } from '../../../utility/defer-to-microtask';
 
 const defaultArgs = {};
 
@@ -94,9 +95,19 @@ export function usePreset(
       ...(presetArgs || {}),
     });
 
-    setPreset(createdPreset);
+    // React StrictMode (dev only) synchronously double-invokes this effect on
+    // mount: mount -> cleanup -> mount again, all before any microtask runs.
+    // Exposing `createdPreset` via setPreset() immediately would let the
+    // *first* (about-to-be-destroyed) preset flow downstream and spawn its
+    // own reconciler tree / fire onCreated, racing the real, surviving
+    // instance from the second invocation. Deferring past a microtask lets
+    // the synchronous double-invoke finish first, so a preset torn down by
+    // its own cleanup is never published to the rest of the tree. See
+    // deferToMicrotask's own tests for the defer/cancel logic in isolation.
+    const cancelDeferredSetPreset = deferToMicrotask(() => setPreset(createdPreset));
 
     return () => {
+      cancelDeferredSetPreset();
       if (createdPreset) {
         const currentViewport = createdPreset.runtime.getViewport();
         viewport.current = {

@@ -10,7 +10,7 @@ export default defineConfig((options) => ({
     index: 'src/index.ts',
     standalone: 'src/standalone.ts',
   },
-  minify: !options.watch,
+  minify: options.watch ? false : { compress: true, mangle: false, codegen: true },
   clean: true,
   external: ['react', 'react-dom', 'scheduler', 'react-reconciler'],
   globalName: 'AtlasViewer',

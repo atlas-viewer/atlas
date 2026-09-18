@@ -58,7 +58,18 @@ export class TransitionManager {
   runTransition(target: Strand, delta: number) {
     if (!this.pendingTransition.done) {
       const transition = this.pendingTransition;
-      const td = transition.total_time === 0 ? 0 : (transition.elapsed_time + delta) / transition.total_time;
+      // Clamped to 1: an unusually large single-frame delta (a backgrounded
+      // tab resuming, a dropped frame, a GC pause) can otherwise push td
+      // past 1, and easing functions like easeOutQuart (1 - (1-x)^4) are
+      // only monotonic on [0, 1] -- past that they curve back down instead
+      // of staying at the endpoint, so `step` collapses toward 0 right when
+      // elapsed_time >= total_time marks the transition done. That leaves
+      // `target` stuck wherever that bad step landed it, permanently (since
+      // nothing else re-triggers a correction), for example a
+      // constrain-bounds snap-back that reports done but never actually
+      // arrives back in bounds.
+      const rawTd = transition.total_time === 0 ? 0 : (transition.elapsed_time + delta) / transition.total_time;
+      const td = rawTd > 1 ? 1 : rawTd;
       const step = transition.total_time === 0 ? 1 : td === 0 ? 0 : transition.timingFunction(td);
 
       // Update our target.
@@ -156,7 +167,6 @@ export class TransitionManager {
   } = {}) {
     this.isConstraining = true;
     const [isConstrained, constrained] = this.runtime.constrainBounds(this.runtime.target, { panPadding });
-
     if (isConstrained) {
       this.applyTransition(constrained, transition, {
         duration: 500,
@@ -167,6 +177,12 @@ export class TransitionManager {
         }
       });
       this.runtime.updateNextFrame();
+      // Main independently fixed the same "isConstraining stuck true
+      // forever" bug touch-old fixed (nothing else clears it when there
+      // was no correction to make, since the trailing reset below used to
+      // run unconditionally even after this branch already started a
+      // correction) -- this early return already covers it, so touch-old's
+      // more verbose explicit else-branch version isn't needed on top.
       return;
     }
 

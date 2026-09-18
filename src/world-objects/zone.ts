@@ -92,6 +92,13 @@ export class Zone implements ZoneInterface {
   }
 
   recalculateBounds(): void {
+    // Main's Zone was redesigned upstream (config-driven manual bounds via
+    // this.config.x/y/width/height) since touch-old forked -- it no longer
+    // computes bounds from this.objects's own points at all, so the
+    // selectionBounds()-based fix from that branch (a member WorldObject's
+    // raw .points going stale once a rotated descendant is
+    // pivot-compensated -- see WorldObject#selectionBounds) doesn't apply
+    // here: there's no per-object .points read left for it to widen.
     const hasManualBounds =
       Number.isFinite(this.config.x) &&
       Number.isFinite(this.config.y) &&

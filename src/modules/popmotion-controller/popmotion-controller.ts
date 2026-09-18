@@ -181,6 +181,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         momentum.active = false;
         momentum.vx = 0;
         momentum.vy = 0;
+        runtime.panMomentumActive = false;
       }
 
       function clearGestureState() {
@@ -358,6 +359,25 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         });
       }
 
+      // Total screen-px travel across the whole press, from the first pan
+      // sample (recorded at mousedown) to the last -- distinct from
+      // state.hasMovedSincePress, which flips true on *any* mousemove that
+      // nudges `nextTarget` by even a fraction of a world unit. Real pointer
+      // input is never perfectly still between mousedown and mouseup (a click
+      // routinely delivers a mousemove or two of a pixel or so of jitter), so
+      // hasMovedSincePress is true for nearly every click, not just real
+      // drags -- unusable as a "was this actually a pan" signal. This reuses
+      // calculateReleaseVelocity's own MIN_MOMENTUM_TRAVEL_PX noise floor
+      // instead.
+      function releaseTravelPx() {
+        if (panSamples.length < 2) {
+          return 0;
+        }
+        const first = panSamples[0];
+        const last = panSamples[panSamples.length - 1];
+        return Math.hypot(last.x - first.x, last.y - first.y) * runtime.getScaleFactor();
+      }
+
       function calculateReleaseVelocity() {
         if (panSamples.length < 2) {
           return null;
@@ -409,6 +429,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return false;
         }
         momentum.active = true;
+        runtime.panMomentumActive = true;
         momentum.vx = vx;
         momentum.vy = vy;
         runtime.updateNextFrame();
@@ -425,7 +446,18 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return;
         }
         const startedMomentum = runtime.mode === 'explore' ? maybeStartPanMomentum() : false;
-        if (runtime.mode === 'explore' && !startedMomentum) {
+        // Only correct out-of-bounds position on release if the pointer
+        // actually panned by more than noise (releaseTravelPx, not the far
+        // more sensitive state.hasMovedSincePress -- see that function's own
+        // comment for why). A plain click/tap never moves `target` itself,
+        // so it has nothing of its own to correct -- but without this guard,
+        // a click that happens to land while inertial momentum is still
+        // carrying the view through its elastic overshoot (stopped dead by
+        // onMouseDown's stopPanMomentum, *before* it had settled back within
+        // bounds on its own) would unconditionally kick off a fresh,
+        // click-triggered 500ms constrain-bounds snap -- visibly moving the
+        // view as a side effect of a click that never dragged anything.
+        if (runtime.mode === 'explore' && !startedMomentum && releaseTravelPx() >= MIN_MOMENTUM_TRAVEL_PX) {
           runtime.world.constraintBounds();
         }
         state.isPressing = false;
@@ -433,6 +465,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         clearPanSamples();
         clearGestureState();
         resetState();
+        runtime.endInteraction();
       }
 
       function releaseGesturePointer() {
@@ -463,6 +496,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         clearPanSamples();
         clearGestureState();
         resetState();
+        runtime.endInteraction();
       }
 
       runtime.world.activatedEvents.push(
@@ -521,6 +555,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         if (e.which > 1) {
           resetHoldToHomeState();
           state.isPressing = false;
+          runtime.endInteraction();
           return;
         }
         if (runtime.mode === 'explore') {
@@ -536,6 +571,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
           state.isPressing = true;
           armHoldToHome(typeof e.clientX === 'number' ? e.clientX : 0, typeof e.clientY === 'number' ? e.clientY : 0);
+          // Matches onTouchStart's own unconditional call below --
+          // Runtime#beginInteraction is itself a no-op when a gesture is
+          // already in progress, so this doesn't need its own guard here.
+          runtime.beginInteraction();
         }
       }
 
@@ -592,6 +631,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.transitionManager.stopTransition();
 
           state.isPressing = true;
+          runtime.beginInteraction();
         }
       }
 
