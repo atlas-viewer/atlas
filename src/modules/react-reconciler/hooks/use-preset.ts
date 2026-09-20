@@ -17,6 +17,8 @@ export function usePreset(
     onWebGLFallback?: PresetArgs['onWebGLFallback'];
     onImageError?: PresetArgs['onImageError'];
     imageLoading?: PresetArgs['imageLoading'];
+    idle?: boolean;
+    loadWhenVisible?: boolean;
     webglFallbackOnImageLoadError?: PresetArgs['webglFallbackOnImageLoadError'];
     webglReadiness?: PresetArgs['webglReadiness'];
     runtimeOptions?: PresetArgs['runtimeOptions'];
@@ -52,11 +54,14 @@ export function usePreset(
     : [renderPreset];
 
   const [preset, setPreset] = useState<Preset | null>(null);
+  const idleRef = useRef(options.idle);
+  const visibleRef = useRef(true);
 
   useLayoutEffect(() => {
     liveCallbacksRef.current.onWebGLFallback = options.onWebGLFallback;
     liveCallbacksRef.current.onImageError = options.onImageError;
-  }, [options.onImageError, options.onWebGLFallback]);
+    idleRef.current = options.idle;
+  }, [options.onImageError, options.onWebGLFallback, options.idle]);
 
   useLayoutEffect(() => {
     const canvasElement = canvasRef.current;
@@ -94,6 +99,8 @@ export function usePreset(
       ...(presetArgs || {}),
     });
 
+    // Gate the first populated frame while waiting for the observer's initial result.
+    createdPreset.runtime.setIdle(!!options.idle || (!!options.loadWhenVisible && typeof IntersectionObserver !== 'undefined'));
     setPreset(createdPreset);
 
     return () => {
@@ -129,6 +136,31 @@ export function usePreset(
     options.webglFallbackOnImageLoadError,
     options.webglReadiness,
   ]);
+
+  useLayoutEffect(() => {
+    if (!preset) return;
+    const element = preset.canvas || preset.container;
+    const observe = !!options.loadWhenVisible && !!element && typeof IntersectionObserver !== 'undefined';
+    visibleRef.current = !observe;
+    preset.runtime.setIdle(!!idleRef.current || !visibleRef.current);
+    if (!observe) return;
+
+    let active = true;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!active || !entry) return;
+      visibleRef.current = entry.isIntersecting;
+      preset.runtime.setIdle(!!idleRef.current || !entry.isIntersecting);
+    });
+    observer.observe(element!);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [preset, options.loadWhenVisible]);
+
+  useLayoutEffect(() => {
+    preset?.runtime.setIdle(!!options.idle || !visibleRef.current);
+  }, [preset, options.idle]);
 
   const refs = useMemo(
     () => ({

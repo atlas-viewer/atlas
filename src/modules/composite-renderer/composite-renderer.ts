@@ -110,6 +110,12 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
+  setIdle(idle: boolean) {
+    for (const renderer of this.renderers) {
+      renderer.setIdle?.(idle);
+    }
+  }
+
   resetReadyState() {
     for (let i = 0; i < this.length; i++) {
       if (this.renderers[i].resetReadyState) {

@@ -436,6 +436,7 @@ export class NavigatorRenderer extends DebugRenderer {
   private readonly baseContext: CanvasRenderingContext2D;
   private readonly worldTarget: Strand = DnaFactory.singleBox(1, 1, 0, 0);
   private readonly previewImageCache = new Map<string, ImageCacheEntry>();
+  private idle = false;
 
   private worldLayerDirty = true;
   private lastWorldWidth = 0;
@@ -517,10 +518,11 @@ export class NavigatorRenderer extends DebugRenderer {
   }
 
   pendingUpdate(): boolean {
-    return this.renderNextFrame || this.worldLayerDirty;
+    return !this.idle && (this.renderNextFrame || this.worldLayerDirty);
   }
 
   afterFrame(world: World, _delta: number, target: Strand) {
+    if (this.idle) return;
     const frameInvalidationVersion = this.worldLayerInvalidationVersion;
     if (this.canvas.width <= 0 || this.canvas.height <= 0) {
       this.emitDebugEvent({
@@ -961,6 +963,7 @@ export class NavigatorRenderer extends DebugRenderer {
       return cached.status === 'loaded' ? cached.image : undefined;
     }
 
+    if (this.idle) return undefined;
     const image = new Image();
     const entry: ImageCacheEntry = {
       image,
@@ -1017,6 +1020,31 @@ export class NavigatorRenderer extends DebugRenderer {
     }
 
     return entry.status === 'loaded' ? image : undefined;
+  }
+
+  setIdle(idle: boolean) {
+    this.idle = idle;
+    if (idle) {
+      for (const [url, entry] of this.previewImageCache) {
+        if (entry.status === 'loading') {
+          entry.status = 'error';
+          entry.image.onload = entry.image.onerror = null;
+          entry.image.src = '';
+          this.previewImageCache.delete(url);
+        }
+      }
+    }
+    this.worldLayerDirty = true;
+  }
+
+  reset() {
+    this.setIdle(true);
+    for (const entry of this.previewImageCache.values()) {
+      entry.image.onload = entry.image.onerror = null;
+    }
+    this.previewImageCache.clear();
+    this.baseCanvas.width = this.baseCanvas.height = 0;
+    this.idle = false;
   }
 
   private renderBox(

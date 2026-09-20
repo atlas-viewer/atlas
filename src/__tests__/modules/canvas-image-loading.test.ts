@@ -110,6 +110,136 @@ function setCompositeState(
 }
 
 describe('Canvas image loading behavior', () => {
+  test('idle cancels pending loads, preserves tiles, and resumes without errors or retries', async () => {
+    const onImageError = vi.fn();
+    const { renderer } = createRenderer({ readiness: 'immediate', onImageError });
+    const image = createImage('idle-request');
+    renderer.prepareLayer(image, image.points);
+    renderer.visible = [image];
+    const cachedTile = document.createElement('canvas');
+    renderer.hostCache.set('loaded-tile', cachedTile);
+    const firstLoad = deferred<HTMLImageElement>();
+    const secondLoad = deferred<HTMLImageElement>();
+    const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
+      .mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
+
+    renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0);
+    renderer._worker();
+    const firstTask = renderer.currentTask;
+    renderer.setIdle(true);
+    expect(renderer.inFlightImageLoads.size).toBe(0);
+    expect(renderer.hostCache.get('loaded-tile')).toBe(cachedTile);
+    expect(renderer.pendingUpdate()).toBe(false);
+    expect(renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0)).toBe(false);
+    renderer.doOffscreenWork();
+    expect(createRequest).toHaveBeenCalledTimes(1);
+
+    renderer.setIdle(false);
+    expect(renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0)).toBe(true);
+    renderer._worker();
+    const secondTask = renderer.currentTask;
+    firstLoad.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await firstTask;
+    expect(renderer.inFlightImageLoads.size).toBe(1);
+    secondLoad.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await secondTask;
+    expect(renderer.loadingQueue).toHaveLength(1);
+    expect(renderer.loadingQueue[0].kind).toBe('decode');
+    expect(image.__host.canvas.tiles[0].attempts || 0).toBe(0);
+    expect(onImageError).not.toHaveBeenCalled();
+    renderer.reset();
+  });
+
+  test.each([false, true])('reset releases tile canvases and allows images to reload (lruCache: %s)', (lruCache) => {
+    const { renderer } = createRenderer({ readiness: 'immediate', lruCache });
+    const image = createImage('reset-loaded');
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    buffer.canvases[0] = 'tile';
+    buffer.tiles[0] = { state: 'decoded', loadedAt: performance.now() };
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 100;
+    renderer.hostCache.set('tile', tile);
+    renderer.visible = renderer.previousVisible = [image];
+    renderer.pendingDrawCall = true;
+
+    renderer.reset();
+    renderer.reset();
+
+    expect(renderer.hostCache.get('tile')).toBeUndefined();
+    expect([tile.width, tile.height]).toEqual([0, 0]);
+    expect(renderer.visible).toEqual([]);
+    expect(renderer.previousVisible).toEqual([]);
+    expect(renderer.pendingUpdate()).toBe(false);
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect(renderer.loadingQueue).toHaveLength(1);
+    renderer.reset();
+  });
+
+  test('sequential viewers release source images without affecting an active viewer', async () => {
+    const { renderer: active } = createRenderer();
+    const source = { naturalWidth: 100 } as HTMLImageElement;
+    vi.spyOn(active.imageRequestPool as any, 'createRequest').mockResolvedValue(source);
+    const activeRequest = active.imageRequestPool.acquire('https://example.org/shared.jpg', 'active');
+    await activeRequest.promise;
+
+    for (let index = 0; index < 60; index++) {
+      const { renderer } = createRenderer();
+      const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest').mockResolvedValue(source);
+      for (const url of ['https://example.org/shared.jpg', `https://example.org/${index}.jpg`]) {
+        const request = renderer.imageRequestPool.acquire(url, 'viewer');
+        await request.promise;
+        request.release();
+      }
+      renderer.reset();
+      expect(createRequest).toHaveBeenCalledTimes(2);
+      expect((renderer.imageRequestPool as any).inFlight.size).toBe(0);
+      expect((renderer.imageRequestPool as any).knownConsumers.size).toBe(0);
+    }
+
+    await expect(activeRequest.promise).resolves.toBe(source);
+    expect(source.naturalWidth).toBe(100);
+    active.reset();
+  });
+
+  test.each(['resolve', 'reject'])('ignores a request that settles after reset: %s', async (outcome) => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('reset-pending');
+    renderer.prepareLayer(image, image.points);
+    renderer.visible = [image];
+    const d = deferred<HTMLImageElement>();
+    const release = vi.fn();
+    const acquire = vi.spyOn(renderer.imageRequestPool, 'acquire').mockReturnValue({
+      requestKey: 'old', release, promise: d.promise,
+    });
+    renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0, false);
+    renderer._worker();
+    const oldTask = renderer.currentTask;
+    renderer.reset();
+
+    // Reuse the same renderer and image before the old request settles.
+    const replacement = deferred<HTMLImageElement>();
+    const replacementRelease = vi.fn();
+    acquire.mockReturnValue({ requestKey: 'new', release: replacementRelease, promise: replacement.promise });
+    renderer.visible = [image];
+    expect(renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0, false)).toBe(true);
+    renderer._worker();
+    const newTask = renderer.currentTask;
+    if (outcome === 'resolve') d.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    else d.reject(new Error('late failure'));
+    await oldTask;
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(replacementRelease).not.toHaveBeenCalled();
+    expect(renderer.tasksRunning).toBe(1);
+    expect(renderer.loadingQueue).toHaveLength(0);
+    expect(renderer.inFlightImageLoads.size).toBe(1);
+    renderer.reset();
+    replacement.resolve({ naturalWidth: 100 } as HTMLImageElement);
+    await newTask;
+    expect(renderer.pendingUpdate()).toBe(false);
+  });
+
   test('inactive loaded layer draws without requesting new load', () => {
     const { renderer, context } = createRenderer({ readiness: 'immediate' });
     const image = createImage('fallback');

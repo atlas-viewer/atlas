@@ -39,6 +39,30 @@ function createMockCanvas(context: any, width = 100, height = 100): HTMLCanvasEl
 }
 
 describe('NavigatorRenderer clipping', () => {
+  test('idle cancels preview loads while preserving loaded previews and reset clears the cache', () => {
+    const context = createMockContext();
+    const baseCanvas = createMockCanvas(context);
+    const createElement = vi.spyOn(document, 'createElement').mockReturnValue(baseCanvas);
+    const renderer = new NavigatorRenderer(createMockCanvas(context));
+    createElement.mockRestore();
+    const loading = { src: 'pending.jpg', onload: () => {}, onerror: () => {} };
+    const loaded = { src: 'loaded.jpg' };
+    const cache = (renderer as any).previewImageCache;
+    cache.set('pending.jpg', { image: loading, status: 'loading' });
+    cache.set('loaded.jpg', { image: loaded, status: 'loaded' });
+    renderer.setIdle(true);
+    expect(cache.has('pending.jpg')).toBe(false);
+    expect(loading.src).toBe('');
+    expect(loading.onload).toBeNull();
+    expect((renderer as any).getLoadedPreviewImage('new.jpg')).toBeUndefined();
+    expect((renderer as any).getLoadedPreviewImage('loaded.jpg')).toBe(loaded);
+    renderer.setIdle(false);
+    expect(renderer.pendingUpdate()).toBe(true);
+    renderer.reset();
+    expect(cache.size).toBe(0);
+    expect([baseCanvas.width, baseCanvas.height]).toEqual([0, 0]);
+  });
+
   test('clips image layers to composite bounds when clipToBounds is enabled', () => {
     const mainContext = createMockContext();
     const baseContext = createMockContext();

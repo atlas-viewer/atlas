@@ -22,6 +22,7 @@ export interface Renderer {
   triggerResize?: () => void;
   resetReadyState?: () => void;
   resetImageFadeState?: () => void;
+  setIdle?: (idle: boolean) => void;
 
   reset(): void;
   getRendererScreenPosition():

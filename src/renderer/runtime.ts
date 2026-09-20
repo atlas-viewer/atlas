@@ -13,6 +13,7 @@ import { nanoid } from 'nanoid';
 import type { RuntimeDebugEvent } from '../modules/react-reconciler/devtools/types';
 import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
 import { TransitionManager } from '../modules/transition-manager/transition-manager';
+import { CompositeResource } from '../spacial-content/composite-resource';
 import type { Projection, RuntimeController, Viewer } from '../types';
 import { easingFunctions } from '../utility/easing-functions';
 import { getZoneConstrainedBounds } from '../utility/get-zone-constrained-bounds';
@@ -65,6 +66,7 @@ export type RuntimeZoneState = {
 export class Runtime {
   id = nanoid();
   ready = false;
+  idle = false;
   readyCycle = 0;
   readyReason: AtlasReadyResetReason = 'initial';
   readyTimestamp: number | undefined;
@@ -816,7 +818,21 @@ export class Runtime {
 
     const sWidth = this.getRendererScreenPosition()?.width;
     const ratio = sWidth ? sWidth / this.world.width : 1;
-    const maxScale = Math.max(ratio || 1, this.options.maxOverZoom);
+    let nativeScale = 1;
+    for (const [object] of this.world.getObjectsAt(target)) {
+      for (const layer of object.layers) {
+        // Include the full composite dimensions even while only a thumbnail is available.
+        const images = layer instanceof CompositeResource ? [layer, ...layer.allImages] : [layer];
+        for (const image of images) {
+          if (!(image instanceof CompositeResource) && !image.getImageUrl && !image.getTexture) continue;
+          const imageScale = image.display.scale * object.scale;
+          if (Number.isFinite(imageScale) && imageScale > 0) {
+            nativeScale = Math.max(nativeScale, 1 / imageScale);
+          }
+        }
+      }
+    }
+    const maxScale = Math.max(ratio || 1, this.options.maxOverZoom * nativeScale);
 
     return {
       scaleFactor,
@@ -1058,6 +1074,15 @@ export class Runtime {
     this.resetReadyState('runtime-reset');
   }
 
+  /** Pause rendering and image requests while retaining the current view. */
+  setIdle(idle: boolean) {
+    if (this.idle === idle) return;
+    this.idle = idle;
+    this.renderer.setIdle?.(idle);
+    this.lastTime = performance.now();
+    this.updateNextFrame();
+  }
+
   resetReadyState(reason: AtlasReadyResetReason = 'manual') {
     this.ready = false;
     this.readyCycle += 1;
@@ -1206,6 +1231,11 @@ export class Runtime {
    * @   param t
    */
   render = (t: number) => {
+    if (this.idle) {
+      this.lastTime = t;
+      this.stopId = window.requestAnimationFrame(this.render);
+      return;
+    }
     const delta = t - this.lastTime;
 
     if (this.isCommitting || (this.fpsLimit && delta < 1000 / this.fpsLimit)) {

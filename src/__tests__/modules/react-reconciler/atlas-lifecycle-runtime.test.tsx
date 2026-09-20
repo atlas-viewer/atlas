@@ -49,6 +49,7 @@ function createMockPreset(options: any) {
     })),
     setViewport: vi.fn(),
     updateNextFrame: vi.fn(),
+    setIdle: vi.fn(),
     setOptions: vi.fn(),
     setHomePosition: vi.fn(),
     setHomePaddingPx: vi.fn(),
@@ -124,6 +125,7 @@ describe('Atlas lifecycle runtime behavior', () => {
       presets['default-preset'] = originalDefaultPreset;
     }
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test('callback churn and same-value navigator options do not recreate the preset', async () => {
@@ -200,6 +202,86 @@ describe('Atlas lifecycle runtime behavior', () => {
     expect(firstOnWebGLFallback).not.toHaveBeenCalled();
     expect(secondOnImageError).toHaveBeenCalledTimes(1);
     expect(secondOnWebGLFallback).toHaveBeenCalledTimes(1);
+  });
+
+  test('visibility and explicit idle combine without remounting, and disconnect on unmount', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const createdPresets: MockPresetRecord[] = [];
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      createdPresets.push(record);
+      return record.preset as any;
+    }) as any;
+    const observers: { callback: IntersectionObserverCallback; observe: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      observe = vi.fn();
+      disconnect = vi.fn();
+      constructor(public callback: IntersectionObserverCallback) { observers.push(this); }
+    });
+    const render = async (idle: boolean, loadWhenVisible = true) => {
+      await act(async () => {
+        root.render(<Atlas width={300} height={200} unstable_noReconciler idle={idle} loadWhenVisible={loadWhenVisible}>
+          <React.Fragment />
+        </Atlas>);
+        await flush();
+      });
+    };
+    const reportVisible = (visible: boolean) => act(() => {
+      observers[0].callback([{ isIntersecting: visible } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+
+    await render(false);
+    const runtime = createdPresets[0].runtime;
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(true);
+    expect(observers[0].observe).toHaveBeenCalledWith(createdPresets[0].preset.canvas);
+    reportVisible(true);
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(false);
+    await render(true);
+    reportVisible(true);
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(true);
+    reportVisible(false);
+    await render(false);
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(true);
+    reportVisible(true);
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(false);
+    reportVisible(false);
+    await render(false, false);
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(false);
+    expect(observers[0].disconnect).toHaveBeenCalledTimes(1);
+    reportVisible(false);
+    expect(runtime.setIdle).toHaveBeenLastCalledWith(false);
+    await render(false);
+    expect(observers).toHaveLength(2);
+    expect(createdPresets).toHaveLength(1);
+    await act(async () => { root.render(null); await flush(); });
+    expect(observers[1].disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  test('visibility loading falls back to normal loading without IntersectionObserver', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    originalDefaultPreset = presets['default-preset'];
+    let record!: MockPresetRecord;
+    presets['default-preset'] = ((options: any) => {
+      record = createMockPreset(options);
+      return record.preset as any;
+    }) as any;
+    vi.stubGlobal('IntersectionObserver', undefined);
+    await act(async () => {
+      root.render(<Atlas width={300} height={200} unstable_noReconciler loadWhenVisible><React.Fragment /></Atlas>);
+      await flush();
+    });
+    expect(record.runtime.setIdle).toHaveBeenLastCalledWith(false);
+    await act(async () => {
+      root.render(<Atlas width={300} height={200} unstable_noReconciler loadWhenVisible idle><React.Fragment /></Atlas>);
+      await flush();
+    });
+    expect(record.runtime.setIdle).toHaveBeenLastCalledWith(true);
   });
 
   test('hard-construction changes recreate once and immediately reapply runtime options', async () => {

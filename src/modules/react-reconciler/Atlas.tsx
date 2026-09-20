@@ -69,6 +69,10 @@ export type AtlasProps = {
   // compatibility: webglReadiness?: 'first-meaningful-paint' | 'immediate'
   webglReadiness?: 'first-meaningful-paint' | 'immediate';
   imageLoading?: Partial<ImageLoadingConfig>;
+  /** Pause rendering and image requests without unmounting or clearing loaded tiles. */
+  idle?: boolean;
+  /** Opt in to pausing offscreen viewers using IntersectionObserver. */
+  loadWhenVisible?: boolean;
   unstable_noReconciler?: boolean;
   overlayStyle?: any;
   containerStyle?: any;
@@ -138,6 +142,8 @@ export const Atlas: React.FC<
     webglFallbackOnImageLoadError = false,
     webglReadiness,
     imageLoading,
+    idle = false,
+    loadWhenVisible = false,
     // eslint-disable-next-line
     unstable_noReconciler = false,
     hideInlineStyle = false,
@@ -378,6 +384,8 @@ export const Atlas: React.FC<
     webglFallbackOnImageLoadError,
     webglReadiness,
     imageLoading,
+    idle,
+    loadWhenVisible,
     runtimeOptions,
   });
 
