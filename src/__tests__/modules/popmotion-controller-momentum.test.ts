@@ -74,10 +74,6 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
     updateNextFrame: vi.fn(),
     constrainBounds: (nextTarget: any) => [false, nextTarget] as const,
     getHomeTarget: () => ({ x: 0, y: 0, width: 100, height: 100 }),
-    // No-ops: this harness doesn't exercise rotateFromWorldCenter, but
-    // PopmotionController now calls these unconditionally on press/release.
-    beginInteraction: vi.fn(),
-    endInteraction: vi.fn(),
   };
 
   runtime.transitionManager = {

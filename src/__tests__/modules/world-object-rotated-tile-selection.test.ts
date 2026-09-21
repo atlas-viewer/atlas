@@ -1,36 +1,6 @@
 import { dna, hidePointsOutsideRegion, Strand } from '@atlas-viewer/dna';
 import { WorldObject, TileSelectionDebugEvent } from '../../world-objects/world-object';
 
-// Regression fixture for a real, visually-reported bug: after rotating a
-// zoomed-in canvas (see stories/sequence-panel.stories.tsx -- Next, Zoom In
-// x3, Rotate once), the edge of the page nearest the rotation renders
-// visibly blurrier than the rest, because a lower-resolution fallback layer
-// is what's actually painted there. Root cause: getAllPointsAt() selected
-// *which* content/tile to fetch using only the raw, unrotated `target` (see
-// its own comment -- that's intentional, fixing a different bug where a far
-// rotationPivot caused rotated objects to vanish entirely). That was correct
-// for the yes/no "is this object visible" question, but once zoomed in
-// tight, the raw target no longer identifies the physically-correct
-// sub-region of a *rotated* object, and a leaf that should be selected got
-// skipped -- so nothing at the requested resolution covered that patch of
-// screen, and a coarser fallback layer showed through instead.
-//
-// Fixed by selecting content against the union of target and
-// applyRotation(target) in one pass -- see getAllPointsAt. Extending the
-// selected region can only add coverage, never remove it, so the far-pivot
-// invisibility fix above is untouched; it just also covers whatever the
-// unrotated target alone missed.
-//
-// An earlier version of this fix ran two *separate* getAllPointsAt passes
-// (unrotated, then rotation-aware) and concatenated their results, which
-// introduced its own real bug: each pass does its own coarse-to-fine layer
-// selection and paint ordering, correct within itself, but nothing ordered
-// the two passes against each other, so the second pass's coarse fallback
-// tiles could paint after -- and so visibly overwrite -- the first pass's
-// already-fine tile at the same screen position. A single selection pass
-// against the union has only one coarse-to-fine ordering, so that can't
-// happen; see 'a single selection pass never selects the same leaf twice'
-// below.
 
 // Minimal target-aware leaf, mirroring TiledImage#getAllPointsAt: it
 // actually consults `target` via hidePointsOutsideRegion, so we can tell

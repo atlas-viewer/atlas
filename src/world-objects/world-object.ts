@@ -98,12 +98,11 @@ export type TileSelectionDebugEvent = {
 export type HitTestCullingDebugEvent = {
   ownerId: string;
   rotation: number;
-  hasExternalPivot: boolean;
   /** The raw click/touch point (or hit-test box) in un-rotated world space, before applyRotation. */
   rawTarget: Strand;
   /** applyRotation(rawTarget) -- rawTarget mapped into this object's own local space, which is what getObjectsAt actually intersects against selectionBounds(). */
   rotatedTarget: Strand;
-  /** This object's own bounds, widened to cover a pivot-compensated descendant -- see WorldObject#selectionBounds. Equal to this.points when nothing below this node has been pivot-compensated. */
+  /** This object's own bounds, widened to cover an offset descendant -- see WorldObject#selectionBounds. Equal to this.points when nothing below this node has been offset. */
   objectPoints: Strand;
   /** Whether rotatedTarget missed selectionBounds() entirely, i.e. the click did not land on this object. */
   culled: boolean;
@@ -130,23 +129,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
    */
   static debugTileSelection: ((event: TileSelectionDebugEvent) => void) | undefined;
 
-  /**
-   * Optional debug hook, set by tests/tooling, fired from getObjectsAt()
-   * whenever a rotated object hit-tests content. Unlike getAllPointsAt,
-   * getObjectsAt legitimately does rotate the target via applyRotation()
-   * before intersecting it with this.points -- and needs to: its target is
-   * a real click/touch point in raw, un-rotated world space (see its only
-   * callers, world.ts's propagatePointerEvent/propagateTouchEvent), so
-   * mapping it into the object's own local space is exactly how you tell
-   * whether a click landed on this specific object's rotated, pivot-swept
-   * on-screen appearance. (This looked at first like the same rotationPivot
-   * bug that was fixed in getAllPointsAt -- it isn't; that target is a
-   * viewport window, not a point, and needs the opposite treatment. See
-   * world-object-hit-test-rotation-culling.test.ts for the full comparison
-   * and verification against the real render transform.) This hook exposes
-   * both targets and the outcome for tests/tooling to inspect without
-   * duplicating the rotation math. No-op unless a test/tool sets it.
-   */
+  /** Reports object-local hit testing for tests and debug tooling. */
   static debugHitTestCulling: ((event: HitTestCullingDebugEvent) => void) | undefined;
 
   /**
@@ -172,15 +155,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   filteredPointsBuffer: Strand;
   _updatedList: any[] = [];
   geometry?: any;
-
-  /**
-   * World-space coordinates of a fixed external rotation pivot (e.g. the
-   * viewport center), set by Runtime while rotating around a fixed point
-   * instead of this object's own center. undefined means own-center mode.
-   */
-  rotationPivot: { x: number; y: number } | undefined;
-  private lastAppliedX: number | undefined;
-  private lastAppliedY: number | undefined;
 
   constructor(props?: AbstractObject, position?: { x: number; y: number }) {
     super();
@@ -211,72 +185,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     return instance;
   }
 
-  /**
-   * BaseObject#applyPivotCompensationOffset moves `points` directly and
-   * bumps `pivotCompensationOffset`, bypassing applyProps() entirely. Left
-   * alone, that desyncs lastAppliedX/Y from pivotCompensationOffset: the
-   * *next* applyProps() call (e.g. from rotating or editing tx/ty) computes
-   * `propsX = props.x + pivotCompensationOffset.x` against a now-stale
-   * lastAppliedX, sees a spurious deltaX/Y equal to the compensation that
-   * was just applied directly, and reapplies it a second time (rotated, per
-   * the screen-aligned-edit logic below) -- an extra jump on the next
-   * unrelated edit, one step removed from the compensation itself. Bumping
-   * lastAppliedX/Y by the same amount keeps that delta at zero.
-   */
-  applyPivotCompensationOffset(x: number, y: number) {
-    super.applyPivotCompensationOffset(x, y);
-    if (this.lastAppliedX !== undefined) {
-      this.lastAppliedX += x;
-      this.lastAppliedY = (this.lastAppliedY as number) + y;
-    }
-  }
-
   applyProps(props: WorldObjectProps) {
-    const propsX = (props.x || 0) + this.pivotCompensationOffset.x;
-    const propsY = (props.y || 0) + this.pivotCompensationOffset.y;
-
-    let x: number;
-    let y: number;
-
-    // The angle this update is actually moving to, not this.rotation (the
-    // angle from before this call) -- see the delta un-rotation below.
+    const x = props.x || 0;
+    const y = props.y || 0;
     const nextRotation = props.rotation || 0;
-
-    if (this.rotationPivot && this.lastAppliedX !== undefined) {
-      // Rotating around a fixed external pivot means the object's own local
-      // axes are rotated in screen space by the current angle (see
-      // CanvasRenderer#applyTransform) -- moving x/y by a raw amount would
-      // otherwise appear to move the object along the wrong screen axis once
-      // rotated (e.g. a horizontal x edit appearing vertical at 90deg).
-      // Interpreting the *change* in x/y as a screen-space delta and
-      // un-rotating just that delta by the current angle keeps edits
-      // screen-aligned without touching how `rotation` itself sweeps the
-      // object around the fixed pivot (that sweep is a render-time-only
-      // effect and must stay driven by the raw position, not cancelled out
-      // here). Un-rotated by nextRotation, not this.rotation: a call that
-      // changes rotation and position together (e.g. a controller that
-      // rotates and pans in the same update) is about to render at the new
-      // angle, so a position delta arriving in that same call is already a
-      // screen-space delta measured against the angle it's moving *to* --
-      // un-rotating it by the angle it's moving *from* would land it off by
-      // the difference between the two.
-      const deltaX = propsX - this.lastAppliedX;
-      const deltaY = propsY - (this.lastAppliedY as number);
-      // rotatePoint(deltaX, deltaY, 0, 0, -nextRotation) un-rotates the
-      // delta around the origin -- same formula as the two call sites in
-      // Runtime#syncRotationPivotPosition, reused here instead of a third
-      // hand-written copy (see that method's own comment on why).
-      const [rotatedDeltaX, rotatedDeltaY] = rotatePoint(deltaX, deltaY, 0, 0, -nextRotation);
-      x = this.x + rotatedDeltaX;
-      y = this.y + rotatedDeltaY;
-    } else {
-      x = propsX;
-      y = propsY;
-    }
-
-    this.lastAppliedX = propsX;
-    this.lastAppliedY = propsY;
-
     if (typeof props.id !== 'undefined') {
       this.id = props.id;
     }
@@ -350,19 +262,11 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     // rawTarget-vs-viewport-window distinction from getAllPointsAt). An
     // unrotated ancestor's own local space isn't rotated at all, so its
     // click target is left as-is; selectionBounds() below is what lets it
-    // still recognize a click on a rotated, pivot-compensated descendant.
+    // still recognize a click on a rotated, offset descendant.
     if (this.rotation) {
       target = this.applyRotation(target);
     }
 
-    // Culled against selectionBounds(), not this.points -- see its own
-    // comment. this.points goes stale the moment a descendant is
-    // pivot-compensated (Runtime#syncRotationPivotPosition moves only the
-    // actually-rotated node), the same staleness getAllPointsAt was fixed
-    // to account for. Left as this.points here, a click on content that is
-    // genuinely on screen -- painted correctly by the already-fixed
-    // getAllPointsAt -- would still be silently culled before ever
-    // reaching the descendant whose own hit-test would have found it.
     const bounds = this.selectionBounds();
     const filteredPoints = hidePointsOutsideRegion(bounds, target, this.filteredPointsBuffer);
 
@@ -376,7 +280,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       WorldObject.debugHitTestCulling({
         ownerId: this.id,
         rotation: this.rotation,
-        hasExternalPivot: !!this.rotationPivot,
         rawTarget: rawTarget.slice() as Strand,
         rotatedTarget: target.slice() as Strand,
         objectPoints: bounds.slice() as Strand,
@@ -470,41 +373,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     return 0;
   }
 
-  /**
-   * This node's own bounds, widened to wherever its subtree is actually
-   * rendered -- the region getAllPointsAt must intersect `target` against,
-   * in place of `this.points`.
-   *
-   * `this.points` stops describing a node's own content the moment the
-   * rotation pivot changes: Runtime#syncRotationPivotPosition compensates
-   * for that change by moving the *rotated* node (the only one whose
-   * on-screen position the pivot actually affects -- see its
-   * `if (owner.rotation)`), and rotation lives on a nested wrapper, not on
-   * the top-level object (ImageService renders its rotation onto TileSet's
-   * own inner wrapper -- the same nesting selectionRotation exists for).
-   * Every ancestor of that wrapper keeps the bounds it had before, now
-   * describing where its content *used* to be. Measured live against
-   * stories/sequence-panel.stories.tsx's "setup test2": a canvas whose
-   * top-level object still claimed x 2451..4862 while the tiles it owns
-   * were being painted from x 1850 -- a 601px lie, easily enough for
-   * getIntersection to miss a target that genuinely overlaps the content,
-   * and cull a whole visibly on-screen canvas at the very first level.
-   * (World#forceIncludeRotatedObjects is the same staleness one level
-   * further up, handled the same way: keep the candidate, let real
-   * geometry decide.)
-   *
-   * Only ever widens, and only to cover content that genuinely exists, so
-   * the "genuinely far away is still culled" guarantee is untouched -- an
-   * object whose *content* is off screen still has every one of these
-   * bounds off screen (see world-object-culling.test.ts). Recurses through
-   * child world-objects the same way (and for the same reason)
-   * selectionRotation does, since the compensated node can be any number of
-   * levels down; child bounds are mapped back into this node's own frame
-   * with the inverse of the transform getAllPointsAt applies on the way
-   * down (`child = (parent - x) / scale`). Layers that aren't
-   * world-objects are skipped: pivot compensation never touches them, and
-   * a tiled leaf's `points` is a whole grid rather than one box.
-   */
+  /** Includes descendant world-object bounds, mapped through each ancestor's position and scale. */
   selectionBounds(): Strand {
     const bounds = this.selectionBoundsBuffer;
     bounds[0] = this.points[0];
@@ -590,8 +459,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
         // Matches selectionRotation()'s own fallback for a layer that
         // isn't a WorldObject (e.g. a leaf with its own .rotation): it can
         // still contribute a rotation to widen selection with, but -- like
-        // selectionBounds() -- never contributes to bounds, since pivot
-        // compensation only ever moves a WorldObject wrapper's own x/y.
+        // selectionBounds() -- never contributes to bounds: leaf points may be a tile grid.
         rotation = layer.rotation;
       }
     }
@@ -607,16 +475,8 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       const c = { x: target[3], y: target[2] };
       const d = { x: target[3], y: target[4] };
 
-      // Visibility/culling must rotate the viewport window around whatever
-      // point this object is actually *rendered* rotated around. Normally
-      // that's the object's own center, but while rotating around a fixed
-      // external pivot (rotationPivot, set by Runtime -- see
-      // CanvasRenderer#applyTransform), using the own-center here instead
-      // would compute a completely different (and often non-overlapping)
-      // effective target, silently culling an object that's actually on
-      // screen.
-      const x = this.rotationPivot ? this.rotationPivot.x : this.points[1] + (this.points[3] - this.points[1]) / 2;
-      const y = this.rotationPivot ? this.rotationPivot.y : this.points[2] + (this.points[4] - this.points[2]) / 2;
+      const x = this.points[1] + (this.points[3] - this.points[1]) / 2;
+      const y = this.points[2] + (this.points[4] - this.points[2]) / 2;
 
       const [x1, y1] = rotate(x, y, a.x, a.y, rotation);
       const [x2, y2] = rotate(x, y, b.x, b.y, rotation);
@@ -636,53 +496,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
     const transformer = compose(translate(this.x, this.y), scale(this.scale), this.aggregateBuffer);
 
-    // Rotation is intentionally NOT applied to `target` for this primary
-    // selection. Render-time position (CanvasRenderer's
-    // `position`/`transform(point, transformation)`) is always a
-    // translate+scale-only composition through the whole ancestor chain --
-    // rotation is applied separately, once, as a post-hoc screen-space
-    // canvas transform (see CanvasRenderer#applyTransform). Rotating target
-    // here to match `this.rotation` duplicates that transform one stage too
-    // early, and -- because a fixed external pivot can be far from this
-    // node's own bounds -- can shift the computed region completely outside
-    // `this.points`, incorrectly culling content that is actually on screen
-    // once the real (post-hoc) rotation is applied. This unrotated pass is
-    // therefore a deliberately conservative baseline: it always selects
-    // *something* for a genuinely visible rotated object, at the cost of
-    // sometimes selecting the wrong sub-region once zoomed in close to an
-    // edge (the renderer then falls back to a lower-resolution layer there,
-    // seen as blur -- see world-object-rotated-tile-selection.test.ts).
-    // Rotation-aware region: the sub-region actually visible once the
-    // post-hoc rotation is applied (target mapped into this object's own
-    // local space the same way getObjectsAt already does for hit-testing --
-    // see world-object-hit-test-rotation-culling.test.ts). applyRotation
-    // returns `target` itself, unchanged, when the effective rotation is
-    // falsy -- selectionRotation() falls back to a direct child's rotation
-    // when this node isn't rotated itself; see its own comment for why an
-    // unrotated node containing a rotated child still needs to widen here.
-    //
-    // Widening is skipped outright for a target that already selects
-    // nothing -- see isEmptyRegion: rotating an empty region is not a
-    // no-op, it *moves* it (to somewhere else entirely, when the pivot is
-    // far away), and the union of "nothing here" with "nothing over there"
-    // is a real, non-empty rectangle. That resurrects an already-made
-    // decision as a bogus one: this node's getIntersection then clips that
-    // rectangle against its own bounds into a thin sliver at one edge and
-    // selects (paints, and network-loads tiles for) the handful of leaves
-    // nearest it. Observed live against
-    // stories/sequence-panel.stories.tsx's "setup test2": a canvas the
-    // widened target genuinely missed still selected five tiles, two levels
-    // below the empty intersection that should have ended it -- and from
-    // the wrong end of its grid, since nothing about that sliver's position
-    // has anything to do with what's on screen. That path only opened up
-    // once World#forceIncludeRotatedObjects started
-    // deliberately keeping rotated top-level objects as candidates
-    // regardless of their raw bounds, specifically so this method could
-    // make the real decision -- "nothing" has to be one of the decisions
-    // it's allowed to make and have stick.
-    // A combined computation of selectionRotation() + selectionBounds() --
-    // see selectionRotationAndBounds's own comment for why this hot path
-    // uses it instead of the two public methods separately.
     const { rotation, bounds: ownBounds } = this.selectionRotationAndBounds();
     const emptyTarget = isEmptyRegion(target);
     const rotationAwareTarget = emptyTarget ? target : this.applyRotation(target, rotation);
@@ -722,12 +535,6 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     // issue.
     let unionTarget = target;
     if (rotationAwareTarget !== target) {
-      // Written into a reusable buffer rather than dna([...]) -- this runs
-      // for every rotated (or rotation-descendant-carrying) node, every
-      // frame, and a fresh Float32Array allocation here on that path is
-      // exactly the per-frame GC pressure this class otherwise avoids (see
-      // e.g. Runtime#updateWorldObjectRotationPivots's own comment on
-      // reusing rotationPivot objects for the same reason).
       unionTarget = this.unionTargetBuffer;
       unionTarget[0] = target[0];
       unionTarget[1] = Math.min(target[1], rotationAwareTarget[1]);
@@ -739,7 +546,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     // Intersected against where this node's content actually is, not
     // against `this.points` -- see selectionBounds for why those two stop
     // agreeing (and by how much) as soon as anything below this node has
-    // been pivot-compensated. Identical to this.points for every node that
+    // been offset. Identical to this.points for every node that
     // hasn't been. Reuses ownBounds (already computed above alongside
     // rotation) rather than calling selectionBounds() again, which would
     // redo the same subtree walk a second time in this same call.

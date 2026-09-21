@@ -193,21 +193,6 @@ function tileId(imageServiceId: string, index: number, scaleFactor: string): str
   return `${imageServiceId}::${index}@${scaleFactor}`;
 }
 
-// Inverts the post-hoc canvas rotation CanvasRenderer#applyTransform applies
-// around the viewport center under rotateFromWorldCenter, so a point
-// computed via Runtime#worldToViewer (which is deliberately rotation-blind,
-// see world-object.ts) can be placed where the content *actually* renders.
-// Forward direction confirmed against applyTransform's own
-// ctx.translate/rotate/translate sequence.
-function rotatePointAroundCenter(x: number, y: number, cx: number, cy: number, angleDeg: number) {
-  const rad = (angleDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const dx = x - cx;
-  const dy = y - cy;
-  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
-}
-
 export const SequencePanel = () => {
   const ref = useRef<Preset>();
   const [openings, setOpenings] = useState<Opening[]>([]);
@@ -252,7 +237,7 @@ export const SequencePanel = () => {
   // at a glance instead of only one at a time via hover.
   const [showAllTileBoundaries, setShowAllTileBoundaries] = useState(true);
   const [allTileBoxes, setAllTileBoxes] = useState<
-    Array<{ id: string; label: string; x: number; y: number; width: number; height: number; offScreen: boolean; status?: TileLoadDebugEvent['status'] }>
+    Array<{ id: string; label: string; x: number; y: number; width: number; height: number; rotation: number; offScreen: boolean; status?: TileLoadDebugEvent['status'] }>
   >([]);
   // Same "latest ref" reasoning as latestRefreshHighlight.
   const latestComputeAllTileBoxes = useRef<() => void>(() => {});
@@ -632,36 +617,18 @@ export const SequencePanel = () => {
     const screenRect = runtime.worldToViewer(globalX, worldY, worldWidth, worldHeight);
     const centerX = screenRect.x + screenRect.width / 2;
     const centerY = screenRect.y + screenRect.height / 2;
-    const center = rotation
-      ? rotatePointAroundCenter(centerX, centerY, canvasEl.clientWidth / 2, canvasEl.clientHeight / 2, rotation)
-      : { x: centerX, y: centerY };
-
-    // A tile that covered the whole view when it was drawn (e.g. a low-res
-    // overview fetched right after load) can end up far larger than the
-    // current viewport after zooming in -- its highlight is then mostly or
-    // entirely clipped by the container's overflow:hidden. Flagging that
-    // (checked against the *unrotated* rect, an approximation once rotated,
-    // but good enough to tell "mostly here" from "elsewhere entirely") lets
-    // the UI say so instead of just silently showing a sliver.
+    // Flag tiles whose rotated bounds extend beyond the viewport.
     const left = screenRect.x;
     const top = screenRect.y;
     const offScreen =
       left < 0 || top < 0 || left + screenRect.width > canvasEl.clientWidth || top + screenRect.height > canvasEl.clientHeight;
 
     return {
-      x: center.x,
-      y: center.y,
-      // The tile's real on-screen size, not a fixed/clamped marker -- shows
-      // honestly how much of the image it actually covers at the current
-      // zoom, and how that compares to its neighbours. The box is centered
-      // on `center` (already rotation-corrected) and then CSS-rotated by the
-      // same amount around its own center (== center, by construction),
-      // which correctly rotates its *shape* to match -- worldToViewer's
-      // unrotated width/height are still the right numbers to rotate, since
-      // rotation doesn't change a rectangle's own dimensions, only its
-      // position and orientation.
-      width: screenRect.width,
-      height: screenRect.height,
+      x: centerX,
+      y: centerY,
+      width: worldWidth * runtime.getScaleFactor(),
+      height: worldHeight * runtime.getScaleFactor(),
+      rotation: runtime.viewRotation,
       offScreen,
     };
   };
@@ -669,7 +636,7 @@ export const SequencePanel = () => {
   const highlightTile = (imageServiceId: string, label: TileLabel) => {
     const box = computeTileScreenBox(imageServiceId, label);
     if (!box) return;
-    setHighlightedTile({ id: tileId(imageServiceId, label.index, label.scaleFactor), rotation, ...box });
+    setHighlightedTile({ id: tileId(imageServiceId, label.index, label.scaleFactor), ...box });
   };
 
   // One outline per currently-tracked tile (see tileLabelsByCanvas), drawn
@@ -684,7 +651,7 @@ export const SequencePanel = () => {
     if (!showAllTileBoundaries) return;
     const canvasEl = ref.current?.canvas;
     if (!canvasEl) return;
-    const boxes: Array<{ id: string; label: string; x: number; y: number; width: number; height: number; offScreen: boolean; status?: TileLoadDebugEvent['status'] }> = [];
+    const boxes: Array<{ id: string; label: string; x: number; y: number; width: number; height: number; rotation: number; offScreen: boolean; status?: TileLoadDebugEvent['status'] }> = [];
     for (const canvas of currentCanvases) {
       const labels = tileLabelsByCanvas[canvas.imageServiceId] || [];
       for (const label of labels) {
@@ -922,7 +889,7 @@ export const SequencePanel = () => {
         <Container>
           {currentCanvases.length ? (
             <AtlasAuto
-              rotateFromWorldCenter
+              viewRotation={rotation}
               onCreated={(e) => {
                 ref.current = e;
                 // Debug convenience only: lets a browser console (or an
@@ -940,7 +907,7 @@ export const SequencePanel = () => {
                     height={canvas.height}
                     width={canvas.width}
                   >
-                    <ImageService id={canvas.imageServiceId} width={canvas.width} height={canvas.height} rotation={rotation} />
+                    <ImageService id={canvas.imageServiceId} width={canvas.width} height={canvas.height} />
                   </world-object>
                 ))}
               </world>
@@ -965,7 +932,7 @@ export const SequencePanel = () => {
                   top: box.y - box.height / 2,
                   width: box.width,
                   height: box.height,
-                  transform: `rotate(${rotation}deg)`,
+                  transform: `rotate(${box.rotation}deg)`,
                   boxSizing: 'border-box',
                   zIndex: 15,
                   border: `1px solid ${box.status ? TILE_STATUS_COLORS[box.status] : '#555'}`,

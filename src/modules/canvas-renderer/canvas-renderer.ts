@@ -582,7 +582,7 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
-  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number, cx?: number, cy?: number) {
+  applyTransform(paint: Paintable, x: number, y: number, width: number, height: number) {
     const owner = paint.__owner.value;
     if (owner && owner.rotation) {
       this.ctx.save();
@@ -590,18 +590,11 @@ export class CanvasRenderer implements Renderer {
       const halfWidth = width / 2;
       const halfHeight = height / 2;
       const angle = (owner.rotation * Math.PI) / 180;
-      // cx/cy only sent in if there's a unique rotation point
-      if (cx == undefined || cy == undefined) {
-        const moveX = x + halfWidth;
-        const moveY = y + halfHeight;
-        this.ctx.translate(moveX, moveY);
-        this.ctx.rotate(angle);
-        this.ctx.translate(-moveX, -moveY);
-      } else {
-        this.ctx.translate(cx, cy);
-        this.ctx.rotate(angle);
-        this.ctx.translate(-cx, -cy);
-      }
+      const moveX = x + halfWidth;
+      const moveY = y + halfHeight;
+      this.ctx.translate(moveX, moveY);
+      this.ctx.rotate(angle);
+      this.ctx.translate(-moveX, -moveY);
       this.lastPaintedObject = owner;
     }
   }
@@ -1606,11 +1599,11 @@ export class CanvasRenderer implements Renderer {
     // No-op
   }
 
-  prepareLayer(paint: SpacialContent, points: Strand, cx?: number, cy?: number): void {
+  prepareLayer(paint: SpacialContent, points: Strand): void {
     this.hasActiveLayerClip = false;
 
     if (paint.__owner.value) {
-      this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2], cx, cy);
+      this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
     }
 
     if (this.shouldClipLayerToBounds(paint)) {

@@ -118,7 +118,6 @@ test('two fingers anchor content through simultaneous pan, zoom and rotation, in
     h.frame();
     expect(h.project(h.owner, 140, 160)).toMatchObject({ x: 130, y: 80 });
     h.touch('touchend', [[2, 130, 160]]);
-    expect(h.runtime.isInteracting).toBe(false);
     const target = Array.from(h.runtime.transitionManager.getPendingTransition().to);
     h.touch('touchmove', [[2, 140, 170]]);
     expect(Array.from(h.runtime.transitionManager.getPendingTransition().to)).toEqual(target);
@@ -141,7 +140,6 @@ test('rotation can be disabled explicitly and touch cancellation releases the pi
       ]);
       expect(h.runtime.viewRotation).toBeCloseTo(enabled ? 90 : 0);
       h.touch('touchcancel', []);
-      expect(h.runtime.isInteracting).toBe(false);
     } finally {
       h.cleanup();
     }
@@ -277,7 +275,6 @@ test('view rotation leaves geometry untouched, selects newly visible content and
       h.world.height,
     ]).toEqual(before);
     expect(h.owner.rotation).toBe(0);
-    expect(h.owner.rotationPivot).toBeUndefined();
     const screen = h.runtime.worldToViewer(195, 65, 0, 0);
     const world = h.runtime.viewerToWorld(screen.x, screen.y);
     expect(world.x).toBeCloseTo(195);

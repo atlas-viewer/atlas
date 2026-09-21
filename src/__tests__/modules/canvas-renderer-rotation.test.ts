@@ -1,3 +1,4 @@
+import { WorldObject } from '../../world-objects/world-object';
 import { CanvasRenderer } from '../../modules/canvas-renderer/canvas-renderer';
 
 // Minimal 2D affine-matrix mock of CanvasRenderingContext2D, tracking only
@@ -29,7 +30,7 @@ function createMatrixCtx() {
 }
 
 describe('CanvasRenderer.applyTransform rotation pivot', () => {
-  test('rotates around the box own center when no cx/cy is given', () => {
+  test('rotates around the box own center', () => {
     const renderer = Object.create(CanvasRenderer.prototype) as CanvasRenderer;
     const ctx = createMatrixCtx();
     (renderer as any).ctx = ctx;
@@ -38,7 +39,7 @@ describe('CanvasRenderer.applyTransform rotation pivot', () => {
     const paint = { __owner: { value: owner } } as any;
 
     // Box at x=100,y=100 width=50 height=50 -> own center is (125, 125)
-    renderer.applyTransform(paint, 100, 100, 50, 50, undefined as any, undefined as any);
+    renderer.applyTransform(paint, 100, 100, 50, 50);
 
     const [cx, cy] = ctx.apply(125, 125);
     expect(cx).toBeCloseTo(125);
@@ -50,55 +51,15 @@ describe('CanvasRenderer.applyTransform rotation pivot', () => {
     expect(py).toBeCloseTo(150);
   });
 
-  test('rotates around a supplied pivot (cx, cy) instead of the box center', () => {
-    const renderer = Object.create(CanvasRenderer.prototype) as CanvasRenderer;
-    const ctx = createMatrixCtx();
-    (renderer as any).ctx = ctx;
-
-    const owner = { rotation: 90 };
-    const paint = { __owner: { value: owner } } as any;
-
-    // Box at x=100,y=100 width=50 height=50 (own center 125,125), but pivot is
-    // the viewport center at (400, 300) -- far from the box.
-    renderer.applyTransform(paint, 100, 100, 50, 50, 400, 300);
-
-    // The pivot itself must be a fixed point of the transform.
-    const [pivotX, pivotY] = ctx.apply(400, 300);
-    expect(pivotX).toBeCloseTo(400);
-    expect(pivotY).toBeCloseTo(300);
-
-    // The box's own center (125,125) must rotate 90deg *around the pivot* (400,300).
-    // delta = (125-400, 125-300) = (-275,-175); rotating 90deg gives (-dy, dx) = (175, -275);
-    // add the pivot back: (400+175, 300-275) = (575, 25).
-    const [cx, cy] = ctx.apply(125, 125);
-    expect(cx).toBeCloseTo(575);
-    expect(cy).toBeCloseTo(25);
-  });
-
-  // Reproduces the reported bug: with "rotate from viewport center" on and the
-  // canvas rotated 90deg, dragging the object's x slider moves it vertically
-  // on screen instead of horizontally.
-  test('at 90deg with a fixed external pivot, moving x moves the box vertically on screen', () => {
-    const renderer = Object.create(CanvasRenderer.prototype) as CanvasRenderer;
-    const owner = { rotation: 90 };
-    const paint = { __owner: { value: owner } } as any;
-    const pivot = { x: 400, y: 300 }; // fixed viewport center, independent of the box's position
-
-    const screenCenterAt = (x: number) => {
-      const ctx = createMatrixCtx();
-      (renderer as any).ctx = ctx;
-      renderer.applyTransform(paint, x, 100, 50, 50, pivot.x, pivot.y);
-      const centerX = x + 25;
-      const centerY = 100 + 25;
-      return ctx.apply(centerX, centerY);
-    };
-
-    const [beforeX, beforeY] = screenCenterAt(100);
-    const [afterX, afterY] = screenCenterAt(110); // moved 10px along the object's own (pre-rotation) x-axis
-
-    // The horizontal slider move produces almost no horizontal change on screen...
-    expect(Math.abs(afterX - beforeX)).toBeLessThan(0.01);
-    // ...and instead moves it vertically by the full 10px.
-    expect(afterY - beforeY).toBeCloseTo(10);
+  test('object position edits remain absolute across rotation and repeated prop updates', () => {
+    const props = { id: "rotated-object", x: 100, y: 80, width: 60, height: 40, rotation: 0 };
+    const owner = WorldObject.createWithProps(props);
+    for (const rotation of [45, 90, 180, 270, 0]) {
+      const next = { ...props, x: 110, y: 90, rotation };
+      owner.applyProps(next);
+      owner.applyProps(next);
+      expect(Array.from(owner.points)).toEqual([1, 110, 90, 170, 130]);
+      expect(owner.rotation).toBe(rotation);
+    }
   });
 });

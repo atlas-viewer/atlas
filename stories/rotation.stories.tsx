@@ -68,13 +68,8 @@ export const CropRotateStaticImageInteractive = () => {
   const [rt, setRt] = useState<Preset>();
   const debug = useRef<HTMLDivElement>(null);
   const [key, setKey] = useState(0);
-  const [rotateFromWorldCenter, setRotateFromWorldCenter] = useState(false);
 
   const scaleFactor = scale[0] / 100;
-
-  const handleCheckboxChange = (event: { target: { checked: boolean | ((prevState: boolean) => boolean); }; }) => {
-    setRotateFromWorldCenter(event.target.checked);
-  };
 
   return (
     <>
@@ -86,7 +81,6 @@ export const CropRotateStaticImageInteractive = () => {
       <Slider control={utx} label="Unsupported translation" />
       <Slider control={y} label="y" />
 
-      <strong>Rotate From Center? </strong>&nbsp;<input type="checkbox" checked={rotateFromWorldCenter} onChange={handleCheckboxChange} />
       <br/>
       <button
         onClick={() => {
@@ -100,7 +94,6 @@ export const CropRotateStaticImageInteractive = () => {
      <Container style={{ height: 512, width: 512 }}>
         <AtlasAuto
           renderPreset={preset}
-          rotateFromWorldCenter={rotateFromWorldCenter}
           onCreated={(e) => {
             ref.current = e;
             setRt(e);
@@ -153,13 +146,8 @@ export const CropImageBroken = () => {
   const debug = useRef<HTMLDivElement>(null);
   const [key, setKey] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [rotateFromWorldCenter, setRotateFromWorldCenter] = useState(true);
 
   const scaleFactor = scale[0] / 100;
-
-  const handleCheckboxChange = (event: { target: { checked: boolean | ((prevState: boolean) => boolean); }; }) => {
-    setRotateFromWorldCenter(event.target.checked);
-  };
 
   const zoomBy = (factor: number) => {
     if (ref) {
@@ -183,7 +171,6 @@ export const CropImageBroken = () => {
       <button onClick={() => zoomBy(1.3)}>Zoom out</button>
 
 
-      <strong>Rotate From Center? </strong>&nbsp;<input type="checkbox" checked={rotateFromWorldCenter} onChange={handleCheckboxChange} />
       <br/>
       <button
         onClick={() => {
@@ -197,7 +184,6 @@ export const CropImageBroken = () => {
      <Container style={{ height: 512, width: 512 }}>
         <AtlasAuto
           renderPreset={preset}
-          rotateFromWorldCenter={rotateFromWorldCenter}
           onCreated={(e) => {
             ref.current = e;
             setRt(e.runtime);

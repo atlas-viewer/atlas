@@ -92,8 +92,8 @@ export class SingleImage extends BaseObject implements SpacialContent {
 
     this.id = props.id || props.uri;
     this.uri = props.uri;
-    const targetX = (props.target.x || 0) + this.pivotCompensationOffset.x;
-    const targetY = (props.target.y || 0) + this.pivotCompensationOffset.y;
+    const targetX = props.target.x || 0;
+    const targetY = props.target.y || 0;
     this.points.set(DnaFactory.singleBox(props.target.width, props.target.height, targetX, targetY));
 
     if (props.style && typeof props.style.opacity !== 'undefined') {

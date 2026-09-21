@@ -30,7 +30,6 @@ The optional pivot is a world-space point. `viewerX` and `viewerY` are CSS pixel
 relative to the viewer. An optional `viewRotation` prop on `Atlas` / `AtlasAuto`
 also sets the angle when that prop changes. Unrelated scene renders leave the
 camera angle alone. Object `rotation` remains an independent scene property;
-`rotateFromWorldCenter` is the older object-pivot behavior, not needed here.
 
 Bounds constrain the viewport against the rotated world or active zone's extent
 in view coordinates. This allows every image corner to remain reachable while

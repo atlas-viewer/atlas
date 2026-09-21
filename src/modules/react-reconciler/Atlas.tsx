@@ -109,7 +109,6 @@ export type AtlasProps = {
   filters?: Partial<ViewerFilters>;
   /** Clockwise view rotation in degrees; does not alter scene objects. */
   viewRotation?: number;
-  rotateFromWorldCenter?: boolean;
 };
 
 const filterProperties = [
@@ -168,7 +167,6 @@ export const Atlas: React.FC<
     filters,
     homePaddingPx,
     devTools,
-    rotateFromWorldCenter = false,
     viewRotation,
     ...restProps
   } = props;
@@ -549,14 +547,6 @@ export const Atlas: React.FC<
       }
     }
   }, [preset, restProps.width, restProps.height, viewport]);
-
-  useEffect(() => {
-    if (preset) {
-      const rt: Runtime = preset.runtime;
-
-      rt.rotateFromWorldCenter = rotateFromWorldCenter;
-    }
-  }, [preset, rotateFromWorldCenter])
 
   useEffect(() => {
     if (preset && viewRotation !== undefined) preset.runtime.viewRotation = viewRotation;
