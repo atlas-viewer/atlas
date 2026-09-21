@@ -130,6 +130,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         ...config,
       };
 
+      runtime.touchRotationEnabled = enableTouchRotation;
+
       const state = {
         pointerStart: { x: 0, y: 0 },
         isPressing: false,
@@ -507,7 +509,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               ? pendingTransition.to
               : runtime.target);
 
-          if (snapRotation && rotationGesture && touchRotationSnap > 0) {
+          if (snapRotation && rotationGesture && runtime.touchRotationEnabled && touchRotationSnap > 0) {
             // Release may precede the frame that applies the last touchmove.
             runtime.target.set(sourceTarget);
             runtime.transitionManager.stopTransition();
@@ -666,7 +668,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
           state.isPressing = true;
           runtime.beginInteraction();
-          if (enableTouchRotation && e.touches.length === 2) {
+          if (runtime.touchRotationEnabled && e.touches.length === 2) {
             const [a, b] = Array.from(e.touches);
             const bounds = runtime.getRendererScreenPosition();
             if (bounds && currentDistance > 0) {
@@ -717,7 +719,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           if (!separation) return;
           const angle = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
           const delta = Math.atan2(Math.sin(angle - gesture.angle), Math.cos(angle - gesture.angle));
-          runtime.rotateBy(delta * 180 / Math.PI, gesture.origin);
+          if (runtime.touchRotationEnabled) runtime.rotateBy(delta * 180 / Math.PI, gesture.origin);
           gesture.angle = angle;
           // Derive the full transform from touchstart: touch events can outpace animation frames.
           const ratio = gesture.distance / separation;
@@ -944,6 +946,16 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           if (!runtime.transitionManager.hasPending()) {
             runtime.transitionManager.constrainBounds();
           }
+        }
+        if (type === 'rotate-by' && data) {
+          stopPanMomentum();
+          const pending = runtime.transitionManager.getPendingTransition();
+          const angle = !pending.done && pending.rotation ? pending.rotation.to : runtime.viewRotation;
+          runtime.transitionManager.rotateTo(angle + data.degrees, {
+            origin: data.point,
+            panPadding,
+            transition: data.immediate ? { duration: 0 } : undefined,
+          });
         }
         if (type === 'zoom-to' && data) {
           stopPanMomentum();

@@ -437,3 +437,90 @@ test('rotation transitions cross zero on the shortest arc without changing scene
     h.cleanup();
   }
 });
+
+test('world rotation controls accumulate quarter turns while animating', () => {
+  const h = setup(false);
+  try {
+    h.world.rotateBy();
+    h.world.flushSubscriptions();
+    expect(h.runtime.transitionManager.getPendingTransition().rotation?.to).toBe(90);
+    h.runtime.transitionManager.runTransition(h.runtime.target, 100);
+    h.world.rotateBy(90);
+    h.world.flushSubscriptions();
+    expect(h.runtime.transitionManager.getPendingTransition().rotation?.to).toBe(180);
+    h.frame();
+    expect(h.runtime.viewRotation).toBe(180);
+    h.world.rotateBy(-90, undefined, true);
+    h.world.flushSubscriptions();
+    h.runtime.transitionManager.runTransition(h.runtime.target, 0);
+    expect(h.runtime.viewRotation).toBe(90);
+    expect(h.owner.rotation).toBe(0);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('touch rotation can be enabled and disabled without restarting the controller', () => {
+  const h = setup(false, 200, 200, 90);
+  try {
+    expect(h.runtime.touchRotationEnabled).toBe(false);
+    h.runtime.setTouchRotationEnabled(true);
+    h.touch('touchstart', [
+      [1, 40, 60],
+      [2, 80, 60],
+    ]);
+    h.touch('touchmove', [
+      [1, 40, 40],
+      [2, 80, 80],
+    ]);
+    expect(h.runtime.viewRotation).toBeCloseTo(45);
+    h.runtime.setTouchRotationEnabled(false);
+    h.touch('touchmove', [
+      [1, 80, 60],
+      [2, 80, 140],
+    ]);
+    h.frame();
+    expect(h.runtime.viewRotation).toBeCloseTo(45);
+    const pivot = h.runtime.worldToViewer(160, 160, 0, 0);
+    expect(pivot.x).toBeCloseTo(80, 3);
+    expect(pivot.y).toBeCloseTo(100, 3);
+    h.touch('touchend', []);
+    h.frame();
+    expect(h.runtime.viewRotation).toBeCloseTo(45);
+    h.runtime.setTouchRotationEnabled(true);
+    h.touch('touchstart', [
+      [1, 40, 60],
+      [2, 80, 60],
+    ]);
+    h.touch('touchmove', [
+      [1, 40, 40],
+      [2, 80, 80],
+    ]);
+    expect(h.runtime.viewRotation).toBeCloseTo(90);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('disabling touch rotation interrupts an active snap without resetting its angle', () => {
+  const h = setup(true, 200, 200, 90);
+  try {
+    h.touch('touchstart', [
+      [1, 40, 60],
+      [2, 80, 60],
+    ]);
+    h.touch('touchmove', [
+      [1, 40, 40],
+      [2, 80, 80],
+    ]);
+    h.touch('touchend', []);
+    h.runtime.transitionManager.runTransition(h.runtime.target, 100);
+    const angle = h.runtime.viewRotation;
+    h.runtime.setTouchRotationEnabled(false);
+    expect(h.runtime.transitionManager.hasPending()).toBe(false);
+    h.frame();
+    expect(h.runtime.viewRotation).toBe(angle);
+  } finally {
+    h.cleanup();
+  }
+});

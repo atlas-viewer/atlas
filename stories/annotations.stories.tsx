@@ -65,6 +65,8 @@ const staticTiles = [
 	// },
 ];
 
+const selectionImageLoading = { skipFadeIfLoadedWithinMs: 0 };
+
 const sizes = [
 	{ width: undefined, height: undefined },
 	{ width: 800, height: 600 },
@@ -144,6 +146,10 @@ export const SelectionDemo = () => {
 			runtime.current.world.zoomIn();
 		}
 	};
+
+	const rotateView = () => runtime.current?.world.rotateBy(90);
+
+	const [touchRotationEnabled, setTouchRotationEnabled] = useState(false);
 
 	const zoomOut = () => {
 		if (runtime.current) {
@@ -240,8 +246,9 @@ export const SelectionDemo = () => {
 									}}
 									onCreated={(rt) => {
 										runtime.current = rt.runtime;
+										rt.runtime.setTouchRotationEnabled(touchRotationEnabled);
 									}}
-									imageLoading={{ skipFadeIfLoadedWithinMs: 0 }}
+									imageLoading={selectionImageLoading}
 									runtimeOptions={{ maxOverZoom: scale / 100 }}
 									mode={isEditing ? "sketch" : "explore"}
 									renderPreset={renderPreset}
@@ -331,6 +338,19 @@ export const SelectionDemo = () => {
 							<button onClick={goHome}>Go home</button>
 							<button onClick={zoomIn}>Zoom in</button>
 							<button onClick={zoomOut}>Zoom out</button>
+							<button onClick={rotateView}>Rotate 90°</button>
+							<label>
+								<input
+									type="checkbox"
+									checked={touchRotationEnabled}
+									onChange={(event) => {
+										const enabled = event.target.checked;
+										setTouchRotationEnabled(enabled);
+										runtime.current?.setTouchRotationEnabled(enabled);
+									}}
+								/>
+								Enable touch rotation
+							</label>
 							{annotations.map((annotation) => (
 								<div key={annotation.id}>
 									{annotation.id}{" "}

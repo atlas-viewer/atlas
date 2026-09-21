@@ -737,6 +737,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     });
   }
 
+  /** Animate view rotation by a relative angle; defaults to a clockwise quarter turn. */
+  rotateBy(degrees = 90, point?: { x: number; y: number }, immediate = false) {
+    this.trigger('rotate-by', { degrees, point, immediate });
+  }
+
   constraintBounds(immediate?: boolean) {
     this.trigger('constrain-bounds', { immediate });
   }

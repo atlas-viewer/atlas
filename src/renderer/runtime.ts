@@ -328,6 +328,16 @@ export class Runtime {
     }
   }
 
+  /** Whether touch gestures may rotate the view. Programmatic rotation remains available. */
+  touchRotationEnabled = false;
+
+  setTouchRotationEnabled(enabled: boolean) {
+    this.touchRotationEnabled = enabled;
+    if (!enabled && this.transitionManager.getPendingTransition().rotation) {
+      this.transitionManager.stopTransition();
+    }
+  }
+
   private _viewRotation = 0;
 
   /** Clockwise camera rotation in degrees. Scene geometry is unchanged. */

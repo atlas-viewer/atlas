@@ -42,3 +42,19 @@ pivot controls, a non-square image, clickable markers, a green HTML overlay,
 constraint/home buttons, and a scene re-render check.
 
 Additional stories: **Snap Right Angles** and **Snap Every 15 Degrees**.
+
+Use the world control alongside `world.zoomIn()` and `world.zoomOut()`:
+
+```ts
+runtime.world.rotateBy(); // animate +90°
+runtime.world.rotateBy(-90); // animate -90°
+runtime.setTouchRotationEnabled(true);
+runtime.setTouchRotationEnabled(false);
+```
+
+`world.rotateBy(degrees, point?, immediate?)` accepts an optional world-space
+pivot. Repeated calls advance the pending rotation destination. Read
+`runtime.touchRotationEnabled` for the current touch setting. Disabling interrupts
+a running rotation transition and prevents further gesture rotation while retaining
+pan/zoom and the current angle. Programmatic rotation remains available.
+Enabling takes effect when the next two-finger gesture starts.
