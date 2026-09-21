@@ -9,6 +9,7 @@ export default defineConfig((options) => ({
   entry: {
     index: 'src/index.ts',
     standalone: 'src/standalone.ts',
+    react: 'src/react.ts',
   },
   minify: !options.watch,
   clean: true,
