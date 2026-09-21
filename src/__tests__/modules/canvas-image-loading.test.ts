@@ -587,6 +587,41 @@ describe('Canvas image loading behavior', () => {
     expect(buffer.tiles[0].loadedAt).toBeTypeOf('number');
   });
 
+  test.each([false, true])('loading probes preserve a decoded tile awaiting reveal (prefetch: %s)', (prefetch) => {
+    const { renderer } = createRenderer({
+      readiness: 'immediate',
+      imageLoading: { revealDelayFrames: 1, revealBatchWindowFrames: 1 },
+    });
+    const image = createImage('pending-probe');
+    renderer.prepareLayer(image, image.points);
+    const buffer = image.__host.canvas;
+    const tileKey = `${image.id}::${image.display.scale}::0`;
+    buffer.tiles[0] = { state: 'decoded', loadedAt: undefined };
+    renderer.pendingTileReveals.set(tileKey, { imageBuffer: buffer, index: 0, queuedFrame: 0 });
+
+    expect(renderer.schedulePaintToCanvas(buffer, image, 0, 0, prefetch)).toBe(false);
+    renderer.beforeFrame({} as any, 16, {} as any, { ...defaultHookOptions });
+    expect(buffer.tiles[0].loadedAt).toBeTypeOf('number');
+    renderer.reset();
+  });
+
+  test('reveals visible tiles while another request is still pending', () => {
+    vi.useFakeTimers();
+    const { renderer } = createRenderer();
+    try {
+      renderer.visible = [createImage('visible')];
+      renderer.tasksRunning = 1;
+      expect(renderer.pendingUpdate()).toBe(true);
+      vi.advanceTimersByTime(1000);
+      expect(renderer.firstMeaningfulPaint).toBe(true);
+      expect(renderer.pendingUpdate()).toBe(true);
+      expect(renderer.fallbackRevealTimeout).toBeNull();
+    } finally {
+      renderer.reset();
+      vi.useRealTimers();
+    }
+  });
+
   test('pendingUpdate remains active while tile reveals are queued', () => {
     const { renderer } = createRenderer({
       readiness: 'immediate',

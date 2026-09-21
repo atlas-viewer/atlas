@@ -1220,7 +1220,6 @@ export class CanvasRenderer implements Renderer {
     const now = performance.now();
     const tileKey = this.getTileKey(paint, index);
     this.markTileRequired(tileKey, prefetch);
-    this.pendingTileReveals.delete(tileKey);
 
     if (tileState.nextRetryAt && tileState.nextRetryAt > now) {
       return false;
@@ -1230,6 +1229,7 @@ export class CanvasRenderer implements Renderer {
       return false;
     }
 
+    this.pendingTileReveals.delete(tileKey);
     const id = `${paint.id}--${paint.display.scale}-${index}`;
     const requestKey = this.nextRequestKey(tileKey);
     imageBuffer.canvases[index] = id;
@@ -1515,7 +1515,8 @@ export class CanvasRenderer implements Renderer {
 
     if (
       !ready &&
-      this.visible.length === 0 &&
+      !this.firstMeaningfulPaint &&
+      this.visible.length > 0 &&
       this.options.readiness !== 'immediate' &&
       this.fallbackRevealTimeout === null
     ) {
