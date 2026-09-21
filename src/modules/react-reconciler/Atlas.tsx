@@ -775,7 +775,16 @@ export const Atlas: React.FC<
     return () => {
       // no-op
     };
-  }, [preset, restProps.width, restProps.height, resolvedNavigatorOptions.width, getNavigatorRegion, getRendererDpi]);
+  }, [
+    preset,
+    restProps.width,
+    restProps.height,
+    resolvedNavigatorOptions.width,
+    getNavigatorRegion,
+    getRendererDpi,
+    bounds.width,
+    bounds.height,
+  ]);
 
   useEffect(() => {
     if (!preset || !enableNavigator) {
