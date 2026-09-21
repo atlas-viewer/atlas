@@ -147,7 +147,7 @@ export const CropImageBroken = () => {
   const ty = useState(2000);
   const utx = useState(0);
   const y = useState(0);
-  let scale = useState(2000);
+  const scale = useState(2000);
   const ref = useRef<Preset>();
   const [rt, setRt] = useState<Runtime>();
   const debug = useRef<HTMLDivElement>(null);
@@ -200,8 +200,7 @@ export const CropImageBroken = () => {
           rotateFromWorldCenter={rotateFromWorldCenter}
           onCreated={(e) => {
             ref.current = e;
-            setRt(e);
-            scale = 468;
+            setRt(e.runtime);
           }}
         >
           <world>

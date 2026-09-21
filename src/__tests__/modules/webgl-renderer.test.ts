@@ -482,6 +482,17 @@ describe('WebGLRenderer fallback events', () => {
 
     renderer.finishLayer();
     expect(gl.disable).toHaveBeenCalledWith(gl.SCISSOR_TEST);
+
+    renderer.beforeFrame({} as any, 16, {} as any, {
+      ...defaultHookOptions, viewRotation: 90, viewCenter: { x: 50, y: 50 },
+    });
+    renderer.prepareLayer(image, new Float32Array([1, 5, 10, 45, 50]) as any);
+    expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.viewCenter, 50, 50);
+    expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.viewAngle, Math.cos(Math.PI / 2), 1);
+    expect(gl.uniform1f).toHaveBeenCalledWith(renderer.uniforms.viewClip, 1);
+    expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.clipMin, 5, 10);
+    expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.clipMax, 45, 50);
+
   });
 
   test('does not request inactive layers but still draws cached fallback textures', () => {

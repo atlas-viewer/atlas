@@ -86,9 +86,14 @@ export class WebGLRenderer implements Renderer {
 
     uniform sampler2D u_image;
     uniform float u_alpha;
+    uniform float u_viewClip;
+    uniform vec2 u_clipMin;
+    uniform vec2 u_clipMax;
+    varying vec2 v_position;
     varying vec2 v_texCoord;
 
     void main() {
+        if (u_viewClip > 0.5 && (any(lessThan(v_position, u_clipMin)) || any(greaterThan(v_position, u_clipMax)))) discard;
         vec4 color = texture2D(u_image, v_texCoord);
         gl_FragColor = vec4(color.rgb, color.a * u_alpha);
     }
@@ -98,6 +103,9 @@ export class WebGLRenderer implements Renderer {
   vertexShaderSource = `
     attribute vec2 a_position;
     uniform vec2 u_resolution;
+    uniform vec2 u_viewCenter;
+    uniform vec2 u_viewAngle;
+    varying vec2 v_position;
     varying vec4 v_color;
     uniform sampler2D u_texture;
 
@@ -107,7 +115,10 @@ export class WebGLRenderer implements Renderer {
     void main() {
 
         // convert the position from pixels to 0.0 to 1.0
-        vec2 zeroToOne = a_position / u_resolution;
+        v_position = a_position;
+        vec2 p = a_position - u_viewCenter;
+        vec2 rotated = vec2(p.x * u_viewAngle.x - p.y * u_viewAngle.y, p.x * u_viewAngle.y + p.y * u_viewAngle.x);
+        vec2 zeroToOne = (rotated + u_viewCenter) / u_resolution;
 
         // convert from 0->1 to 0->2
         vec2 zeroToTwo = zeroToOne * 2.0;
@@ -126,6 +137,11 @@ export class WebGLRenderer implements Renderer {
     texCoord: number;
   };
   uniforms: {
+    viewCenter: WebGLUniformLocation | null;
+    viewAngle: WebGLUniformLocation | null;
+    viewClip: WebGLUniformLocation | null;
+    clipMin: WebGLUniformLocation | null;
+    clipMax: WebGLUniformLocation | null;
     resolution: WebGLUniformLocation | null;
     texture: WebGLUniformLocation | null;
     alpha: WebGLUniformLocation | null;
@@ -209,6 +225,11 @@ export class WebGLRenderer implements Renderer {
       texCoord: this.gl.getAttribLocation(this.program, 'a_texCoord'),
     };
     this.uniforms = {
+      viewCenter: this.gl.getUniformLocation(this.program, 'u_viewCenter'),
+      viewAngle: this.gl.getUniformLocation(this.program, 'u_viewAngle'),
+      viewClip: this.gl.getUniformLocation(this.program, 'u_viewClip'),
+      clipMin: this.gl.getUniformLocation(this.program, 'u_clipMin'),
+      clipMax: this.gl.getUniformLocation(this.program, 'u_clipMax'),
       resolution: this.gl.getUniformLocation(this.program, 'u_resolution'),
       texture: this.gl.getUniformLocation(this.program, 'u_texture'),
       alpha: this.gl.getUniformLocation(this.program, 'u_alpha'),
@@ -289,6 +310,8 @@ export class WebGLRenderer implements Renderer {
     return false;
   }
 
+  private viewRotation = 0;
+
   beforeFrame(world: World, delta: number, target: Strand, options: HookOptions) {
     this.hasTilesFading = false;
     this.requiresRepaint = false;
@@ -299,6 +322,11 @@ export class WebGLRenderer implements Renderer {
     this.requiredPrefetchTileKeys.clear();
     this.flushTileRevealBatch();
 
+    this.viewRotation = options.viewRotation || 0;
+    const angle = this.viewRotation * Math.PI / 180;
+    this.gl.uniform2f(this.uniforms.viewAngle, Math.cos(angle), Math.sin(angle));
+    this.gl.uniform2f(this.uniforms.viewCenter, options.viewCenter?.x || 0, options.viewCenter?.y || 0);
+    this.gl.uniform1f(this.uniforms.viewClip, 0);
     const filter = buildCssFilter(options);
     if (this.canvas.style.filter !== filter) {
       this.canvas.style.filter = filter;
@@ -402,7 +430,15 @@ export class WebGLRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent, points?: Strand) {
     this.activeLayerScissorRect = undefined;
-    if (points && this.shouldClipLayerToBounds(paint)) {
+    this.gl.uniform1f(this.uniforms.viewClip, 0);
+    if (this.viewRotation && points && this.shouldClipLayerToBounds(paint)) {
+      const bounds = this.getBoundsFromPoints(points);
+      if (bounds) {
+        this.gl.uniform1f(this.uniforms.viewClip, 1);
+        this.gl.uniform2f(this.uniforms.clipMin, bounds.x, bounds.y);
+        this.gl.uniform2f(this.uniforms.clipMax, bounds.x + bounds.width, bounds.y + bounds.height);
+      }
+    } else if (points && this.shouldClipLayerToBounds(paint)) {
       const bounds = this.getBoundsFromPoints(points);
       if (bounds) {
         const scissorRect = this.toScissorRect(bounds);
@@ -1171,8 +1207,8 @@ export class WebGLRenderer implements Renderer {
     );
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
   }
 
   afterFrame() {

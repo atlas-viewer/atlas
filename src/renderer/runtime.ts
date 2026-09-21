@@ -49,6 +49,8 @@ export type ViewerFilters = {
 };
 
 export type HookOptions = {
+  viewRotation?: number;
+  viewCenter?: { x: number; y: number };
   enableFilters?: boolean;
   filters: ViewerFilters;
 };
@@ -324,6 +326,40 @@ export class Runtime {
       // drift.
       this.fixedWorldPivot = this.liveWorldPivot();
     }
+  }
+
+  private _viewRotation = 0;
+
+  /** Clockwise camera rotation in degrees. Scene geometry is unchanged. */
+  get viewRotation() { return this._viewRotation || 0; }
+  set viewRotation(degrees: number) { this.rotateBy(degrees - this.viewRotation); }
+
+  rotateBy(degrees: number, origin?: { x: number; y: number }) {
+    if (!Number.isFinite(degrees) || (origin && (!Number.isFinite(origin.x) || !Number.isFinite(origin.y)))) {
+      throw new RangeError('Rotation and pivot coordinates must be finite');
+    }
+    const cx = (this.target[1] + this.target[3]) / 2;
+    const cy = (this.target[2] + this.target[4]) / 2;
+    if (origin) {
+      const [x, y] = rotatePoint(cx, cy, origin.x, origin.y, -degrees);
+      mutate(this.target, translate(x - cx, y - cy));
+    }
+    this._viewRotation = (this.viewRotation + degrees) % 360;
+    this.updateNextFrame();
+  }
+
+  /** Conservative world-space footprint of the rotated viewport, used for tile selection. */
+  getVisibleWorldBounds(target: Strand = this.target): Strand {
+    if (!this.viewRotation) return target;
+    const angle = this.viewRotation * Math.PI / 180;
+    const c = Math.abs(Math.cos(angle));
+    const s = Math.abs(Math.sin(angle));
+    const width = target[3] - target[1];
+    const height = target[4] - target[2];
+    const rotatedWidth = width * c + height * s;
+    const rotatedHeight = width * s + height * c;
+    return DnaFactory.singleBox(rotatedWidth, rotatedHeight,
+      (target[1] + target[3] - rotatedWidth) / 2, (target[2] + target[4] - rotatedHeight) / 2);
   }
 
   /**
@@ -959,6 +995,17 @@ export class Runtime {
           height: this.homePosition[4] - this.homePosition[2],
         };
 
+    if (this.viewRotation) {
+      const angle = this.viewRotation * Math.PI / 180;
+      const c = Math.abs(Math.cos(angle)), s = Math.abs(Math.sin(angle));
+      const width = content.width * c + content.height * s;
+      const height = content.width * s + content.height * c;
+      content.x += (content.width - width) / 2;
+      content.y += (content.height - height) / 2;
+      content.width = width;
+      content.height = height;
+    }
+
     // Calculate aspect ratios
     const availableAspect = availableWidth / availableHeight;
     const contentAspect = content.width / content.height;
@@ -996,12 +1043,19 @@ export class Runtime {
     const padBottomWorld = padding.bottom * worldPerCssPixel;
 
     // Expand the viewport to include padding areas
-    return {
+    const result = {
       x: viewX - padLeftWorld,
       y: viewY - padTopWorld,
       width: viewWidth + padLeftWorld + padRightWorld,
       height: viewHeight + padTopWorld + padBottomWorld,
     };
+    if (this.viewRotation) {
+      const cx = content.x + content.width / 2, cy = content.y + content.height / 2;
+      const [x, y] = rotatePoint(result.x + result.width / 2, result.y + result.height / 2, cx, cy, -this.viewRotation);
+      result.x = x - result.width / 2;
+      result.y = y - result.height / 2;
+    }
+    return result;
   }
 
   isViewportAtHome(
@@ -1055,7 +1109,7 @@ export class Runtime {
     const padding = this.normalizePadding(paddingPx);
     const hasPadding = padding.left > 0 || padding.right > 0 || padding.top > 0 || padding.bottom > 0;
 
-    if (hasPadding) {
+    if (hasPadding || this.viewRotation) {
       // Use the new padding-aware calculation
       const target = this.getHomeTarget(options);
       this.target[1] = Math.round(target.x);
@@ -1238,6 +1292,26 @@ export class Runtime {
       padding: panPadding,
     });
 
+    if (this.viewRotation) {
+      const width = target[3] - target[1], height = target[4] - target[2];
+      const cx = (target[1] + target[3]) / 2, cy = (target[2] + target[4]) / 2;
+      const [px, py] = rotatePoint(cx, cy, 0, 0, this.viewRotation);
+      const x = Math.max(minX, Math.min(maxX, px - width / 2)) + width / 2;
+      const y = Math.max(minY, Math.min(maxY, py - height / 2)) + height / 2;
+      const [nextX, nextY] = rotatePoint(x, y, 0, 0, -this.viewRotation);
+      const constrained = ref ? target : dna(target);
+      // Strands are Float32; do not repeatedly animate sub-pixel rounding corrections.
+      const epsilon = Math.max(1, Math.abs(cx), Math.abs(cy), width, height) * 1e-6;
+      const changed = Math.abs(nextX - cx) > epsilon || Math.abs(nextY - cy) > epsilon;
+      if (changed) {
+        constrained[1] = nextX - width / 2;
+        constrained[2] = nextY - height / 2;
+        constrained[3] = nextX + width / 2;
+        constrained[4] = nextY + height / 2;
+      }
+      return [changed, constrained] as const;
+    }
+
     let isConstrained = false;
     const constrained = ref ? target : dna(target);
     const width = Math.round(target[3] - target[1]);
@@ -1279,6 +1353,29 @@ export class Runtime {
     const padding = options.padding;
     const visRatio = this.options.visibilityRatio;
     const hiddenRatio = Math.abs(1 - visRatio);
+
+    if (this.viewRotation) {
+      const zone = this.world.getActiveZone();
+      zone?.recalculateBounds();
+      const content = zone?.points[0] ? zone.points : DnaFactory.singleBox(this.world.width, this.world.height);
+      const cx = (content[1] + content[3]) / 2, cy = (content[2] + content[4]) / 2;
+      const [x, y] = rotatePoint(cx, cy, 0, 0, this.viewRotation);
+      const angle = this.viewRotation * Math.PI / 180;
+      const c = Math.abs(Math.cos(angle)), s = Math.abs(Math.sin(angle));
+      const width = (content[3] - content[1]) * c + (content[4] - content[2]) * s;
+      const height = (content[3] - content[1]) * s + (content[4] - content[2]) * c;
+      const projected = DnaFactory.singleBox(width, height, x - width / 2, y - height / 2);
+      // Bounds are in the rotated view axes. This keeps all content corners reachable.
+      const bounds = getZoneConstrainedBounds(target, projected, padding)!;
+      if (!zone) {
+        const extraX = (target[3] - target[1]) * hiddenRatio;
+        const extraY = (target[4] - target[2]) * hiddenRatio;
+        bounds.minX -= extraX; bounds.maxX += extraX;
+        bounds.minY -= extraY; bounds.maxY += extraY;
+      }
+      return bounds;
+    }
+
 
     if (this.world.hasActiveZone()) {
       const zone = this.world.getActiveZone();
@@ -1370,7 +1467,8 @@ export class Runtime {
     const widthScale = this.world.width / displayWidth;
     const heightScale = this.world.height / displayHeight;
 
-    const minScale =
+    const home = this.viewRotation ? this.getHomeTarget() : undefined;
+    const minScale = home ? this.renderer.getScale(home.width, home.height) * this.options.maxUnderZoom :
       widthScale > heightScale
         ? (displayWidth * this.options.maxUnderZoom) / this.world.width
         : (displayHeight * this.options.maxUnderZoom) / this.world.height;
@@ -1400,7 +1498,8 @@ export class Runtime {
         }
       }
     };
-    for (const [object] of this.world.getObjectsAt(target)) visit(object, target, 1);
+    const selection = this.getVisibleWorldBounds(target);
+    for (const [object] of this.world.getObjectsAt(selection)) visit(object, selection, 1);
     const maxScale = Math.max(ratio || 1, this.options.maxOverZoom * nativeScale);
 
     return {
@@ -1554,8 +1653,8 @@ export class Runtime {
   viewerToWorld(x: number, y: number) {
     const scaleFactor = this.getScaleFactor();
     // is this right?
-    const xo = this.target[1] + x / scaleFactor;
-    const yo = this.target[2] + y / scaleFactor;
+    const [xo, yo] = rotatePoint(this.target[1] + x / scaleFactor, this.target[2] + y / scaleFactor,
+      (this.target[1] + this.target[3]) / 2, (this.target[2] + this.target[4]) / 2, -this.viewRotation);
 
     this._viewerToWorld.x = xo;
     this._viewerToWorld.y = yo;
@@ -1575,6 +1674,16 @@ export class Runtime {
   worldToViewer(x: number, y: number, width: number, height: number) {
     const strand = DnaFactory.singleBox(width, height, x, y);
 
+    if (this.viewRotation) {
+      const cx = (this.target[1] + this.target[3]) / 2;
+      const cy = (this.target[2] + this.target[4]) / 2;
+      const corners = [[x, y], [x + width, y], [x, y + height], [x + width, y + height]]
+        .map(([px, py]) => rotatePoint(px, py, cx, cy, this.viewRotation));
+      strand[1] = Math.min(...corners.map(p => p[0]));
+      strand[2] = Math.min(...corners.map(p => p[1]));
+      strand[3] = Math.max(...corners.map(p => p[0]));
+      strand[4] = Math.max(...corners.map(p => p[1]));
+    }
     mutate(strand, compose(scale(this.getScaleFactor()), translate(-this.target[1], -this.target[2])));
 
     return {
@@ -1929,11 +2038,13 @@ export class Runtime {
 
     this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
+    this.hookOptions.viewRotation = this.viewRotation;
+    this.hookOptions.viewCenter = { x: this.width * this.getScaleFactor() / 2, y: this.height * this.getScaleFactor() / 2 };
     this.renderer.beforeFrame(this.world, delta, this.target, this.hookOptions);
     // Calculate a scale factor by passing in the height and width of the target.
     const scaleFactor = this.getScaleFactor();
     // Get the points to render based on this scale factor and the current x,y,w,h in the target buffer.
-    const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor);
+    const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor, this.getVisibleWorldBounds());
     const pointsLen = points.length;
 
     for (let p = 0; p < pointsLen; p++) {
@@ -2057,7 +2168,7 @@ export class Runtime {
     }
     // Flush world subscriptions.
     this.world.flushSubscriptions();
-    const updates = this.world.getScheduledUpdates(this.target, scaleFactor);
+    const updates = this.world.getScheduledUpdates(this.getVisibleWorldBounds(), scaleFactor);
     const len = updates.length;
     if (len > 0) {
       for (let i = 0; i < len; i++) {

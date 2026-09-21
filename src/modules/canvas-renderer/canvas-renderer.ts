@@ -393,10 +393,16 @@ export class CanvasRenderer implements Renderer {
     return this.firstMeaningfulPaint;
   }
 
+  private viewTransformSaved = false;
+
   afterFrame(world: World): void {
     // this.lastPaintedObject = paint.__owner.value;
     this.clearTransform();
     this.lastPaintedObject = undefined;
+    if (this.viewTransformSaved) {
+      this.ctx.restore();
+      this.viewTransformSaved = false;
+    }
     // this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
@@ -563,6 +569,13 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
 
+    if (options.viewRotation && options.viewCenter) {
+      this.ctx.save();
+      this.viewTransformSaved = true;
+      this.ctx.translate(options.viewCenter.x, options.viewCenter.y);
+      this.ctx.rotate(options.viewRotation * Math.PI / 180);
+      this.ctx.translate(-options.viewCenter.x, -options.viewCenter.y);
+    }
     const filter = buildCssFilter(options);
     if (this.ctx.filter !== filter) {
       this.ctx.filter = filter;
@@ -1646,8 +1659,8 @@ export class CanvasRenderer implements Renderer {
     this.imageBuffers.add(paint.__host.canvas);
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {

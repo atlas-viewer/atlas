@@ -1,3 +1,4 @@
+import { rotatePoint } from '../../world-objects/world-object';
 import { Runtime } from '../../renderer/runtime';
 import { Position } from '../../types';
 import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
@@ -12,6 +13,7 @@ export type PendingTransition = {
   done: boolean;
   constrain: boolean;
   callback?: () => void;
+  rotation?: { from: number; to: number; origin: Position };
 };
 
 export class TransitionManager {
@@ -44,10 +46,12 @@ export class TransitionManager {
   }
 
   customTransition(func: (transition: PendingTransition) => void) {
+    this.pendingTransition.rotation = undefined;
     func(this.pendingTransition);
   }
 
   stopTransition() {
+    this.pendingTransition.rotation = undefined;
     this.pendingTransition.from = dna(this.runtime.target);
     this.pendingTransition.to = dna(this.runtime.target);
     this.pendingTransition.done = true;
@@ -78,6 +82,21 @@ export class TransitionManager {
       target[3] = transition.from[3] + (transition.to[3] - transition.from[3]) * step;
       target[4] = transition.from[4] + (transition.to[4] - transition.from[4]) * step;
 
+      if (transition.rotation) {
+        const { from, to, origin } = transition.rotation;
+        const angle = (to - from) * step;
+        const [x, y] = rotatePoint(
+          (transition.from[1] + transition.from[3]) / 2,
+          (transition.from[2] + transition.from[4]) / 2,
+          origin.x, origin.y, -angle
+        );
+        const width = transition.from[3] - transition.from[1];
+        const height = transition.from[4] - transition.from[2];
+        target[1] = x - width / 2; target[2] = y - height / 2;
+        target[3] = x + width / 2; target[4] = y + height / 2;
+        this.runtime.viewRotation = from + angle;
+      }
+
       // Update our transition.
       this.pendingTransition.elapsed_time += delta;
       if (this.pendingTransition.elapsed_time >= this.pendingTransition.total_time) {
@@ -95,6 +114,34 @@ export class TransitionManager {
         }
       }
     }
+  }
+
+  /** Animate camera rotation along the shortest arc, then settle zoom/pan constraints. */
+  rotateTo(degrees: number, {
+    origin = { x: (this.runtime.target[1] + this.runtime.target[3]) / 2, y: (this.runtime.target[2] + this.runtime.target[4]) / 2 },
+    panPadding = 0,
+    transition,
+  }: { origin?: Position; panPadding?: number; transition?: { duration?: number; easing?: EasingFunction } } = {}) {
+    if (!Number.isFinite(degrees) || !Number.isFinite(origin.x) || !Number.isFinite(origin.y)) {
+      throw new RangeError('Rotation and pivot coordinates must be finite');
+    }
+    const from = this.runtime.viewRotation;
+    const delta = ((degrees - from + 180) % 360 + 360) % 360 - 180;
+    if (Math.abs(delta) < 1e-6) {
+      this.constrainTarget(this.runtime.target, { origin, panPadding });
+      return;
+    }
+    const target = this.runtime.target;
+    const width = target[3] - target[1], height = target[4] - target[2];
+    const [x, y] = rotatePoint((target[1] + target[3]) / 2, (target[2] + target[4]) / 2, origin.x, origin.y, -delta);
+    this.applyTransition(DnaFactory.singleBox(width, height, x - width / 2, y - height / 2), transition, {
+      duration: 250,
+      easing: easingFunctions.easeOutQuart,
+      constrain: false,
+      callback: () => this.constrainTarget(this.runtime.target, { origin, panPadding }),
+    });
+    this.pendingTransition.rotation = { from, to: from + delta, origin: { ...origin } };
+    this.runtime.updateNextFrame();
   }
 
   lastZoomTo: {
@@ -238,6 +285,7 @@ export class TransitionManager {
       stream?: boolean;
     } = {}
   ) {
+    this.pendingTransition.rotation = undefined;
     this.pendingTransition.from = dna(this.runtime.target);
     this.pendingTransition.to = target;
     if (!stream) {

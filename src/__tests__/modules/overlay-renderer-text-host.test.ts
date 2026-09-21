@@ -110,3 +110,16 @@ describe('OverlayRenderer text/box host creation', () => {
     expect(() => renderer.paint(box as any, 0, 0, 0, 90, 22)).not.toThrow();
   });
 });
+
+test('HTML hosts share the view rotation and reset it when returning to zero', () => {
+  const renderer = new OverlayRenderer(document.createElement('div'), { box: true });
+  const box = makePlainBox();
+  renderer.prepareLayer(box as any);
+  const options = { viewRotation: 45, viewCenter: { x: 100, y: 50 } } as any;
+  renderer.beforeFrame({} as any, 16, {} as any, options);
+  renderer.paint(box as any, 0, 20, 30, 90, 22);
+  expect((box as any).__host.element.style.transform).toBe('translate(100px, 50px) rotate(45deg) translate(-100px, -50px) translate(20px, 30px) scale(1)');
+  renderer.beforeFrame({} as any, 16, {} as any, { ...options, viewRotation: 0 });
+  renderer.paint(box as any, 0, 20, 30, 90, 22);
+  expect((box as any).__host.element.style.transform).toBe('translate(20px, 30px) scale(1)');
+});

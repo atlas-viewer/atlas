@@ -14,7 +14,7 @@ export interface Renderer {
   finishLayer(paint: SpacialContent, point: Strand): void;
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void;
   pendingUpdate(): boolean;
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[];
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[];
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null;
   isReady(): boolean;
   resize(): void;

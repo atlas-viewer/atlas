@@ -1,6 +1,7 @@
 import type { Strand } from '@atlas-viewer/dna';
 import { Box } from '../../objects/box';
 import { Text } from '../../objects/text';
+import type { HookOptions } from '../../renderer/runtime';
 import type { Renderer } from '../../renderer/renderer';
 import type { SpacialContent } from '../../spacial-content/spacial-content';
 import type { PositionPair } from '../../types';
@@ -256,15 +257,20 @@ export class OverlayRenderer implements Renderer {
     // No-op
   }
 
-  beforeFrame(world: World, delta: number, target: Strand): void {
+  private viewTransform = '';
+
+  beforeFrame(world: World, delta: number, target: Strand, options?: HookOptions): void {
+    const center = options?.viewCenter;
+    this.viewTransform = options?.viewRotation && center
+      ? `translate(${center.x}px, ${center.y}px) rotate(${options.viewRotation}deg) translate(${-center.x}px, ${-center.y}px) ` : '';
     this.stylesheet.clearClasses();
     this.paintTx++;
     this.zIndex = 0;
     this.visible = [];
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
   }
 
   getScale(width: number, height: number): number {
@@ -303,12 +309,12 @@ export class OverlayRenderer implements Renderer {
         element.style.zIndex = `${this.zIndex}`;
 
         if (paint.props.relativeStyle) {
-          element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+          element.style.transform = `${this.viewTransform}translate(${Math.round(x)}px, ${Math.round(y)}px)`;
           // element.style.transformOrigin = '0px 0px';
         } else {
           // How to rotate overlays.. but don't do it.
-          // element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(${width/2}px, ${height/2}px) rotate(${paint.__owner.value?.rotation || 0}deg) translate(-${width/2}px, -${height/2}px) scale(${scale})`;
-          element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
+          // element.style.transform = `${this.viewTransform}translate(${Math.round(x)}px, ${Math.round(y)}px) translate(${width/2}px, ${height/2}px) rotate(${paint.__owner.value?.rotation || 0}deg) translate(-${width/2}px, -${height/2}px) scale(${scale})`;
+          element.style.transform = `${this.viewTransform}translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
           // element.style.transformOrigin = '0px 0px';
         }
 

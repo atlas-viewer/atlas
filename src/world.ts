@@ -628,10 +628,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return objects;
   }
 
-  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1): Paint[] {
+  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1, selectionTarget: Strand = target): Paint[] {
     const zone = this.getActiveZone();
     const outsideVisibility = zone ? this.getZoneOutsideVisibility(zone) : 0;
-    const objects = this.getObjectsAt(target, false, true);
+    const objects = this.getObjectsAt(selectionTarget, false, true);
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
@@ -640,7 +640,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     for (let index = 0; index < len; index++) {
       if (objects[index]) {
         const worldObject = objects[index][0];
-        const paints = worldObject.getAllPointsAt(target, transformer, scaleFactor);
+        const paints = worldObject.getAllPointsAt(selectionTarget, transformer, scaleFactor);
         const inZone = !zone || zone.objects.indexOf(worldObject) !== -1;
         const zoneVisibilityAlpha = inZone ? 1 : outsideVisibility;
         for (let i = 0; i < paints.length; i++) {
