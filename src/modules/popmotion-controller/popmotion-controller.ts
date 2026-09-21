@@ -34,9 +34,9 @@ export type PopmotionControllerConfig = {
   panPadding?: number;
   devicePixelRatio?: number;
   enableWheel?: boolean;
-  /** Enable unified two-finger pan, zoom and rotation around the fingers' midpoint. */
+  /** Enable unified two-finger pan, zoom and rotation around the fingers' midpoint. Defaults to true. */
   enableTouchRotation?: boolean;
-  /** Snap to the nearest degree interval on touch release. 0 disables snapping. */
+  /** Snap to the nearest degree interval on touch release. Defaults to 90; 0 disables snapping. */
   touchRotationSnap?: number;
   enableClickToZoom?: boolean;
   enableDoubleClickZoom?: boolean;
@@ -76,8 +76,8 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   devicePixelRatio: 1,
   // Flags
   enableWheel: true,
-  enableTouchRotation: false,
-  touchRotationSnap: 0,
+  enableTouchRotation: true,
+  touchRotationSnap: 90,
   enableClickToZoom: false,
   enableDoubleClickZoom: true,
   enableDoubleTapZoom: true,

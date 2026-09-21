@@ -149,7 +149,7 @@ export const SelectionDemo = () => {
 
 	const rotateView = () => runtime.current?.world.rotateBy(90);
 
-	const [touchRotationEnabled, setTouchRotationEnabled] = useState(false);
+	const [touchRotationEnabled, setTouchRotationEnabled] = useState(true);
 
 	const zoomOut = () => {
 		if (runtime.current) {

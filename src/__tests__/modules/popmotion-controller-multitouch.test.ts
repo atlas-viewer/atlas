@@ -129,6 +129,7 @@ function createTouchHarness(config: PopmotionControllerConfig = {}) {
   };
 
   const controller = popmotionController({
+    enableTouchRotation: false,
     parentElement: parentElement as any,
     ...config,
   });

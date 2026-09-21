@@ -329,7 +329,7 @@ export class Runtime {
   }
 
   /** Whether touch gestures may rotate the view. Programmatic rotation remains available. */
-  touchRotationEnabled = false;
+  touchRotationEnabled = true;
 
   setTouchRotationEnabled(enabled: boolean) {
     this.touchRotationEnabled = enabled;

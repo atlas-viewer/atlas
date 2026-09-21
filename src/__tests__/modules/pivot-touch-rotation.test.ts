@@ -9,7 +9,7 @@ import { WorldObject } from '../../world-objects/world-object';
 import { popmotionController } from '../../modules/popmotion-controller/popmotion-controller';
 import { BrowserEventManager } from '../../modules/browser-event-manager/browser-event-manager';
 
-function setup(enableTouchRotation = true, width = 200, height = 200, touchRotationSnap = 0) {
+function setup(enableTouchRotation?: boolean, width = 200, height = 200, touchRotationSnap?: number) {
   const element = document.createElement('canvas');
   document.body.append(element);
   const bounds = { x: 30, y: 40, left: 30, top: 40, width, height };
@@ -46,7 +46,11 @@ function setup(enableTouchRotation = true, width = 200, height = 200, touchRotat
   const runtime = new Runtime(renderer, world, { x: 100, y: 100, width, height, scale: 1 }, []);
   runtime.stop();
   runtime.target.set(dna([1, 100, 100, 100 + width, 100 + height]));
-  const stop = popmotionController({ parentElement: element, enableTouchRotation, touchRotationSnap }).start(runtime);
+  const stop = popmotionController({
+    parentElement: element,
+    ...(enableTouchRotation === undefined ? {} : { enableTouchRotation }),
+    ...(touchRotationSnap === undefined ? {} : { touchRotationSnap }),
+  }).start(runtime);
   const events = new BrowserEventManager(element, runtime);
   function touch(type: string, points: Array<[number, number, number]>) {
     const touches: any = points.map(([identifier, x, y]) => ({ identifier, clientX: x + 30, clientY: y + 40 }));
@@ -123,7 +127,7 @@ test('two fingers anchor content through simultaneous pan, zoom and rotation, in
   }
 });
 
-test('rotation is disabled by default and touch cancellation releases the pivot', () => {
+test('rotation can be disabled explicitly and touch cancellation releases the pivot', () => {
   for (const enabled of [false, true]) {
     const h = setup(enabled);
     try {
@@ -523,4 +527,19 @@ test('disabling touch rotation interrupts an active snap without resetting its a
   } finally {
     h.cleanup();
   }
+});
+
+
+test('touch rotation defaults to enabled with animated 90-degree snapping', () => {
+  const h = setup();
+  try {
+    expect(h.runtime.touchRotationEnabled).toBe(true);
+    h.touch('touchstart', [[1, 40, 60], [2, 80, 60]]);
+    h.touch('touchmove', [[1, 40, 40], [2, 80, 80]]);
+    expect(h.runtime.viewRotation).toBeCloseTo(45);
+    h.touch('touchend', []);
+    expect(h.runtime.transitionManager.getPendingTransition().rotation?.to).toBe(90);
+    h.frame();
+    expect(h.runtime.viewRotation).toBe(90);
+  } finally { h.cleanup(); }
 });

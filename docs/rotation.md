@@ -10,11 +10,11 @@ const controllerConfig = { enableTouchRotation: true, touchRotationSnap: 90 };
 <AtlasAuto controllerConfig={controllerConfig}>{/* scene */}</AtlasAuto>;
 ```
 
-`enableTouchRotation` defaults to `false`. With it enabled, two fingers pan,
+`enableTouchRotation` defaults to `true`. With it enabled, two fingers pan,
 zoom, and rotate together around their midpoint. Lifting a finger or cancelling
 ends the gesture and applies zoom/pan constraints. `touchRotationSnap` snaps the
-angle on release to the nearest interval in degrees: `90` for right angles,
-`15` for finer steps, or `0` (default) for free rotation. It accepts finite values
+angle on release to the nearest interval in degrees: `90` (default) for right angles,
+`15` for finer steps, or `0` for free rotation. It accepts finite values
 from 0 to 360. Cancellation does not snap. Snapping animates over 250 ms through the transition manager, keeping the
 last touch midpoint anchored before settling bounds constraints. A new gesture
 interrupts the animation at its current angle. `ignoreSingleFingerTouch`
