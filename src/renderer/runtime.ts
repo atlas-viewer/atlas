@@ -1,6 +1,7 @@
 import {
   compose,
   DnaFactory,
+  getIntersection,
   dna,
   mutate,
   type Strand,
@@ -19,6 +20,7 @@ import { easingFunctions } from '../utility/easing-functions';
 import { getZoneConstrainedBounds } from '../utility/get-zone-constrained-bounds';
 import type { World } from '../world';
 import type { Paint } from '../world-objects/paint';
+import { WorldObject } from '../world-objects/world-object';
 import type { Renderer } from './renderer';
 
 export type RuntimeHooks = {
@@ -819,19 +821,29 @@ export class Runtime {
     const sWidth = this.getRendererScreenPosition()?.width;
     const ratio = sWidth ? sWidth / this.world.width : 1;
     let nativeScale = 1;
-    for (const [object] of this.world.getObjectsAt(target)) {
+    const visit = (object: WorldObject, viewport: Strand, parentScale: number) => {
+      if (!(object instanceof WorldObject)) return;
+      const intersection = getIntersection(object.applyRotation(viewport), object.points);
+      if (intersection[3] <= intersection[1] || intersection[4] <= intersection[2]) return;
+      const objectScale = parentScale * object.scale;
+      const localTarget = transform(intersection, compose(scale(1 / object.scale), translate(-object.x, -object.y)));
       for (const layer of object.layers) {
+        if (layer instanceof WorldObject) {
+          visit(layer, localTarget, objectScale);
+          continue;
+        }
         // Include the full composite dimensions even while only a thumbnail is available.
         const images = layer instanceof CompositeResource ? [layer, ...layer.allImages] : [layer];
         for (const image of images) {
           if (!(image instanceof CompositeResource) && !image.getImageUrl && !image.getTexture) continue;
-          const imageScale = image.display.scale * object.scale;
+          const imageScale = image.display.scale * objectScale;
           if (Number.isFinite(imageScale) && imageScale > 0) {
             nativeScale = Math.max(nativeScale, 1 / imageScale);
           }
         }
       }
-    }
+    };
+    for (const [object] of this.world.getObjectsAt(target)) visit(object, target, 1);
     const maxScale = Math.max(ratio || 1, this.options.maxOverZoom * nativeScale);
 
     return {
