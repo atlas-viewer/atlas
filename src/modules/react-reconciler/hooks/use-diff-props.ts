@@ -35,7 +35,6 @@ function diffProps(
 export function useDiffProps(props: any, name = '', enabled = false) {
   const prevProps = useRef(props);
   if (prevProps.current && enabled) {
-    console.log('Diff:', name, diffProps(prevProps.current, props));
     prevProps.current = props;
   }
 }

@@ -122,6 +122,24 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     mutate(this.points, translate(x, y));
   }
 
+  /**
+   * Some subclasses' applyProps() sets points directly from x/y-ish props on
+   * every call, which the reconciler invokes on every re-render regardless
+   * of whether those props actually changed (see reconciler.ts prepareUpdate,
+   * which never diffs old vs new props). A plain translate() would then get
+   * silently wiped out the next time any unrelated prop changes trigger a
+   * re-render. Runtime#compensateRotationPivotChange uses this instead so
+   * the compensating offset is remembered and reapplied by those subclasses'
+   * applyProps() on top of whatever position the props currently declare.
+   */
+  pivotCompensationOffset = { x: 0, y: 0 };
+
+  applyPivotCompensationOffset(x: number, y: number) {
+    this.pivotCompensationOffset.x += x;
+    this.pivotCompensationOffset.y += y;
+    this.translate(x, y);
+  }
+
   atScale(factor: number) {
     mutate(this.points, scaleAtOrigin(factor, this.x, this.y));
     this.scale *= factor;

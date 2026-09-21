@@ -11,6 +11,14 @@ const tile = {
   height: 2743,
 };
 
+
+const welcomeTile = {
+  id: 'https://iiif.wellcomecollection.org/image/b18035723_0001.JP2/info.json',
+  height: 3543,
+  width: 2569,
+};
+
+
 function Container(props: { children: ReactNode; style?: any }) {
   return (
     <>
@@ -28,7 +36,7 @@ function Container(props: { children: ReactNode; style?: any }) {
   );
 }
 
-function Slider({ control, label, ...props }: any) {
+function Slider({ control, label, max = 2000, ...props }: any) {
   const [state, setState] = control;
   return (
     <div style={{ display: 'flex' }}>
@@ -36,7 +44,7 @@ function Slider({ control, label, ...props }: any) {
       <input
         type="range"
         min={0}
-        max={359}
+        max={max}
         value={state}
         onChange={(e) => setState(e.target.valueAsNumber)}
         {...props}
@@ -52,6 +60,7 @@ export const CropRotateStaticImageInteractive = () => {
   const rotation = useState(5);
   const x = useState(120);
   const tx = useState(123);
+  const ty = useState(123);
   const utx = useState(0);
   const y = useState(0);
   const scale = useState(100);
@@ -59,17 +68,26 @@ export const CropRotateStaticImageInteractive = () => {
   const [rt, setRt] = useState<Preset>();
   const debug = useRef<HTMLDivElement>(null);
   const [key, setKey] = useState(0);
+  const [rotateFromWorldCenter, setRotateFromWorldCenter] = useState(false);
 
   const scaleFactor = scale[0] / 100;
 
+  const handleCheckboxChange = (event: { target: { checked: boolean | ((prevState: boolean) => boolean); }; }) => {
+    setRotateFromWorldCenter(event.target.checked);
+  };
+
   return (
     <>
-      <Slider control={rotation} label="rotation" />
+      <Slider control={rotation} label="rotation" max="359"/>
       <Slider control={x} label="x" />
       <Slider control={scale} label="scale" />
       <Slider control={tx} label="tx" />
+      <Slider control={ty} label="ty" />
       <Slider control={utx} label="Unsupported translation" />
       <Slider control={y} label="y" />
+
+      <strong>Rotate From Center? </strong>&nbsp;<input type="checkbox" checked={rotateFromWorldCenter} onChange={handleCheckboxChange} />
+      <br/>
       <button
         onClick={() => {
           setKey((i) => i + 1);
@@ -79,32 +97,138 @@ export const CropRotateStaticImageInteractive = () => {
         render
       </button>
       <div ref={debug}>debug</div>
-      <Container style={{ height: 512, width: 512 }}>
+     <Container style={{ height: 512, width: 512 }}>
         <AtlasAuto
           renderPreset={preset}
+          rotateFromWorldCenter={rotateFromWorldCenter}
           onCreated={(e) => {
             ref.current = e;
             setRt(e);
           }}
         >
           <world>
-            <world-object key={key} scale={scaleFactor} height={450} width={300} x={tx[0]} y={0} rotation={rotation[0]}>
-              <world-image
-                uri={img}
-                target={{ width: 600, height: 900, x: utx[0], y: 0 }}
-                display={{ width: 600, height: 900, x: 0, y: 0 }}
-                crop={{
-                  x: x[0],
-                  y: y[0],
-                  width: 300,
-                  height: 450,
-                }}
+            <world-object
+              key={key}
+              scale={scaleFactor}
+              height={tile.height / 2}
+              width={tile.width / 2}
+              x={tx[0]}
+              y={ty[0]}
+              rotation={rotation[0]}
+            >
+              <ImageService
+                key="wunder"
+                {...welcomeTile}
+                crop={{ x: x[0], y: y[0], width: tile.width / 2, height: tile.height / 2 }}
+                rotation={rotation[0]}
               />
-              <box style={{ border: '2px solid red' }} target={{ width: 300 - 4, height: 450 - 4, x: utx[0], y: 0 }} />
+              <box
+                style={{ border: '2px solid red' }}
+                target={{ width: tile.width / 2 - 4, height: tile.height / 2 - 4, x: utx[0], y: 0 }}
+              />
             </world-object>
           </world>
         </AtlasAuto>
       </Container>
+
+    </>
+  );
+};
+
+
+
+import { useLayoutEffect } from 'react';
+import { Runtime } from '../src/renderer/runtime';
+
+export const CropImageBroken = () => {
+  const rotation = useState(87);
+  const x = useState(120);
+  const tx = useState(2000);
+  const ty = useState(2000);
+  const utx = useState(0);
+  const y = useState(0);
+  let scale = useState(2000);
+  const ref = useRef<Preset>();
+  const [rt, setRt] = useState<Runtime>();
+  const debug = useRef<HTMLDivElement>(null);
+  const [key, setKey] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [rotateFromWorldCenter, setRotateFromWorldCenter] = useState(true);
+
+  const scaleFactor = scale[0] / 100;
+
+  const handleCheckboxChange = (event: { target: { checked: boolean | ((prevState: boolean) => boolean); }; }) => {
+    setRotateFromWorldCenter(event.target.checked);
+  };
+
+  const zoomBy = (factor: number) => {
+    if (ref) {
+      ref.current?.runtime?.transitionManager.zoomTo(factor);
+    }
+  
+  };
+
+  
+  return (
+    <>
+      <Slider control={rotation} label="rotation" max="359"/>
+      <Slider control={x} label="x" />
+      <Slider control={scale} label="scale" />
+      <Slider control={tx} label="tx" />
+      <Slider control={ty} label="ty" />
+      <Slider control={utx} label="Unsupported translation" />
+      <Slider control={y} label="y" />
+      
+      <button onClick={() => zoomBy(1 / 1.5)}>Zoom in</button>
+      <button onClick={() => zoomBy(1.3)}>Zoom out</button>
+
+
+      <strong>Rotate From Center? </strong>&nbsp;<input type="checkbox" checked={rotateFromWorldCenter} onChange={handleCheckboxChange} />
+      <br/>
+      <button
+        onClick={() => {
+          setKey((i) => i + 1);
+          ref.current?.runtime.world.recalculateWorldSize();
+        }}
+      >
+        render
+      </button>
+      <div ref={debug}>debug</div>
+     <Container style={{ height: 512, width: 512 }}>
+        <AtlasAuto
+          renderPreset={preset}
+          rotateFromWorldCenter={rotateFromWorldCenter}
+          onCreated={(e) => {
+            ref.current = e;
+            setRt(e);
+            scale = 468;
+          }}
+        >
+          <world>
+            <world-object
+              key={key}
+              scale={scaleFactor}
+              height={tile.height / 2}
+              width={tile.width / 2}
+              x={tx[0]}
+              y={ty[0]}
+              rotation={rotation[0]}
+            >
+              <ImageService
+                key="wunder"
+                {...welcomeTile}
+                crop={{ x: x[0], y: y[0], width: tile.width / 2, height: tile.height / 2 }}
+                rotation={rotation[0]}
+              />
+              <box
+                style={{ border: '2px solid red' }}
+                target={{ width: tile.width / 2 - 4, height: tile.height / 2 - 4, x: utx[0], y: 0 }}
+              />
+            </world-object>
+          </world>
+        </AtlasAuto>
+      </Container>
+
     </>
   );
 };

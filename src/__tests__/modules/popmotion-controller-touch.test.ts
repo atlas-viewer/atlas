@@ -111,6 +111,10 @@ function createTouchHarness(config: PopmotionControllerConfig = {}) {
     isViewportAtHome: vi.fn(() => true),
     isViewportAtHomeZoomLevel: vi.fn(() => true),
     getHomeTarget: () => ({ x: 0, y: 0, width: 100, height: 100 }),
+    // No-ops: this harness doesn't exercise rotateFromWorldCenter, but
+    // PopmotionController now calls these unconditionally on press/release.
+    beginInteraction: vi.fn(),
+    endInteraction: vi.fn(),
   };
 
   runtime.transitionManager = {

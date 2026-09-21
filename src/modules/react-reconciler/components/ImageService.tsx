@@ -27,7 +27,13 @@ export const ImageService: React.FC<{
   }, [props.height, props.id, props.width]);
 
   return (
-    <world-object x={props.x || 0} y={props.y || 0} width={props.width} height={props.height} scale={props.scale}>
+    <world-object
+      x={props.x || 0}
+      y={props.y || 0}
+      width={props.crop?.width || props.width}
+      height={props.crop?.height || props.height}
+      scale={props.scale}
+    >
       {tiles ? (
         <TileSet
           tiles={tiles}
