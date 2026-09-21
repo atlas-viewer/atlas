@@ -69,6 +69,7 @@ function createMockPreset(options: any) {
 
   return {
     options,
+    layoutSubscribers,
     runtime,
     preset: {
       name: 'default-preset',
@@ -337,6 +338,43 @@ describe('Atlas lifecycle runtime behavior', () => {
     expect(createdPresets[0].preset.unmount).toHaveBeenCalledTimes(1);
     expect(createdPresets[1].options.runtimeOptions).toEqual(runtimeOptions);
     expect(createdPresets[1].runtime.setOptions).toHaveBeenCalledWith(runtimeOptions);
+  });
+
+  test('world layout events preserve the latest static container and overlay measurements', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    let record!: MockPresetRecord;
+    vi.spyOn(presets, 'static-preset').mockImplementation((options: any) => {
+      record = createMockPreset(options);
+      return record.preset as any;
+    });
+
+    await act(async () => {
+      root.render(
+        <Atlas width={300} height={200} renderPreset="static-preset" unstable_noReconciler>
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+    });
+
+    const element = container.querySelector('.atlas')!;
+    const measure = vi.spyOn(element, 'getBoundingClientRect');
+    for (const [width, height] of [[300, 200], [480, 320]]) {
+      measure.mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height } as DOMRect);
+      await act(async () => {
+        window.dispatchEvent(new Event('resize'));
+        await flush();
+      });
+      for (const event of ['recalculate-world-size', 'zone-changed']) {
+        act(() => record.layoutSubscribers.forEach((callback) => callback(event)));
+        for (const target of [record.preset.container, record.preset.overlay]) {
+          expect(target.style.width).toBe(`${width}px`);
+          expect(target.style.height).toBe(`${height}px`);
+        }
+      }
+    }
   });
 
   test('forwards resourceTransitionKey to the runtime', async () => {
