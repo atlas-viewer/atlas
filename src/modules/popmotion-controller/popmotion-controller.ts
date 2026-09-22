@@ -38,6 +38,8 @@ export type PopmotionControllerConfig = {
   enableTouchRotation?: boolean;
   /** Snap to the nearest degree interval on touch release. Defaults to 90; 0 disables snapping. */
   touchRotationSnap?: number;
+  /** Degrees of two-finger rotation required before rotation starts. Defaults to 15; 0 starts immediately. */
+  touchRotationThreshold?: number;
   enableClickToZoom?: boolean;
   enableDoubleClickZoom?: boolean;
   enableDoubleTapZoom?: boolean;
@@ -78,6 +80,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   enableWheel: true,
   enableTouchRotation: true,
   touchRotationSnap: 90,
+  touchRotationThreshold: 15,
   enableClickToZoom: false,
   enableDoubleClickZoom: true,
   enableDoubleTapZoom: true,
@@ -100,6 +103,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       (!Number.isFinite(config.touchRotationSnap) || config.touchRotationSnap < 0 || config.touchRotationSnap > 360)) {
     throw new RangeError('touchRotationSnap must be between 0 and 360 degrees');
   }
+  if (config.touchRotationThreshold !== undefined &&
+      (!Number.isFinite(config.touchRotationThreshold) || config.touchRotationThreshold < 0 || config.touchRotationThreshold > 360)) {
+    throw new RangeError('touchRotationThreshold must be between 0 and 360 degrees');
+  }
   return {
     start: (runtime) => {
       const {
@@ -107,6 +114,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         enableWheel,
         enableTouchRotation,
         touchRotationSnap,
+        touchRotationThreshold,
         enableClickToZoom,
         enableDoubleClickZoom,
         enableDoubleTapZoom,
@@ -153,6 +161,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         origin: { x: number; y: number };
         distance: number;
         angle: number;
+        pendingAngle: number;
+        rotating: boolean;
+        catchupAngle: number;
+        catchupElapsed: number;
         scale: number;
       } | undefined;
       let lastGestureTarget: any = null;
@@ -182,6 +194,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       const MAX_TAP_DURATION_MS = 250;
       const DOUBLE_TAP_HOME_ZOOM_TOLERANCE = 0.1;
       const DOUBLE_TAP_TRANSITION_DURATION_MS = 500;
+      const TOUCH_ROTATION_CATCHUP_MS = 150;
 
       function clearPanSamples() {
         panSamples.length = 0;
@@ -508,12 +521,21 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               ? pendingTransition.to
               : runtime.target);
 
-          if (snapRotation && rotationGesture && runtime.touchRotationEnabled && touchRotationSnap > 0) {
+          if (snapRotation && rotationGesture?.rotating && runtime.touchRotationEnabled) {
             // Release may precede the frame that applies the last touchmove.
             runtime.target.set(sourceTarget);
             runtime.transitionManager.stopTransition();
-            const snapped = Math.round(runtime.viewRotation / touchRotationSnap) * touchRotationSnap;
-            runtime.transitionManager.rotateTo(snapped, { origin: rotationGesture.origin, panPadding });
+            const remaining = rotationGesture.catchupAngle *
+              (1 - easingFunctions.easeOutCubic(rotationGesture.catchupElapsed / TOUCH_ROTATION_CATCHUP_MS));
+            const fingerAngle = runtime.viewRotation + remaining;
+            const destination = touchRotationSnap > 0
+              ? Math.round(fingerAngle / touchRotationSnap) * touchRotationSnap
+              : fingerAngle;
+            runtime.transitionManager.rotateTo(destination, {
+              origin: rotationGesture.origin,
+              panPadding,
+              transition: touchRotationSnap > 0 ? undefined : { duration: TOUCH_ROTATION_CATCHUP_MS },
+            });
           } else {
             runtime.transitionManager.constrainTarget(sourceTarget, {
               origin: lastGestureOrigin,
@@ -674,6 +696,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
                 origin,
                 distance: currentDistance,
                 angle: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX),
+                pendingAngle: 0,
+                rotating: false,
+                catchupAngle: 0,
+                catchupElapsed: 0,
                 scale: runtime.getScaleFactor(),
               };
               runtime.rotateBy(0, origin);
@@ -711,7 +737,20 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           if (!separation) return;
           const angle = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
           const delta = Math.atan2(Math.sin(angle - gesture.angle), Math.cos(angle - gesture.angle));
-          if (runtime.touchRotationEnabled) runtime.rotateBy(delta * 180 / Math.PI, gesture.origin);
+          if (runtime.touchRotationEnabled) {
+            if (!gesture.rotating) {
+              gesture.pendingAngle += delta;
+              if (gesture.pendingAngle !== 0 && Math.abs(gesture.pendingAngle * 180 / Math.PI) >= touchRotationThreshold) {
+                gesture.rotating = true;
+                const degrees = gesture.pendingAngle * 180 / Math.PI;
+                // Ease the held-back threshold angle; any movement beyond it follows the fingers now.
+                gesture.catchupAngle = Math.sign(degrees) * touchRotationThreshold;
+                runtime.rotateBy(degrees - gesture.catchupAngle, gesture.origin);
+              }
+            } else {
+              runtime.rotateBy(delta * 180 / Math.PI, gesture.origin);
+            }
+          }
           gesture.angle = angle;
           // Derive the full transform from touchstart: touch events can outpace animation frames.
           const ratio = gesture.distance / separation;
@@ -1052,6 +1091,17 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.updateNextFrame();
       });
 
+      const removeRotationCatchupHook = runtime.registerHook('useBeforeFrame', (delta: number) => {
+        const gesture = rotationGesture;
+        if (!gesture?.rotating || !gesture.catchupAngle || !runtime.touchRotationEnabled) return;
+        const previous = easingFunctions.easeOutCubic(gesture.catchupElapsed / TOUCH_ROTATION_CATCHUP_MS);
+        gesture.catchupElapsed = Math.min(TOUCH_ROTATION_CATCHUP_MS, gesture.catchupElapsed + Math.max(0, delta));
+        const next = easingFunctions.easeOutCubic(gesture.catchupElapsed / TOUCH_ROTATION_CATCHUP_MS);
+        runtime.rotateBy(gesture.catchupAngle * (next - previous), gesture.origin);
+        lastGestureTarget = dna(runtime.target);
+        if (gesture.catchupElapsed === TOUCH_ROTATION_CATCHUP_MS) gesture.catchupAngle = 0;
+      });
+
       return () => {
         stopPanMomentum();
         resetHoldToHomeState();
@@ -1081,6 +1131,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         }
 
         removeMomentumHook();
+        removeRotationCatchupHook();
         removeLayout();
       };
     },
