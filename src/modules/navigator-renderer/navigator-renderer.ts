@@ -1,3 +1,4 @@
+import type { HookOptions } from '../../renderer/runtime';
 import { DnaFactory, type Strand, transform } from '@atlas-viewer/dna';
 import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
@@ -505,7 +506,12 @@ export class NavigatorRenderer extends DebugRenderer {
     this.invalidateWorldLayer('resize');
   }
 
-  beforeFrame(world: World) {
+  private viewRotation = 0;
+
+  beforeFrame(world: World, _delta?: number, _target?: Strand, options?: HookOptions) {
+    const rotation = options?.viewRotation || 0;
+    if (rotation !== this.viewRotation) this.renderNextFrame = true;
+    this.viewRotation = rotation;
     if (world.width !== this.lastWorldWidth || world.height !== this.lastWorldHeight) {
       this.lastWorldWidth = world.width;
       this.lastWorldHeight = world.height;
@@ -1146,11 +1152,18 @@ export class NavigatorRenderer extends DebugRenderer {
     const pw = Math.max(1, Math.round(width));
     const ph = Math.max(1, Math.round(height));
 
+    if (this.viewRotation) {
+      this.context.save();
+      this.context.translate(x + width / 2, y + height / 2);
+      this.context.rotate(-this.viewRotation * Math.PI / 180);
+      this.context.translate(-x - width / 2, -y - height / 2);
+    }
     this.context.fillStyle = this.style.viewportFill;
     this.context.fillRect(px, py, pw, ph);
 
     this.context.strokeStyle = this.style.viewportStroke;
     this.context.lineWidth = Math.max(1, this.style.viewportLineWidth);
     this.context.strokeRect(px + 0.5, py + 0.5, Math.max(1, pw - 1), Math.max(1, ph - 1));
+    if (this.viewRotation) this.context.restore();
   }
 }

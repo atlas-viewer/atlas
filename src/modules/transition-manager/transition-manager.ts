@@ -1,3 +1,4 @@
+import { rotatePoint } from '../../world-objects/world-object';
 import { Runtime } from '../../renderer/runtime';
 import { Position } from '../../types';
 import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
@@ -12,6 +13,7 @@ export type PendingTransition = {
   done: boolean;
   constrain: boolean;
   callback?: () => void;
+  rotation?: { from: number; to: number; origin: Position };
 };
 
 export class TransitionManager {
@@ -44,10 +46,12 @@ export class TransitionManager {
   }
 
   customTransition(func: (transition: PendingTransition) => void) {
+    this.pendingTransition.rotation = undefined;
     func(this.pendingTransition);
   }
 
   stopTransition() {
+    this.pendingTransition.rotation = undefined;
     this.pendingTransition.from = dna(this.runtime.target);
     this.pendingTransition.to = dna(this.runtime.target);
     this.pendingTransition.done = true;
@@ -58,7 +62,18 @@ export class TransitionManager {
   runTransition(target: Strand, delta: number) {
     if (!this.pendingTransition.done) {
       const transition = this.pendingTransition;
-      const td = transition.total_time === 0 ? 0 : (transition.elapsed_time + delta) / transition.total_time;
+      // Clamped to 1: an unusually large single-frame delta (a backgrounded
+      // tab resuming, a dropped frame, a GC pause) can otherwise push td
+      // past 1, and easing functions like easeOutQuart (1 - (1-x)^4) are
+      // only monotonic on [0, 1] -- past that they curve back down instead
+      // of staying at the endpoint, so `step` collapses toward 0 right when
+      // elapsed_time >= total_time marks the transition done. That leaves
+      // `target` stuck wherever that bad step landed it, permanently (since
+      // nothing else re-triggers a correction), for example a
+      // constrain-bounds snap-back that reports done but never actually
+      // arrives back in bounds.
+      const rawTd = transition.total_time === 0 ? 0 : (transition.elapsed_time + delta) / transition.total_time;
+      const td = rawTd > 1 ? 1 : rawTd;
       const step = transition.total_time === 0 ? 1 : td === 0 ? 0 : transition.timingFunction(td);
 
       // Update our target.
@@ -66,6 +81,21 @@ export class TransitionManager {
       target[2] = transition.from[2] + (transition.to[2] - transition.from[2]) * step;
       target[3] = transition.from[3] + (transition.to[3] - transition.from[3]) * step;
       target[4] = transition.from[4] + (transition.to[4] - transition.from[4]) * step;
+
+      if (transition.rotation) {
+        const { from, to, origin } = transition.rotation;
+        const angle = (to - from) * step;
+        const [x, y] = rotatePoint(
+          (transition.from[1] + transition.from[3]) / 2,
+          (transition.from[2] + transition.from[4]) / 2,
+          origin.x, origin.y, -angle
+        );
+        const width = transition.from[3] - transition.from[1];
+        const height = transition.from[4] - transition.from[2];
+        target[1] = x - width / 2; target[2] = y - height / 2;
+        target[3] = x + width / 2; target[4] = y + height / 2;
+        this.runtime.viewRotation = from + angle;
+      }
 
       // Update our transition.
       this.pendingTransition.elapsed_time += delta;
@@ -84,6 +114,34 @@ export class TransitionManager {
         }
       }
     }
+  }
+
+  /** Animate camera rotation along the shortest arc, then settle zoom/pan constraints. */
+  rotateTo(degrees: number, {
+    origin = { x: (this.runtime.target[1] + this.runtime.target[3]) / 2, y: (this.runtime.target[2] + this.runtime.target[4]) / 2 },
+    panPadding = 0,
+    transition,
+  }: { origin?: Position; panPadding?: number; transition?: { duration?: number; easing?: EasingFunction } } = {}) {
+    if (!Number.isFinite(degrees) || !Number.isFinite(origin.x) || !Number.isFinite(origin.y)) {
+      throw new RangeError('Rotation and pivot coordinates must be finite');
+    }
+    const from = this.runtime.viewRotation;
+    const delta = ((degrees - from + 180) % 360 + 360) % 360 - 180;
+    if (Math.abs(delta) < 1e-6) {
+      this.constrainTarget(this.runtime.target, { origin, panPadding });
+      return;
+    }
+    const target = this.runtime.target;
+    const width = target[3] - target[1], height = target[4] - target[2];
+    const [x, y] = rotatePoint((target[1] + target[3]) / 2, (target[2] + target[4]) / 2, origin.x, origin.y, -delta);
+    this.applyTransition(DnaFactory.singleBox(width, height, x - width / 2, y - height / 2), transition, {
+      duration: 250,
+      easing: easingFunctions.easeOutQuart,
+      constrain: false,
+      callback: () => this.constrainTarget(this.runtime.target, { origin, panPadding }),
+    });
+    this.pendingTransition.rotation = { from, to: from + delta, origin: { ...origin } };
+    this.runtime.updateNextFrame();
   }
 
   lastZoomTo: {
@@ -156,7 +214,6 @@ export class TransitionManager {
   } = {}) {
     this.isConstraining = true;
     const [isConstrained, constrained] = this.runtime.constrainBounds(this.runtime.target, { panPadding });
-
     if (isConstrained) {
       this.applyTransition(constrained, transition, {
         duration: 500,
@@ -167,6 +224,12 @@ export class TransitionManager {
         }
       });
       this.runtime.updateNextFrame();
+      // Main independently fixed the same "isConstraining stuck true
+      // forever" bug touch-old fixed (nothing else clears it when there
+      // was no correction to make, since the trailing reset below used to
+      // run unconditionally even after this branch already started a
+      // correction) -- this early return already covers it, so touch-old's
+      // more verbose explicit else-branch version isn't needed on top.
       return;
     }
 
@@ -222,6 +285,7 @@ export class TransitionManager {
       stream?: boolean;
     } = {}
   ) {
+    this.pendingTransition.rotation = undefined;
     this.pendingTransition.from = dna(this.runtime.target);
     this.pendingTransition.to = target;
     if (!stream) {

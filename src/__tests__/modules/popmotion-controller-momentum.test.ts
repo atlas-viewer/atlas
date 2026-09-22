@@ -346,6 +346,28 @@ describe('popmotion controller pan momentum', () => {
     harness.stop();
   });
 
+  test('flags runtime.panMomentumActive for the duration of an inertial pan, clearing once it settles', () => {
+    const harness = createRuntimeHarness();
+
+    now = 0;
+    dragForMomentum(harness, (value) => {
+      now = value;
+    });
+
+    // Momentum started on release -- Runtime#render's pivotSwitchPending
+    // finalize check relies on this staying true for as long as momentum is
+    // actively driving `target`, since transitionManager.hasPending() alone
+    // can't tell (see panMomentumActive's own doc comment in runtime.ts).
+    expect(harness.runtime.panMomentumActive).toBe(true);
+
+    for (let i = 0; i < 200 && harness.runtime.panMomentumActive; i++) {
+      harness.runFrame(16);
+    }
+
+    expect(harness.runtime.panMomentumActive).toBe(false);
+    harness.stop();
+  });
+
   test('can disable pan momentum', () => {
     const harness = createRuntimeHarness({ enablePanMomentum: false });
 
@@ -406,6 +428,89 @@ describe('popmotion controller pan momentum', () => {
 
     harness.runFrame(16);
     expect(harness.runtime.target[1]).toBeGreaterThan(releasedAt);
+    harness.stop();
+  });
+
+  test('a plain click mid-momentum stops the glide without moving the view', () => {
+    const harness = createRuntimeHarness();
+    now = 0;
+    dragForMomentum(harness, (value) => {
+      now = value;
+    });
+    expect(harness.runtime.panMomentumActive).toBe(true);
+
+    // Let momentum carry the view into its elastic overshoot past a bound,
+    // the same setup as the "edge hit" tests below -- this is the case a
+    // click can realistically interrupt mid-flight.
+    const boundaryX = 40;
+    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => {
+      if (nextTarget[1] > boundaryX) {
+        return [true, dna([1, boundaryX, 0, boundaryX + 100, 100])] as const;
+      }
+      return [false, nextTarget] as const;
+    });
+    harness.runFrame(16);
+    const overshootPosition = dna(harness.runtime.target);
+    expect(overshootPosition[1]).toBeGreaterThan(boundaryX);
+
+    // A plain click: mousedown then mouseup with no movement in between --
+    // this should just stop the glide dead where it is, not kick off a new
+    // corrective animation of its own.
+    harness.emitWorld('mousedown', {
+      which: 1,
+      atlas: { x: overshootPosition[1], y: overshootPosition[2] },
+      preventDefault: vi.fn(),
+    });
+    harness.emitWorld('mouseup', {});
+
+    expect(harness.world.constraintBounds).not.toHaveBeenCalled();
+    expect(Array.from(harness.runtime.target)).toEqual(Array.from(overshootPosition));
+
+    harness.runFrame(16);
+    expect(Array.from(harness.runtime.target)).toEqual(Array.from(overshootPosition));
+    harness.stop();
+  });
+
+  test('a click with a pixel of real-world jitter still counts as a click, not a pan', () => {
+    // Real pointer input is never perfectly still between mousedown and
+    // mouseup -- a click routinely delivers a mousemove or two of a pixel or
+    // so of jitter. state.hasMovedSincePress flips true on any such nudge,
+    // so gating the release-time bounds correction on it alone would still
+    // let a "click" through as if it were a genuine drag. This exercises
+    // that exact case against releaseTravelPx's noise floor instead.
+    const harness = createRuntimeHarness();
+    now = 0;
+    dragForMomentum(harness, (value) => {
+      now = value;
+    });
+
+    const boundaryX = 40;
+    harness.runtime.constrainBounds = vi.fn((nextTarget: any) => {
+      if (nextTarget[1] > boundaryX) {
+        return [true, dna([1, boundaryX, 0, boundaryX + 100, 100])] as const;
+      }
+      return [false, nextTarget] as const;
+    });
+    harness.runFrame(16);
+    const overshootPosition = dna(harness.runtime.target);
+    expect(overshootPosition[1]).toBeGreaterThan(boundaryX);
+
+    harness.emitWorld('mousedown', {
+      which: 1,
+      atlas: { x: overshootPosition[1], y: overshootPosition[2] },
+      preventDefault: vi.fn(),
+    });
+    now += 30;
+    // A single pixel of jitter -- well under any real drag, but enough to
+    // set state.hasMovedSincePress. The harness's viewerToWorld is an
+    // identity mapping with getScaleFactor() === 1, so 1 world unit away
+    // from the press position is exactly 1 screen px of jitter.
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: overshootPosition[1] + 1, clientY: overshootPosition[2] })
+    );
+    harness.emitWorld('mouseup', {});
+
+    expect(harness.world.constraintBounds).not.toHaveBeenCalled();
     harness.stop();
   });
 

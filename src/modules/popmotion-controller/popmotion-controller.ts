@@ -3,6 +3,7 @@ import { compose, DnaFactory, dna, scaleAtOrigin, transform, translate } from '@
 import normalizeWheel from 'normalize-wheel';
 import type { RuntimeController } from '../../types';
 import { easingFunctions } from '../../utility/easing-functions';
+import { rotatePoint } from '../../world-objects/world-object';
 import { distance } from '../../utils';
 
 const INTENT_PAN = 'pan';
@@ -33,6 +34,10 @@ export type PopmotionControllerConfig = {
   panPadding?: number;
   devicePixelRatio?: number;
   enableWheel?: boolean;
+  /** Enable unified two-finger pan, zoom and rotation around the fingers' midpoint. Defaults to true. */
+  enableTouchRotation?: boolean;
+  /** Snap to the nearest degree interval on touch release. Defaults to 90; 0 disables snapping. */
+  touchRotationSnap?: number;
   enableClickToZoom?: boolean;
   enableDoubleClickZoom?: boolean;
   enableDoubleTapZoom?: boolean;
@@ -71,6 +76,8 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   devicePixelRatio: 1,
   // Flags
   enableWheel: true,
+  enableTouchRotation: true,
+  touchRotationSnap: 90,
   enableClickToZoom: false,
   enableDoubleClickZoom: true,
   enableDoubleTapZoom: true,
@@ -89,11 +96,17 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
 };
 
 export const popmotionController = (config: PopmotionControllerConfig = {}): RuntimeController => {
+  if (config.touchRotationSnap !== undefined &&
+      (!Number.isFinite(config.touchRotationSnap) || config.touchRotationSnap < 0 || config.touchRotationSnap > 360)) {
+    throw new RangeError('touchRotationSnap must be between 0 and 360 degrees');
+  }
   return {
     start: (runtime) => {
       const {
         zoomWheelConstant,
         enableWheel,
+        enableTouchRotation,
+        touchRotationSnap,
         enableClickToZoom,
         enableDoubleClickZoom,
         enableDoubleTapZoom,
@@ -117,6 +130,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         ...config,
       };
 
+      runtime.touchRotationEnabled = enableTouchRotation;
+
       const state = {
         pointerStart: { x: 0, y: 0 },
         isPressing: false,
@@ -132,6 +147,14 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         vx: 0,
         vy: 0,
       };
+      let rotationGesture: {
+        ids: number[];
+        target: ReturnType<typeof dna>;
+        origin: { x: number; y: number };
+        distance: number;
+        angle: number;
+        scale: number;
+      } | undefined;
       let lastGestureTarget: any = null;
       let lastGestureOrigin: { x: number; y: number } | undefined;
       let lastTapAt = 0;
@@ -181,9 +204,11 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         momentum.active = false;
         momentum.vx = 0;
         momentum.vy = 0;
+        runtime.panMomentumActive = false;
       }
 
       function clearGestureState() {
+        rotationGesture = undefined;
         lastGestureTarget = null;
         lastGestureOrigin = undefined;
       }
@@ -358,6 +383,25 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         });
       }
 
+      // Total screen-px travel across the whole press, from the first pan
+      // sample (recorded at mousedown) to the last -- distinct from
+      // state.hasMovedSincePress, which flips true on *any* mousemove that
+      // nudges `nextTarget` by even a fraction of a world unit. Real pointer
+      // input is never perfectly still between mousedown and mouseup (a click
+      // routinely delivers a mousemove or two of a pixel or so of jitter), so
+      // hasMovedSincePress is true for nearly every click, not just real
+      // drags -- unusable as a "was this actually a pan" signal. This reuses
+      // calculateReleaseVelocity's own MIN_MOMENTUM_TRAVEL_PX noise floor
+      // instead.
+      function releaseTravelPx() {
+        if (panSamples.length < 2) {
+          return 0;
+        }
+        const first = panSamples[0];
+        const last = panSamples[panSamples.length - 1];
+        return Math.hypot(last.x - first.x, last.y - first.y) * runtime.getScaleFactor();
+      }
+
       function calculateReleaseVelocity() {
         if (panSamples.length < 2) {
           return null;
@@ -409,6 +453,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return false;
         }
         momentum.active = true;
+        runtime.panMomentumActive = true;
         momentum.vx = vx;
         momentum.vy = vy;
         runtime.updateNextFrame();
@@ -425,7 +470,18 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           return;
         }
         const startedMomentum = runtime.mode === 'explore' ? maybeStartPanMomentum() : false;
-        if (runtime.mode === 'explore' && !startedMomentum) {
+        // Only correct out-of-bounds position on release if the pointer
+        // actually panned by more than noise (releaseTravelPx, not the far
+        // more sensitive state.hasMovedSincePress -- see that function's own
+        // comment for why). A plain click/tap never moves `target` itself,
+        // so it has nothing of its own to correct -- but without this guard,
+        // a click that happens to land while inertial momentum is still
+        // carrying the view through its elastic overshoot (stopped dead by
+        // onMouseDown's stopPanMomentum, *before* it had settled back within
+        // bounds on its own) would unconditionally kick off a fresh,
+        // click-triggered 500ms constrain-bounds snap -- visibly moving the
+        // view as a side effect of a click that never dragged anything.
+        if (runtime.mode === 'explore' && !startedMomentum && releaseTravelPx() >= MIN_MOMENTUM_TRAVEL_PX) {
           runtime.world.constraintBounds();
         }
         state.isPressing = false;
@@ -435,7 +491,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         resetState();
       }
 
-      function releaseGesturePointer() {
+      function releaseGesturePointer(snapRotation = false) {
         if (!state.isPressing) {
           clearGestureState();
           resetState();
@@ -452,10 +508,18 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               ? pendingTransition.to
               : runtime.target);
 
-          runtime.transitionManager.constrainTarget(sourceTarget, {
-            origin: lastGestureOrigin,
-            panPadding,
-          });
+          if (snapRotation && rotationGesture && runtime.touchRotationEnabled && touchRotationSnap > 0) {
+            // Release may precede the frame that applies the last touchmove.
+            runtime.target.set(sourceTarget);
+            runtime.transitionManager.stopTransition();
+            const snapped = Math.round(runtime.viewRotation / touchRotationSnap) * touchRotationSnap;
+            runtime.transitionManager.rotateTo(snapped, { origin: rotationGesture.origin, panPadding });
+          } else {
+            runtime.transitionManager.constrainTarget(sourceTarget, {
+              origin: lastGestureOrigin,
+              panPadding,
+            });
+          }
         }
 
         state.isPressing = false;
@@ -497,8 +561,12 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onTouchEnd(e: TouchEvent) {
-        if (intent === INTENT_GESTURE && e.touches.length < 2) {
-          releaseGesturePointer();
+        if (!state.isPressing) return;
+        const lostRotationFinger = rotationGesture && rotationGesture.ids.some(
+          (id) => !Array.from(e.touches).some((touch) => touch.identifier === id)
+        );
+        if (intent === INTENT_GESTURE && (e.touches.length < 2 || lostRotationFinger)) {
+          releaseGesturePointer(true);
           return;
         }
 
@@ -592,6 +660,25 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.transitionManager.stopTransition();
 
           state.isPressing = true;
+          if (runtime.touchRotationEnabled && e.touches.length === 2) {
+            const [a, b] = Array.from(e.touches);
+            const bounds = runtime.getRendererScreenPosition();
+            if (bounds && currentDistance > 0) {
+              const origin = runtime.viewerToWorld(
+                (a.clientX + b.clientX) / 2 - bounds.x,
+                (a.clientY + b.clientY) / 2 - bounds.y
+              );
+              rotationGesture = {
+                ids: [a.identifier, b.identifier],
+                target: dna(runtime.target),
+                origin,
+                distance: currentDistance,
+                angle: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX),
+                scale: runtime.getScaleFactor(),
+              };
+              runtime.rotateBy(0, origin);
+            }
+          }
         }
       }
 
@@ -612,6 +699,41 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           atlasTouches: Array<{ id: number; x: number; y: number }>;
         }
       ) {
+        if (state.isPressing && rotationGesture && e.touches.length === 2) {
+          e.preventDefault();
+          const gesture = rotationGesture;
+          const touches = Array.from(e.touches);
+          const a = touches.find((touch) => touch.identifier === gesture.ids[0]);
+          const b = touches.find((touch) => touch.identifier === gesture.ids[1]);
+          const bounds = runtime.getRendererScreenPosition();
+          if (!a || !b || !bounds) return;
+          const separation = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+          if (!separation) return;
+          const angle = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
+          const delta = Math.atan2(Math.sin(angle - gesture.angle), Math.cos(angle - gesture.angle));
+          if (runtime.touchRotationEnabled) runtime.rotateBy(delta * 180 / Math.PI, gesture.origin);
+          gesture.angle = angle;
+          // Derive the full transform from touchstart: touch events can outpace animation frames.
+          const ratio = gesture.distance / separation;
+          const nextTarget = dna(gesture.target);
+          const width = (gesture.target[3] - gesture.target[1]) * ratio;
+          const height = (gesture.target[4] - gesture.target[2]) * ratio;
+          const [dx, dy] = rotatePoint(
+            ((a.clientX + b.clientX) / 2 - bounds.x - bounds.width / 2) * ratio / gesture.scale,
+            ((a.clientY + b.clientY) / 2 - bounds.y - bounds.height / 2) * ratio / gesture.scale,
+            0, 0, -runtime.viewRotation
+          );
+          nextTarget[1] = gesture.origin.x - dx - width / 2;
+          nextTarget[2] = gesture.origin.y - dy - height / 2;
+          nextTarget[3] = nextTarget[1] + width;
+          nextTarget[4] = nextTarget[2] + height;
+          lastGestureTarget = dna(nextTarget);
+          lastGestureOrigin = gesture.origin;
+          state.hasMovedSincePress = true;
+          setDataAttribute(INTENT_GESTURE);
+          applyPanTransition(nextTarget);
+          return;
+        }
         let clientX = null;
         let clientY = null;
         let newDistance = 0;
@@ -690,7 +812,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           currentDistance = newDistance;
         }
 
-        if (intent == INTENT_PAN) {
+        if (intent === INTENT_PAN || intent === INTENT_GESTURE) {
           // if we're panning, prevent default
           // this does the same thing as touchEvents: none; pointerEvents: none;
           e.preventDefault();
@@ -777,7 +899,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       runtime.world.addEventListener('touchstart', onTouchStart);
       runtime.world.addEventListener('mousedown', onMouseDown);
 
-      window.addEventListener('touchend', onWindowMouseUp);
+      window.addEventListener('touchend', onTouchEnd);
       window.addEventListener('mouseup', onWindowMouseUp);
 
       window.addEventListener('mousemove', onMouseMove);
@@ -785,7 +907,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       if (parentElement) {
         // if this is bound to the window, then the entire interaction model goes haywire
         // unclear 100% why
-        parentElement.addEventListener('touchmove', onTouchMove as any);
+        parentElement.addEventListener('touchmove', onTouchMove as any, { passive: false });
       }
 
       if (enableClickToZoom || enableDoubleClickZoom) {
@@ -816,6 +938,16 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           if (!runtime.transitionManager.hasPending()) {
             runtime.transitionManager.constrainBounds();
           }
+        }
+        if (type === 'rotate-by' && data) {
+          stopPanMomentum();
+          const pending = runtime.transitionManager.getPendingTransition();
+          const angle = !pending.done && pending.rotation ? pending.rotation.to : runtime.viewRotation;
+          runtime.transitionManager.rotateTo(angle + data.degrees, {
+            origin: data.point,
+            panPadding,
+            transition: data.immediate ? { duration: 0 } : undefined,
+          });
         }
         if (type === 'zoom-to' && data) {
           stopPanMomentum();
@@ -929,7 +1061,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         runtime.world.removeEventListener('touchstart', onTouchStart);
         runtime.world.removeEventListener('mousedown', onMouseDown);
 
-        window.removeEventListener('touchend', onWindowMouseUp);
+        window.removeEventListener('touchend', onTouchEnd);
         window.removeEventListener('mouseup', onWindowMouseUp);
 
         window.removeEventListener('mousemove', onMouseMove);

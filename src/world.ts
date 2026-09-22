@@ -404,7 +404,6 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       }
       this.needsRecalculate = false;
     }
-
     return didChange;
   }
 
@@ -508,9 +507,23 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     };
   }
 
+  /** Let rotated objects perform their own culling: their rendered bounds can extend beyond their raw bounds. */
+  private forceIncludeRotatedObjects(filteredPoints: Strand) {
+    const len = this.objects.length;
+    for (let index = 0; index < len; index++) {
+      const object = this.objects[index];
+      if (!object || object.type !== 'world-object') {
+        continue;
+      }
+      if ((object as WorldObject).selectionRotation()) {
+        filteredPoints[index * 5] = 1;
+      }
+    }
+  }
+
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
-
+    this.forceIncludeRotatedObjects(filteredPoints);
     const len = this.objects.length;
     this._updatedList = [];
 
@@ -548,6 +561,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const zone = this.getActiveZone();
     const includeOutsideObjects = zone && includeZoneFade ? this.getZoneOutsideVisibility(zone) > 0 : false;
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
+    this.forceIncludeRotatedObjects(filteredPoints);
 
     const len = this.renderOrder.length;
     const objects: Array<[WorldObject, Paintable[]]> = [];
@@ -575,10 +589,10 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return objects;
   }
 
-  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1): Paint[] {
+  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1, selectionTarget: Strand = target): Paint[] {
     const zone = this.getActiveZone();
     const outsideVisibility = zone ? this.getZoneOutsideVisibility(zone) : 0;
-    const objects = this.getObjectsAt(target, false, true);
+    const objects = this.getObjectsAt(selectionTarget, false, true);
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
@@ -587,7 +601,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     for (let index = 0; index < len; index++) {
       if (objects[index]) {
         const worldObject = objects[index][0];
-        const paints = worldObject.getAllPointsAt(target, transformer, scaleFactor);
+        const paints = worldObject.getAllPointsAt(selectionTarget, transformer, scaleFactor);
         const inZone = !zone || zone.objects.indexOf(worldObject) !== -1;
         const zoneVisibilityAlpha = inZone ? 1 : outsideVisibility;
         for (let i = 0; i < paints.length; i++) {
@@ -682,6 +696,11 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       point,
       factor: 2,
     });
+  }
+
+  /** Animate view rotation by a relative angle; defaults to a clockwise quarter turn. */
+  rotateBy(degrees = 90, point?: { x: number; y: number }, immediate = false) {
+    this.trigger('rotate-by', { degrees, point, immediate });
   }
 
   constraintBounds(immediate?: boolean) {

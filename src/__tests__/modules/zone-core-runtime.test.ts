@@ -87,38 +87,46 @@ describe('zone core and runtime zone navigation', () => {
     expect(tm.lastZoomTo).toBeNull();
   });
 
-  test.each(['single', 'scaled-object', 'composite', 'thumbnail-only'])(
+  test.each(['single', 'scaled-object', 'composite', 'thumbnail-only', 'nested-composite', 'nested-thumbnail-only'])(
     '%s content sets the native zoom limit for both zoom and pinch constraints',
     (kind) => {
       const world = new World(1000, 1000);
       world.appendChild(createWorldObject({ id: 'background', x: 0, y: 0, width: 1000, height: 1000 }));
       const object = new WorldObject();
       const scaled = kind !== 'single';
+      const nested = kind.startsWith('nested-');
       object.applyProps({
         id: 'image',
         width: scaled ? 1000 : 100,
         height: scaled ? 1000 : 100,
-        scale: scaled ? 0.1 : 1,
+        scale: nested ? 0.2 : scaled ? 0.1 : 1,
       });
       const image = SingleImage.fromImage(
         'test.jpg',
         { width: scaled ? 1000 : 100, height: scaled ? 1000 : 100 },
         { width: 1000, height: 1000 }
       );
-      if (kind === 'composite' || kind === 'thumbnail-only') {
+      if (kind.includes('composite') || kind.includes('thumbnail-only')) {
         const composite = new CompositeResource({
           id: 'pyramid',
           width: 1000,
           height: 1000,
           images: [SingleImage.fromImage('thumbnail.jpg', { width: 1000, height: 1000 }, { width: 100, height: 100 })],
         });
-        if (kind === 'composite')
+        if (kind.includes('composite'))
           composite.addImages([TiledImage.fromTile('tiles', { width: 1000, height: 1000 }, { width: 256 }, 1)]);
         object.appendChild(composite);
       } else {
         object.appendChild(image);
       }
-      world.appendChild(object);
+      let root = object;
+      if (nested) {
+        const scaledParent = WorldObject.createWithProps({ id: 'scaled-parent', width: 200, height: 200, scale: 0.5 });
+        scaledParent.appendChild(object as any);
+        root = WorldObject.createWithProps({ id: 'canvas', width: 1000, height: 1000 });
+        root.appendChild(scaledParent as any);
+      }
+      world.appendChild(root);
       const runtime = new Runtime(new ResponsiveRenderer(), world, { x: 0, y: 0, width: 1000, height: 800, scale: 1 });
       runtime.stop();
       const zoomed = runtime.getZoomedPosition(0.001, { origin: { x: 50, y: 50 } });
@@ -136,7 +144,7 @@ describe('zone core and runtime zone navigation', () => {
       // Offscreen or removed content must not leave behind a larger zoom limit.
       const [, elsewhere] = runtime.constrainTarget(DnaFactory.singleBox(20, 16, 600, 600));
       expect(runtime.renderer.getScale(elsewhere[3] - elsewhere[1], elsewhere[4] - elsewhere[2])).toBeCloseTo(2);
-      world.removeChild(object);
+      world.removeChild(root);
       const [, removed] = runtime.constrainTarget(oversizedZoom);
       expect(runtime.renderer.getScale(removed[3] - removed[1], removed[4] - removed[2])).toBeCloseTo(2);
     }

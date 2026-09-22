@@ -1,6 +1,7 @@
 import type { Strand } from '@atlas-viewer/dna';
 import { Box } from '../../objects/box';
 import { Text } from '../../objects/text';
+import type { HookOptions } from '../../renderer/runtime';
 import type { Renderer } from '../../renderer/renderer';
 import type { SpacialContent } from '../../spacial-content/spacial-content';
 import type { PositionPair } from '../../types';
@@ -72,15 +73,32 @@ export class OverlayRenderer implements Renderer {
     this.stylesheet.updateSheet();
   }
 
+  /**
+   * Whether this paint should get an HTML overlay host at all -- must stay
+   * in sync with what paint() below treats as "has a host" (it reads
+   * paint.__host.tx unconditionally once this is true), since createHtmlHost
+   * is the only thing that ever sets __host. They used to be two separately
+   * written conditions that quietly drifted apart: this one didn't check
+   * options.text, so a plain <paragraph>/Text with none of
+   * className/html/href never got __host created, and paint() then threw
+   * reading .tx off it. Sharing one method removes that failure mode.
+   *
+   * Must include paint.props.href in the Box branch: createHtmlHost below
+   * still special-cases href to build an <a> host even with no
+   * className/html/options.box, and that host is what HTMLPortal.tsx's
+   * box.__onCreate hook needs to ever fire for an href-only box. Dropping
+   * it here once made that condition inconsistent with createHtmlHost's own
+   * -- exactly the drift this method exists to prevent.
+   */
+  private shouldHostPaint(paint: SpacialContent): paint is Text | Box {
+    return (
+      (this.options.text && paint instanceof Text) ||
+      (paint instanceof Box && !!(this.options.box || paint.props.className || paint.props.html || paint.props.href))
+    );
+  }
+
   createHtmlHost(paint: Text | Box) {
-    if (
-      this.htmlContainer &&
-      ((paint instanceof Text && this.options.text) ||
-        this.options.box ||
-        paint.props.className ||
-        paint.props.html ||
-        paint.props.href)
-    ) {
+    if (this.htmlContainer && this.shouldHostPaint(paint)) {
       const div = document.createElement(paint.props.href ? 'a' : 'div');
       if (paint.props.href) {
         div.style.display = 'block';
@@ -239,15 +257,20 @@ export class OverlayRenderer implements Renderer {
     // No-op
   }
 
-  beforeFrame(world: World, delta: number, target: Strand): void {
+  private viewTransform = '';
+
+  beforeFrame(world: World, delta: number, target: Strand, options?: HookOptions): void {
+    const center = options?.viewCenter;
+    this.viewTransform = options?.viewRotation && center
+      ? `translate(${center.x}px, ${center.y}px) rotate(${options.viewRotation}deg) translate(${-center.x}px, ${-center.y}px) ` : '';
     this.stylesheet.clearClasses();
     this.paintTx++;
     this.zIndex = 0;
     this.visible = [];
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
   }
 
   getScale(width: number, height: number): number {
@@ -267,12 +290,14 @@ export class OverlayRenderer implements Renderer {
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void {
     this.zIndex++;
 
-    if (
-      ((this.options.text && paint instanceof Text) ||
-        (paint instanceof Box && (this.options.box || paint.props.className || paint.props.html))) &&
-      paint.__host &&
-      paint.__host.tx !== this.paintTx
-    ) {
+    // shouldHostPaint's own comment covers why this can no longer diverge
+    // from createHtmlHost's condition -- paint.__host is only ever set
+    // there, so this branch is never taken without a host having already
+    // been created. The paint.__host truthiness check is kept anyway
+    // (main's own independent defense against the same class of crash) as
+    // a cheap extra guard against any other host-creation path this
+    // condition doesn't know about.
+    if (this.shouldHostPaint(paint) && paint.__host && paint.__host.tx !== this.paintTx) {
       this.visible.push(paint);
       paint.__host.tx = this.paintTx;
 
@@ -284,12 +309,12 @@ export class OverlayRenderer implements Renderer {
         element.style.zIndex = `${this.zIndex}`;
 
         if (paint.props.relativeStyle) {
-          element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+          element.style.transform = `${this.viewTransform}translate(${Math.round(x)}px, ${Math.round(y)}px)`;
           // element.style.transformOrigin = '0px 0px';
         } else {
           // How to rotate overlays.. but don't do it.
-          // element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(${width/2}px, ${height/2}px) rotate(${paint.__owner.value?.rotation || 0}deg) translate(-${width/2}px, -${height/2}px) scale(${scale})`;
-          element.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
+          // element.style.transform = `${this.viewTransform}translate(${Math.round(x)}px, ${Math.round(y)}px) translate(${width/2}px, ${height/2}px) rotate(${paint.__owner.value?.rotation || 0}deg) translate(-${width/2}px, -${height/2}px) scale(${scale})`;
+          element.style.transform = `${this.viewTransform}translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale})`;
           // element.style.transformOrigin = '0px 0px';
         }
 

@@ -46,8 +46,8 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    return this.renderers[0].getPointsAt(world, target, aggregate, scaleFactor);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
+    return this.renderers[0].getPointsAt(world, target, aggregate, scaleFactor, selectionTarget);
   }
 
   getScale(width: number, height: number): number {
