@@ -4,14 +4,10 @@ import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import { useMeasure } from '../../utility/use-measure';
 import type { Runtime, RuntimeOptions, ViewerFilters, ViewerMode } from '../../renderer/runtime';
 import {
-  getNavigatorVisibleZoneIdSet,
-  getNavigatorWorldRegion,
   getNavigatorWorldTransform,
-  type NavigatorDebugEvent,
-  type NavigatorRendererStyle,
-  type NavigatorZoneWindowOptions,
   navigatorToWorldPoint,
-} from '../navigator-renderer/navigator-renderer';
+  rotatedNavigatorToWorldPoint,
+} from '../navigator-renderer/navigator-geometry';
 import type { PdfScrollZoneControllerConfig } from '../pdf-scroll-zone-controller/pdf-scroll-zone-controller';
 import type { PopmotionControllerConfig } from '../popmotion-controller/popmotion-controller';
 import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
@@ -51,8 +47,6 @@ function getReadyRenderer(renderer: unknown): AtlasReadyRenderer {
   }
   return 'unknown';
 }
-
-const NAVIGATOR_HOME_TOLERANCE = 1;
 
 export type AtlasProps = {
   debug?: boolean;
@@ -94,13 +88,23 @@ export type AtlasProps = {
   enableNavigator?: boolean;
   navigatorOptions?: {
     width?: number;
+    /** Called with the final CSS width after a user resize. Pass it back as width to restore it. */
+    onResize?: (width: number) => void;
+    /** Additional class on the navigator container for CSS customization. */
+    className?: string;
+    showAnnotations?: boolean;
+    resizable?: boolean;
     idleFade?: boolean;
+    /** Hide the home navigator after idle at the most zoomed-out scale. Defaults to true. */
+    hideAtHomeWhenIdle?: boolean;
+    /** Hide at home zoom even while the viewer is active. Defaults to false. */
+    hideUnlessZoomed?: boolean;
     idleMs?: number;
     fadeDurationMs?: number;
     opacityActive?: number;
     opacityIdle?: number;
-    style?: Partial<NavigatorRendererStyle>;
-    pdfScrollZoneZoneWindow?: NavigatorZoneWindowOptions;
+    /** Fallback viewport outline colour. Prefer --atlas-navigator-viewport-stroke for CSS styling. */
+    style?: { viewportStroke?: string };
   };
   htmlChildren?: ReactNode;
   children: ReactNode;
@@ -188,87 +192,33 @@ export const Atlas: React.FC<
   const [isNavigatorIdle, setIsNavigatorIdle] = useState(false);
   const [isNavigatorDragging, setIsNavigatorDragging] = useState(false);
   const [isNavigatorHiddenAtHome, setIsNavigatorHiddenAtHome] = useState(false);
+  const [navigatorUserWidth, setNavigatorUserWidth] = useState<number | undefined>();
   const navigatorDraggingRef = useRef(false);
 
-  const navigatorStyleBackground = navigatorOptions?.style?.background;
-  const navigatorStyleObjectFill = navigatorOptions?.style?.objectFill;
-  const navigatorStyleObjectStroke = navigatorOptions?.style?.objectStroke;
-  const navigatorStyleViewportFill = navigatorOptions?.style?.viewportFill;
+  useIsomorphicLayoutEffect(() => {
+    setNavigatorUserWidth(undefined);
+  }, [navigatorOptions?.width]);
+
   const navigatorStyleViewportStroke = navigatorOptions?.style?.viewportStroke;
-  const navigatorStyleViewportLineWidth = navigatorOptions?.style?.viewportLineWidth;
-  const navigatorZoneWindowTotal = navigatorOptions?.pdfScrollZoneZoneWindow?.total;
-  const navigatorZoneWindowBefore = navigatorOptions?.pdfScrollZoneZoneWindow?.before;
-  const navigatorZoneWindowAfter = navigatorOptions?.pdfScrollZoneZoneWindow?.after;
-
-  const resolvedNavigatorStyle = useMemo(() => {
-    if (
-      typeof navigatorStyleBackground === 'undefined' &&
-      typeof navigatorStyleObjectFill === 'undefined' &&
-      typeof navigatorStyleObjectStroke === 'undefined' &&
-      typeof navigatorStyleViewportFill === 'undefined' &&
-      typeof navigatorStyleViewportStroke === 'undefined' &&
-      typeof navigatorStyleViewportLineWidth === 'undefined'
-    ) {
-      return undefined;
-    }
-
-    return {
-      background: navigatorStyleBackground,
-      objectFill: navigatorStyleObjectFill,
-      objectStroke: navigatorStyleObjectStroke,
-      viewportFill: navigatorStyleViewportFill,
-      viewportStroke: navigatorStyleViewportStroke,
-      viewportLineWidth: navigatorStyleViewportLineWidth,
-    };
-  }, [
-    navigatorStyleBackground,
-    navigatorStyleObjectFill,
-    navigatorStyleObjectStroke,
-    navigatorStyleViewportFill,
-    navigatorStyleViewportStroke,
-    navigatorStyleViewportLineWidth,
-  ]);
-
-  const resolvedNavigatorZoneWindow = useMemo(() => {
-    if (interactionMode !== 'pdf-scroll-zone') {
-      return undefined;
-    }
-    return {
-      total: navigatorZoneWindowTotal ?? 9,
-      before: navigatorZoneWindowBefore,
-      after: navigatorZoneWindowAfter,
-    };
-  }, [interactionMode, navigatorZoneWindowAfter, navigatorZoneWindowBefore, navigatorZoneWindowTotal]);
-
-  const handleNavigatorDebugEvent = useCallback(
-    (event: NavigatorDebugEvent) => {
-      if (debug) {
-        console.debug('[Atlas navigator]', event);
-      }
-    },
-    [debug]
-  );
 
   const resolvedNavigatorOptions = useMemo(
     () => ({
       width: navigatorOptions?.width ?? 120,
+      showAnnotations: navigatorOptions?.showAnnotations ?? false,
+      resizable: navigatorOptions?.resizable ?? true,
       idleFade: navigatorOptions?.idleFade ?? true,
+      hideAtHomeWhenIdle: navigatorOptions?.hideAtHomeWhenIdle ?? true,
+      hideUnlessZoomed: navigatorOptions?.hideUnlessZoomed ?? false,
       idleMs: navigatorOptions?.idleMs ?? 800,
-      fadeDurationMs: navigatorOptions?.fadeDurationMs ?? 250,
-      opacityActive: navigatorOptions?.opacityActive ?? 0.94,
-      opacityIdle: navigatorOptions?.opacityIdle ?? 0,
-      style: resolvedNavigatorStyle,
-      zoneWindow: resolvedNavigatorZoneWindow,
     }),
     [
-      navigatorOptions?.fadeDurationMs,
       navigatorOptions?.idleFade,
+      navigatorOptions?.hideAtHomeWhenIdle,
+      navigatorOptions?.hideUnlessZoomed,
       navigatorOptions?.idleMs,
-      navigatorOptions?.opacityActive,
-      navigatorOptions?.opacityIdle,
       navigatorOptions?.width,
-      resolvedNavigatorStyle,
-      resolvedNavigatorZoneWindow,
+      navigatorOptions?.showAnnotations,
+      navigatorOptions?.resizable,
     ]
   );
 
@@ -291,25 +241,14 @@ export const Atlas: React.FC<
     }
 
     if (presetName === 'default-preset') {
-      const injectedNavigatorRendererOptions: Record<string, unknown> = {};
-      if (resolvedNavigatorOptions.style) {
-        injectedNavigatorRendererOptions.style = resolvedNavigatorOptions.style;
-      }
-      if (resolvedNavigatorOptions.zoneWindow) {
-        injectedNavigatorRendererOptions.zoneWindow = resolvedNavigatorOptions.zoneWindow;
-      }
-      if (debug) {
-        injectedNavigatorRendererOptions.onDebugEvent = handleNavigatorDebugEvent;
-      }
-
-      if (Object.keys(injectedNavigatorRendererOptions).length > 0) {
+      if (navigatorStyleViewportStroke !== undefined) {
         const existingNavigatorRendererOptions = (presetOptions.navigatorRendererOptions || {}) as Record<
           string,
           unknown
         >;
         presetOptions.navigatorRendererOptions = {
           ...existingNavigatorRendererOptions,
-          ...injectedNavigatorRendererOptions,
+          viewportStroke: navigatorStyleViewportStroke,
         };
         hasExplicitPresetOptions = true;
       }
@@ -320,13 +259,7 @@ export const Atlas: React.FC<
     }
 
     return _renderPreset || 'default-preset';
-  }, [
-    _renderPreset,
-    debug,
-    handleNavigatorDebugEvent,
-    resolvedNavigatorOptions.style,
-    resolvedNavigatorOptions.zoneWindow,
-  ]);
+  }, [_renderPreset, debug, navigatorStyleViewportStroke]);
 
   // This is an HTML element that sits above the Canvas element that is passed to the controller.
   // Additional non-canvas drawn elements can be placed here and positioned. CSS is applied to this
@@ -686,7 +619,11 @@ export const Atlas: React.FC<
       return undefined;
     }
     const renderer = preset.renderer as {
-      renderers?: Array<{ invalidateWorldLayer?: () => void }>;
+      renderers?: Array<{
+        invalidateWorldLayer?: () => void;
+        setRegion?: (region: { x: number; y: number; width: number; height: number }) => void;
+        setShowAnnotations?: (showAnnotations: boolean) => void;
+      }>;
     };
     if (!Array.isArray(renderer.renderers)) {
       return undefined;
@@ -711,32 +648,21 @@ export const Atlas: React.FC<
   }, [preset]);
 
   const getNavigatorRegion = useCallback(
-    (runtime: Runtime) =>
-      getNavigatorWorldRegion(runtime.world, {
-        target: runtime.getViewport(),
-        zoneWindow: resolvedNavigatorOptions.zoneWindow,
-      }),
-    [resolvedNavigatorOptions.zoneWindow]
-  );
-
-  const shouldHideNavigatorAtHome = useCallback(
-    (runtime: Runtime) => runtime.isViewportAtHome({ cover: !!homeCover, tolerance: NAVIGATOR_HOME_TOLERANCE }),
-    [homeCover, homePaddingPx]
+    (runtime: Runtime) => runtime.getHomeTarget({ cover: !!homeCover }),
+    [homeCover]
   );
 
   const recalculateNavigatorDimensions = () => {
     if (preset && preset.navigator) {
       const region = getNavigatorRegion(preset.runtime);
-      const wHeight = region.height;
-      const wWidth = region.width;
-
       const ratio = getRendererDpi();
-      const safeWorldWidth = Math.max(1, wWidth);
-      const safeWorldHeight = Math.max(1, wHeight);
-      const configuredWidth = Math.max(1, resolvedNavigatorOptions.width);
+      const configuredWidth = Math.min(
+        Math.max(1, navigatorUserWidth ?? resolvedNavigatorOptions.width),
+        Math.max(1, restProps.width - 20)
+      );
       const maxNavigatorHeight = Math.max(1, restProps.height - 20);
       let canvasWidth = configuredWidth;
-      let canvasHeight = (configuredWidth / safeWorldWidth) * safeWorldHeight;
+      let canvasHeight = (configuredWidth * restProps.height) / Math.max(1, restProps.width);
 
       if (canvasHeight > maxNavigatorHeight) {
         const scale = maxNavigatorHeight / canvasHeight;
@@ -744,13 +670,19 @@ export const Atlas: React.FC<
         canvasWidth = Math.max(1, configuredWidth * scale);
       }
 
-      preset.navigator.width = canvasWidth * ratio;
-      preset.navigator.height = canvasHeight * ratio;
+      const backingWidth = canvasWidth * ratio;
+      const backingHeight = canvasHeight * ratio;
+      const resized = preset.navigator.width !== backingWidth || preset.navigator.height !== backingHeight;
+      if (resized) {
+        preset.navigator.width = backingWidth;
+        preset.navigator.height = backingHeight;
+      }
       preset.navigator.style.width = canvasWidth + 'px';
       preset.navigator.style.height = canvasHeight + 'px';
 
       const navigatorRenderer = getNavigatorRenderer();
-      if (navigatorRenderer && navigatorRenderer.invalidateWorldLayer) {
+      navigatorRenderer?.setRegion?.(region);
+      if (resized && navigatorRenderer && navigatorRenderer.invalidateWorldLayer) {
         navigatorRenderer.invalidateWorldLayer();
       }
     }
@@ -760,7 +692,14 @@ export const Atlas: React.FC<
     if (preset) {
       recalculateNavigatorDimensions();
       const rt = preset.runtime;
-      return rt.world.addLayoutSubscriber((type) => {
+      let lastRotation = rt.viewRotation;
+      const unsubscribeFrame = rt.registerHook('useBeforeFrame', () => {
+        if (rt.viewRotation !== lastRotation) {
+          lastRotation = rt.viewRotation;
+          recalculateNavigatorDimensions();
+        }
+      });
+      const unsubscribeLayout = rt.world.addLayoutSubscriber((type) => {
         if (type === 'repaint') {
           const navigatorRenderer = getNavigatorRenderer();
           if (navigatorRenderer && navigatorRenderer.invalidateWorldLayer) {
@@ -768,8 +707,8 @@ export const Atlas: React.FC<
           }
         }
         if (type === 'recalculate-world-size' || type === 'zone-changed') {
-          recalculateNavigatorDimensions();
           recalculateHomeCover();
+          recalculateNavigatorDimensions();
           if (
             type === 'recalculate-world-size' &&
             (viewport.current.width !== restProps.width || viewport.current.height !== restProps.height)
@@ -778,22 +717,18 @@ export const Atlas: React.FC<
           }
         }
       });
+      return () => {
+        unsubscribeFrame();
+        unsubscribeLayout();
+      };
     }
-    return () => {
-      // no-op
-    };
-  }, [
-    preset,
-    restProps.width,
-    restProps.height,
-    resolvedNavigatorOptions.width,
-    getNavigatorRegion,
-    getRendererDpi,
-    bounds.width,
-    bounds.height,
-  ]);
+  }, [preset, restProps.width, restProps.height, resolvedNavigatorOptions.width, navigatorUserWidth, getNavigatorRegion, getRendererDpi, bounds.width, bounds.height]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
+    getNavigatorRenderer()?.setShowAnnotations?.(resolvedNavigatorOptions.showAnnotations);
+  }, [preset, resolvedNavigatorOptions.showAnnotations]);
+
+  useIsomorphicLayoutEffect(() => {
     if (!preset || !enableNavigator) {
       setIsNavigatorHiddenAtHome(false);
       return;
@@ -801,15 +736,18 @@ export const Atlas: React.FC<
 
     const runtime = preset.runtime;
     const syncNavigatorVisibility = () => {
-      const hideAtHome = shouldHideNavigatorAtHome(runtime);
+      const hideAtHome = runtime.isViewportAtHomeZoomLevel({ cover: !!homeCover });
       setIsNavigatorHiddenAtHome((prev) => (prev === hideAtHome ? prev : hideAtHome));
     };
 
     syncNavigatorVisibility();
-    return runtime.world.addLayoutSubscriber(() => {
-      syncNavigatorVisibility();
-    });
-  }, [preset, enableNavigator, shouldHideNavigatorAtHome]);
+    const unsubscribeLayout = runtime.world.addLayoutSubscriber(syncNavigatorVisibility);
+    const unsubscribeFrame = runtime.registerHook('useAfterFrame', syncNavigatorVisibility);
+    return () => {
+      unsubscribeLayout();
+      unsubscribeFrame();
+    };
+  }, [preset, enableNavigator, homeCover]);
 
   const Canvas = useCallback(
     function Canvas(props: { children: React.ReactElement }): JSX.Element {
@@ -1024,7 +962,9 @@ export const Atlas: React.FC<
         region.x,
         region.y
       );
-      return navigatorToWorldPoint(transform, localX, localY);
+      return runtime.viewRotation
+        ? rotatedNavigatorToWorldPoint(transform, localX, localY, runtime.viewRotation)
+        : navigatorToWorldPoint(transform, localX, localY);
     };
 
     const moveViewport = (
@@ -1055,14 +995,7 @@ export const Atlas: React.FC<
       }
     };
     const getZoneAtWorldPoint = (worldX: number, worldY: number) => {
-      const visibleZoneIds = getNavigatorVisibleZoneIdSet(runtime.world, {
-        target: runtime.getViewport(),
-        zoneWindow: resolvedNavigatorOptions.zoneWindow,
-      });
       for (const zone of runtime.world.zones) {
-        if (visibleZoneIds && !visibleZoneIds.has(zone.id)) {
-          continue;
-        }
         zone.recalculateBounds();
         if (zone.points[0] === 0) {
           continue;
@@ -1087,11 +1020,18 @@ export const Atlas: React.FC<
       markNavigatorActive();
       const worldPoint = getWorldPointFromEvent(event);
       const viewport = runtime.getViewport();
+      const centerX = viewport.x + viewport.width / 2;
+      const centerY = viewport.y + viewport.height / 2;
+      const angle = (runtime.viewRotation * Math.PI) / 180;
+      const dx = worldPoint.x - centerX;
+      const dy = worldPoint.y - centerY;
+      const hitX = centerX + dx * Math.cos(angle) - dy * Math.sin(angle);
+      const hitY = centerY + dx * Math.sin(angle) + dy * Math.cos(angle);
       const isInsideViewport =
-        worldPoint.x >= viewport.x &&
-        worldPoint.y >= viewport.y &&
-        worldPoint.x <= viewport.x + viewport.width &&
-        worldPoint.y <= viewport.y + viewport.height;
+        hitX >= viewport.x &&
+        hitY >= viewport.y &&
+        hitX <= viewport.x + viewport.width &&
+        hitY <= viewport.y + viewport.height;
 
       drag.active = true;
       drag.pointerId = event.pointerId;
@@ -1212,16 +1152,56 @@ export const Atlas: React.FC<
   const navigatorContainerStyle = useMemo(
     () =>
       ({
-        '--atlas-navigator-fade-duration': `${resolvedNavigatorOptions.fadeDurationMs}ms`,
-        '--atlas-navigator-opacity-active': `${resolvedNavigatorOptions.opacityActive}`,
-        '--atlas-navigator-opacity-idle': `${resolvedNavigatorOptions.opacityIdle}`,
+        ...(navigatorOptions?.fadeDurationMs !== undefined && {
+          '--atlas-navigator-fade-duration': `${navigatorOptions.fadeDurationMs}ms`,
+        }),
+        ...(navigatorOptions?.opacityActive !== undefined && {
+          '--atlas-navigator-opacity-active': `${navigatorOptions.opacityActive}`,
+        }),
+        ...(navigatorOptions?.opacityIdle !== undefined && {
+          '--atlas-navigator-opacity-idle': `${navigatorOptions.opacityIdle}`,
+        }),
       } as React.CSSProperties),
-    [
-      resolvedNavigatorOptions.fadeDurationMs,
-      resolvedNavigatorOptions.opacityActive,
-      resolvedNavigatorOptions.opacityIdle,
-    ]
+    [navigatorOptions?.fadeDurationMs, navigatorOptions?.opacityActive, navigatorOptions?.opacityIdle]
   );
+
+  const startNavigatorResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = preset?.navigator?.getBoundingClientRect().width || resolvedNavigatorOptions.width;
+    let nextWidth = startWidth;
+    const onMove = (move: PointerEvent) => {
+      const maxWidth = Math.max(80, Math.min(restProps.width - 20, 480));
+      nextWidth = Math.min(maxWidth, Math.max(80, startWidth + startX - move.clientX));
+      setNavigatorUserWidth(nextWidth);
+    };
+    const onEnd = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      if (nextWidth !== startWidth) navigatorOptions?.onResize?.(nextWidth);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  };
+  const resizeNavigatorWithKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const current = navigatorUserWidth ?? resolvedNavigatorOptions.width;
+    const direction = event.key === 'ArrowLeft' ? 10 : -10;
+    const nextWidth = Math.min(Math.max(80, restProps.width - 20), Math.max(80, current + direction));
+    if (nextWidth !== current) {
+      setNavigatorUserWidth(nextWidth);
+      navigatorOptions?.onResize?.(nextWidth);
+    }
+  };
+
+  const shouldHideNavigator =
+    isNavigatorHiddenAtHome &&
+    (resolvedNavigatorOptions.hideUnlessZoomed ||
+      (resolvedNavigatorOptions.idleFade && resolvedNavigatorOptions.hideAtHomeWhenIdle && isNavigatorIdle));
 
   return (
     <Container
@@ -1303,7 +1283,8 @@ export const Atlas: React.FC<
         <Container
           className={[
             'atlas-navigator',
-            isNavigatorHiddenAtHome ? 'atlas-navigator--hidden-at-home' : '',
+            navigatorOptions?.className,
+            shouldHideNavigator ? 'atlas-navigator--hidden-at-home' : '',
             resolvedNavigatorOptions.idleFade && isNavigatorIdle ? 'atlas-navigator--idle' : '',
             isNavigatorDragging ? 'atlas-navigator--dragging' : '',
           ]
@@ -1317,7 +1298,22 @@ export const Atlas: React.FC<
             /*@ts-expect-error*/
             part="atlas-navigator-canvas"
             ref={refs.navigator as any}
+            aria-label="Navigator preview"
           />
+          {resolvedNavigatorOptions.resizable ? (
+            <div
+              className="atlas-navigator-resize"
+              role="separator"
+              tabIndex={0}
+              aria-label="Resize navigator"
+              aria-orientation="vertical"
+              aria-valuemin={80}
+              aria-valuemax={Math.max(80, restProps.width - 20)}
+              aria-valuenow={Math.round(navigatorUserWidth ?? resolvedNavigatorOptions.width)}
+              onPointerDown={startNavigatorResize}
+              onKeyDown={resizeNavigatorWithKeyboard}
+            />
+          ) : null}
         </Container>
       ) : null}
       {/* compatibility: {devTools ? <DevTools */}
@@ -1344,10 +1340,12 @@ export const Atlas: React.FC<
         .atlas-overlay--interactive { pointer-events: none; }
         .atlas-static-image { position: absolute; user-select: none; transform-origin: 0px 0px; }
         .atlas-navigator { position: absolute; top: var(--atlas-navigator-top, 10px); right: var(--atlas-navigator-right, 10px); left: var(--atlas-navigator-left); bottom: var(--atlas-navigator-bottom); opacity: var(--atlas-navigator-opacity-active, .94); transition: opacity var(--atlas-navigator-fade-duration, 250ms) ease; z-index: var(--atlas-navigator-z-index, 30); }
-        .atlas-navigator--idle { opacity: var(--atlas-navigator-opacity-idle, .4); }
+        .atlas-navigator--idle { opacity: var(--atlas-navigator-opacity-idle, 0.55); }
         .atlas-navigator--hidden-at-home { opacity: 0; pointer-events: none; }
-         .atlas-navigator-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; border-radius: var(--atlas-navigator-radius, 6px); border: var(--atlas-navigator-border, 1px solid rgba(0, 0, 0, 0.7)); box-shadow: var(--atlas-navigator-shadow, 0 6px 16px rgba(2, 6, 23, 0.45)); box-sizing: border-box; }
+         .atlas-navigator-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; background: var(--atlas-navigator-background, ${background}); border-radius: var(--atlas-navigator-radius, 6px); border: var(--atlas-navigator-border, 1px solid rgba(0, 0, 0, 0.7)); box-shadow: var(--atlas-navigator-shadow, 0 6px 16px rgba(2, 6, 23, 0.45)); box-sizing: border-box; }
         .atlas-navigator--dragging .atlas-navigator-canvas { cursor: grabbing; }
+        .atlas-navigator-resize { position: absolute; bottom: 0; left: 0; width: 18px; height: 18px; cursor: nesw-resize; touch-action: none; }
+        .atlas-navigator-resize::after { content: ''; position: absolute; bottom: 4px; left: 4px; width: 8px; height: 8px; border-left: 2px solid var(--atlas-navigator-resize-color, white); border-bottom: 2px solid var(--atlas-navigator-resize-color, white); }
       `}</style>
       )}
       {htmlChildren}
