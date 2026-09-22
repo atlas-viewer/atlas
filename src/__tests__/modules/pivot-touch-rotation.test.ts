@@ -9,7 +9,7 @@ import { WorldObject } from '../../world-objects/world-object';
 import { popmotionController } from '../../modules/popmotion-controller/popmotion-controller';
 import { BrowserEventManager } from '../../modules/browser-event-manager/browser-event-manager';
 
-function setup(enableTouchRotation?: boolean, width = 200, height = 200, touchRotationSnap?: number) {
+function setup(enableTouchRotation?: boolean, width = 200, height = 200, touchRotationSnap?: number, touchRotationThreshold?: number) {
   const element = document.createElement('canvas');
   document.body.append(element);
   const bounds = { x: 30, y: 40, left: 30, top: 40, width, height };
@@ -50,6 +50,7 @@ function setup(enableTouchRotation?: boolean, width = 200, height = 200, touchRo
     parentElement: element,
     ...(enableTouchRotation === undefined ? {} : { enableTouchRotation }),
     ...(touchRotationSnap === undefined ? {} : { touchRotationSnap }),
+    ...(touchRotationThreshold === undefined ? {} : { touchRotationThreshold }),
   }).start(runtime);
   const events = new BrowserEventManager(element, runtime);
   function touch(type: string, points: Array<[number, number, number]>) {
@@ -60,8 +61,9 @@ function setup(enableTouchRotation?: boolean, width = 200, height = 200, touchRo
     element.dispatchEvent(event);
     return event;
   }
-  function frame() {
-    runtime.transitionManager.runTransition(runtime.target, 1000);
+  function frame(delta = 1000) {
+    runtime.transitionManager.runTransition(runtime.target, delta);
+    runtime.hook('useBeforeFrame', delta);
   }
   function project(object: WorldObject, x: number, y: number) {
     return runtime.worldToViewer(x, y, 0, 0);
@@ -109,8 +111,10 @@ test('two fingers anchor content through simultaneous pan, zoom and rotation, in
     expect(h.runtime.viewRotation).toBeCloseTo(90);
     expect(h.owner.rotation).toBe(0);
     expect(h.nested.rotation).toBe(0);
-    expect(h.project(h.owner, 140, 160)).toMatchObject({ x: 120, y: 70 });
-    expect(h.project(h.owner, 180, 160)).toMatchObject({ x: 120, y: 150 });
+    expect(h.project(h.owner, 140, 160).x).toBeCloseTo(120, 3);
+    expect(h.project(h.owner, 140, 160).y).toBeCloseTo(70, 3);
+    expect(h.project(h.owner, 180, 160).x).toBeCloseTo(120, 3);
+    expect(h.project(h.owner, 180, 160).y).toBeCloseTo(150, 3);
     h.touch('touchmove', [
       [1, 130, 80],
       [2, 130, 160],
@@ -138,6 +142,7 @@ test('rotation can be disabled explicitly and touch cancellation releases the pi
         [1, 60, 40],
         [2, 60, 80],
       ]);
+      h.frame();
       expect(h.runtime.viewRotation).toBeCloseTo(enabled ? 90 : 0);
       h.touch('touchcancel', []);
     } finally {
@@ -352,7 +357,7 @@ test.each([
       [1, 100 - dx, 90 - dy],
       [2, 100 + dx, 90 + dy],
     ]);
-    expect(h.runtime.viewRotation).toBeCloseTo(angle);
+    expect(h.runtime.viewRotation).toBeCloseTo(angle - Math.sign(angle) * 15);
     // No animation frame between the last move and release.
     h.touch('touchend', []);
     h.frame();
@@ -361,6 +366,81 @@ test.each([
     expect(pivot.x).toBeCloseTo(100, 3);
     expect(pivot.y).toBeCloseTo(90, 3);
     expect(h.owner.rotation).toBe(0);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('touch rotation waits for the threshold, catches up, then stays latched', () => {
+  const h = setup(true, 200, 200, 0, 5);
+  const move = (degrees: number, radius = 25) => {
+    const angle = degrees * Math.PI / 180;
+    const dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
+    h.touch('touchmove', [[1, 100 - dx, 90 - dy], [2, 100 + dx, 90 + dy]]);
+  };
+  try {
+    h.touch('touchstart', [[1, 40, 60], [2, 80, 60]]);
+    move(4);
+    h.frame();
+    expect(h.runtime.viewRotation).toBe(0);
+    expect(h.runtime.target[3] - h.runtime.target[1]).toBeCloseTo(160);
+    move(5.1);
+    expect(h.runtime.viewRotation).toBeCloseTo(0.1);
+    h.frame(50);
+    expect(h.runtime.viewRotation).toBeGreaterThan(0.1);
+    expect(h.runtime.viewRotation).toBeLessThan(5.1);
+    expect(h.project(h.owner, 160, 160).x).toBeCloseTo(100, 3);
+    expect(h.project(h.owner, 160, 160).y).toBeCloseTo(90, 3);
+    move(8);
+    expect(h.runtime.viewRotation).toBeLessThan(8);
+    h.frame(100);
+    expect(h.runtime.viewRotation).toBeCloseTo(8);
+    expect(h.project(h.owner, 160, 160).x).toBeCloseTo(100, 3);
+    expect(h.project(h.owner, 160, 160).y).toBeCloseTo(90, 3);
+    move(4);
+    expect(h.runtime.viewRotation).toBeCloseTo(4);
+    move(-2);
+    expect(h.runtime.viewRotation).toBeCloseTo(-2);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('the default touch rotation threshold is 15 degrees', () => {
+  const h = setup(true, 200, 200, 0);
+  const move = (degrees: number) => {
+    const angle = degrees * Math.PI / 180;
+    h.touch('touchmove', [
+      [1, 60 - 20 * Math.cos(angle), 60 - 20 * Math.sin(angle)],
+      [2, 60 + 20 * Math.cos(angle), 60 + 20 * Math.sin(angle)],
+    ]);
+  };
+  try {
+    h.touch('touchstart', [[1, 40, 60], [2, 80, 60]]);
+    move(14);
+    expect(h.runtime.viewRotation).toBe(0);
+    move(16);
+    expect(h.runtime.viewRotation).toBeCloseTo(1);
+    h.frame();
+    expect(h.runtime.viewRotation).toBeCloseTo(16);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('pinching below the threshold does not snap an existing view angle', () => {
+  const h = setup(true, 200, 200, 90, 10);
+  try {
+    h.runtime.viewRotation = 30;
+    h.touch('touchstart', [[1, 40, 60], [2, 80, 60]]);
+    const angle = 8 * Math.PI / 180;
+    h.touch('touchmove', [
+      [1, 100 - 25 * Math.cos(angle), 90 - 25 * Math.sin(angle)],
+      [2, 100 + 25 * Math.cos(angle), 90 + 25 * Math.sin(angle)],
+    ]);
+    h.touch('touchend', []);
+    h.frame();
+    expect(h.runtime.viewRotation).toBeCloseTo(30);
   } finally {
     h.cleanup();
   }
@@ -378,9 +458,12 @@ test('cancelling a gesture does not snap, and invalid snap intervals are rejecte
       [2, 80, 80],
     ]);
     h.touch('touchcancel', []);
-    expect(h.runtime.viewRotation).toBeCloseTo(45);
+    expect(h.runtime.viewRotation).toBeCloseTo(30);
+    h.frame();
+    expect(h.runtime.viewRotation).toBeCloseTo(30);
     for (const interval of [-1, NaN, Infinity, 361]) {
       expect(() => popmotionController({ touchRotationSnap: interval })).toThrow(RangeError);
+      expect(() => popmotionController({ touchRotationThreshold: interval })).toThrow(RangeError);
     }
   } finally {
     h.cleanup();
@@ -401,7 +484,7 @@ test('snap animates around the touch pivot and a new gesture interrupts at the c
       [2, 100 + dx, 90 + dy],
     ]);
     h.touch('touchend', []);
-    expect(h.runtime.viewRotation).toBeCloseTo(70);
+    expect(h.runtime.viewRotation).toBeCloseTo(55);
     expect(h.runtime.transitionManager.hasPending()).toBe(true);
     h.runtime.transitionManager.runTransition(h.runtime.target, 125);
     expect(h.runtime.viewRotation).toBeGreaterThan(70);
@@ -474,6 +557,7 @@ test('touch rotation can be enabled and disabled without restarting the controll
       [1, 40, 40],
       [2, 80, 80],
     ]);
+    h.frame();
     expect(h.runtime.viewRotation).toBeCloseTo(45);
     h.runtime.setTouchRotationEnabled(false);
     h.touch('touchmove', [
@@ -497,6 +581,7 @@ test('touch rotation can be enabled and disabled without restarting the controll
       [1, 40, 40],
       [2, 80, 80],
     ]);
+    h.frame();
     expect(h.runtime.viewRotation).toBeCloseTo(90);
   } finally {
     h.cleanup();
@@ -533,7 +618,7 @@ test('touch rotation defaults to enabled with animated 90-degree snapping', () =
     expect(h.runtime.touchRotationEnabled).toBe(true);
     h.touch('touchstart', [[1, 40, 60], [2, 80, 60]]);
     h.touch('touchmove', [[1, 40, 40], [2, 80, 80]]);
-    expect(h.runtime.viewRotation).toBeCloseTo(45);
+    expect(h.runtime.viewRotation).toBeCloseTo(30);
     h.touch('touchend', []);
     expect(h.runtime.transitionManager.getPendingTransition().rotation?.to).toBe(90);
     h.frame();

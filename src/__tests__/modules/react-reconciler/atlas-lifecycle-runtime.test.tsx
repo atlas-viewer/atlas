@@ -39,6 +39,7 @@ function createMockPreset(options: any) {
       },
     },
     manualHomePosition: false,
+    viewRotation: 0,
     goHome: vi.fn(),
     getViewport: vi.fn(() => ({
       x: 12,
@@ -47,6 +48,9 @@ function createMockPreset(options: any) {
       height: 200,
       scale: 1,
     })),
+    getHomeTarget: vi.fn(() => ({ x: 0, y: 0, width: 1024, height: 683 })),
+    isViewportAtHomeZoomLevel: vi.fn(() => true),
+    isViewportAtHome: vi.fn(() => false),
     setViewport: vi.fn(),
     updateNextFrame: vi.fn(),
     setIdle: vi.fn(),
@@ -127,6 +131,7 @@ describe('Atlas lifecycle runtime behavior', () => {
     }
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   test('callback churn and same-value navigator options do not recreate the preset', async () => {
@@ -156,7 +161,7 @@ describe('Atlas lifecycle runtime behavior', () => {
           navigatorOptions={{
             width: 140,
             style: {
-              background: 'rgba(1, 2, 3, 0.4)',
+              viewportStroke: 'rgba(1, 2, 3, 0.4)',
             },
           }}
         >
@@ -182,7 +187,7 @@ describe('Atlas lifecycle runtime behavior', () => {
           navigatorOptions={{
             width: 140,
             style: {
-              background: 'rgba(1, 2, 3, 0.4)',
+              viewportStroke: 'rgba(1, 2, 3, 0.4)',
             },
           }}
         >
@@ -205,6 +210,247 @@ describe('Atlas lifecycle runtime behavior', () => {
     expect(secondOnWebGLFallback).toHaveBeenCalledTimes(1);
   });
 
+  test('home navigator hides after idle at home zoom and keeps partial fade when zoomed in', async () => {
+    vi.useFakeTimers();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const createdPresets: MockPresetRecord[] = [];
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      createdPresets.push(record);
+      return record.preset as any;
+    }) as any;
+
+    await act(async () => {
+      root.render(
+        <Atlas
+          width={300}
+          height={200}
+          enableNavigator
+          unstable_noReconciler
+          navigatorOptions={{ className: 'my-nav', idleMs: 50 }}
+        >
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+    });
+    const navigator = container.querySelector('.atlas-navigator')!;
+    expect(navigator.classList.contains('my-nav')).toBe(true);
+    expect((navigator as HTMLElement).style.getPropertyValue('--atlas-navigator-opacity-idle')).toBe('');
+    expect(container.querySelector('.atlas-navigator-expand')).toBeNull();
+    expect(navigator.classList.contains('atlas-navigator--hidden-at-home')).toBe(false);
+
+    await act(async () => vi.advanceTimersByTime(51));
+    expect(navigator.classList.contains('atlas-navigator--idle')).toBe(true);
+    expect(navigator.classList.contains('atlas-navigator--hidden-at-home')).toBe(true);
+
+    createdPresets[0].runtime.isViewportAtHomeZoomLevel.mockReturnValue(false);
+    await act(async () => {
+      createdPresets[0].layoutSubscribers.forEach((subscriber) => subscriber('repaint'));
+    });
+    expect(navigator.classList.contains('atlas-navigator--idle')).toBe(true);
+    expect(navigator.classList.contains('atlas-navigator--hidden-at-home')).toBe(false);
+    expect(createdPresets[0].runtime.registerHook).toHaveBeenCalledWith('useAfterFrame', expect.any(Function));
+
+    createdPresets[0].runtime.isViewportAtHomeZoomLevel.mockReturnValue(true);
+    await act(async () => {
+      root.render(
+        <Atlas
+          width={300}
+          height={200}
+          enableNavigator
+          unstable_noReconciler
+          navigatorOptions={{ className: 'my-nav', idleMs: 50, hideAtHomeWhenIdle: false }}
+        >
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+      createdPresets[0].layoutSubscribers.forEach((subscriber) => subscriber('repaint'));
+    });
+    expect(navigator.classList.contains('atlas-navigator--idle')).toBe(true);
+    expect(navigator.classList.contains('atlas-navigator--hidden-at-home')).toBe(false);
+  });
+
+  test('hideUnlessZoomed hides immediately at home zoom and shows on zoom in', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const createdPresets: MockPresetRecord[] = [];
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      createdPresets.push(record);
+      return record.preset as any;
+    }) as any;
+
+    await act(async () => {
+      root.render(
+        <Atlas
+          width={300}
+          height={200}
+          enableNavigator
+          unstable_noReconciler
+          navigatorOptions={{ hideUnlessZoomed: true }}
+        >
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+    });
+
+    const navigator = container.querySelector('.atlas-navigator')!;
+    expect(navigator.classList.contains('atlas-navigator--hidden-at-home')).toBe(true);
+    expect(navigator.classList.contains('atlas-navigator--idle')).toBe(false);
+
+    createdPresets[0].runtime.isViewportAtHomeZoomLevel.mockReturnValue(false);
+    await act(async () => {
+      createdPresets[0].layoutSubscribers.forEach((subscriber) => subscriber('repaint'));
+    });
+    expect(navigator.classList.contains('atlas-navigator--hidden-at-home')).toBe(false);
+  });
+
+  test('navigator reports a user resize and accepts a restored width', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const createdPresets: MockPresetRecord[] = [];
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      createdPresets.push(record);
+      return record.preset as any;
+    }) as any;
+    const onResize = vi.fn();
+
+    const render = async (width: number) => {
+      await act(async () => {
+        root.render(
+          <Atlas width={300} height={200} enableNavigator unstable_noReconciler navigatorOptions={{ width, onResize }}>
+            <React.Fragment />
+          </Atlas>
+        );
+        await flush();
+      });
+    };
+
+    await render(120);
+    const grip = container.querySelector('.atlas-navigator-resize')!;
+    const canvas = container.querySelector('.atlas-navigator-canvas') as HTMLCanvasElement;
+    expect(canvas.style.width).toBe('120px');
+
+    await act(async () => {
+      grip.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, bubbles: true }));
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 80 }));
+      window.dispatchEvent(new PointerEvent('pointerup'));
+    });
+    expect(onResize).toHaveBeenCalledExactlyOnceWith(140);
+    expect(canvas.style.width).toBe('140px');
+
+    await act(async () => {
+      grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    expect(onResize).toHaveBeenLastCalledWith(150);
+    expect(canvas.style.width).toBe('150px');
+
+    await render(160);
+    expect(createdPresets).toHaveLength(1);
+    expect(canvas.style.width).toBe('160px');
+  });
+
+  test('rotation refreshes the home navigator region', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const beforeFrameHooks = new Set<() => void>();
+    const setRegion = vi.fn();
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      (record.preset.renderer.renderers as any[]).push({ setRegion, invalidateWorldLayer: vi.fn() });
+      (record.preset.canvas as HTMLCanvasElement).getContext = vi.fn(() => ({
+        setTransform: vi.fn(),
+        scale: vi.fn(),
+      })) as any;
+      record.runtime.getHomeTarget.mockImplementation(() => ({
+        x: 0,
+        y: 0,
+        width: record.runtime.viewRotation ? 683 : 1024,
+        height: record.runtime.viewRotation ? 1024 : 683,
+      }));
+      record.runtime.registerHook.mockImplementation((name: string, callback: () => void) => {
+        if (name === 'useBeforeFrame') beforeFrameHooks.add(callback);
+        return () => beforeFrameHooks.delete(callback);
+      });
+      createdPreset = record;
+      return record.preset as any;
+    }) as any;
+    let createdPreset: MockPresetRecord;
+
+    await act(async () => {
+      root.render(
+        <Atlas width={300} height={200} enableNavigator unstable_noReconciler>
+          <React.Fragment />
+        </Atlas>
+      );
+      await flush();
+    });
+    expect(setRegion).toHaveBeenCalledWith({ x: 0, y: 0, width: 1024, height: 683 });
+
+    const canvas = container.querySelector('.atlas-navigator-canvas') as HTMLCanvasElement;
+    let backingWidth = canvas.width;
+    let backingWrites = 0;
+    Object.defineProperty(canvas, 'width', {
+      configurable: true,
+      get: () => backingWidth,
+      set: (width: number) => {
+        backingWidth = width;
+        backingWrites++;
+      },
+    });
+
+    createdPreset.runtime.viewRotation = 90;
+    await act(async () => {
+      beforeFrameHooks.forEach((hook) => hook());
+    });
+    expect(setRegion).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 683, height: 1024 });
+    expect(backingWrites).toBe(0);
+  });
+
+  test('annotation visibility updates the navigator without recreating the preset', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const setShowAnnotations = vi.fn();
+    const createdPresets: MockPresetRecord[] = [];
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      const record = createMockPreset(options);
+      (record.preset.renderer.renderers as any[]).push({ setShowAnnotations, invalidateWorldLayer: vi.fn() });
+      createdPresets.push(record);
+      return record.preset as any;
+    }) as any;
+
+    const render = async (showAnnotations: boolean) => {
+      await act(async () => {
+        root.render(
+          <Atlas width={300} height={200} enableNavigator unstable_noReconciler navigatorOptions={{ showAnnotations }}>
+            <React.Fragment />
+          </Atlas>
+        );
+        await flush();
+      });
+    };
+
+    await render(false);
+    await render(true);
+    expect(createdPresets).toHaveLength(1);
+    expect(setShowAnnotations).toHaveBeenLastCalledWith(true);
+  });
+
   test('visibility and explicit idle combine without remounting, and disconnect on unmount', async () => {
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -216,24 +462,35 @@ describe('Atlas lifecycle runtime behavior', () => {
       createdPresets.push(record);
       return record.preset as any;
     }) as any;
-    const observers: { callback: IntersectionObserverCallback; observe: ReturnType<typeof vi.fn>;
-      disconnect: ReturnType<typeof vi.fn> }[] = [];
-    vi.stubGlobal('IntersectionObserver', class {
-      observe = vi.fn();
-      disconnect = vi.fn();
-      constructor(public callback: IntersectionObserverCallback) { observers.push(this); }
-    });
+    const observers: {
+      callback: IntersectionObserverCallback;
+      observe: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+    }[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe = vi.fn();
+        disconnect = vi.fn();
+        constructor(public callback: IntersectionObserverCallback) {
+          observers.push(this);
+        }
+      }
+    );
     const render = async (idle: boolean, loadWhenVisible = true) => {
       await act(async () => {
-        root.render(<Atlas width={300} height={200} unstable_noReconciler idle={idle} loadWhenVisible={loadWhenVisible}>
-          <React.Fragment />
-        </Atlas>);
+        root.render(
+          <Atlas width={300} height={200} unstable_noReconciler idle={idle} loadWhenVisible={loadWhenVisible}>
+            <React.Fragment />
+          </Atlas>
+        );
         await flush();
       });
     };
-    const reportVisible = (visible: boolean) => act(() => {
-      observers[0].callback([{ isIntersecting: visible } as IntersectionObserverEntry], {} as IntersectionObserver);
-    });
+    const reportVisible = (visible: boolean) =>
+      act(() => {
+        observers[0].callback([{ isIntersecting: visible } as IntersectionObserverEntry], {} as IntersectionObserver);
+      });
 
     await render(false);
     const runtime = createdPresets[0].runtime;
@@ -258,7 +515,10 @@ describe('Atlas lifecycle runtime behavior', () => {
     await render(false);
     expect(observers).toHaveLength(2);
     expect(createdPresets).toHaveLength(1);
-    await act(async () => { root.render(null); await flush(); });
+    await act(async () => {
+      root.render(null);
+      await flush();
+    });
     expect(observers[1].disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -274,12 +534,20 @@ describe('Atlas lifecycle runtime behavior', () => {
     }) as any;
     vi.stubGlobal('IntersectionObserver', undefined);
     await act(async () => {
-      root.render(<Atlas width={300} height={200} unstable_noReconciler loadWhenVisible><React.Fragment /></Atlas>);
+      root.render(
+        <Atlas width={300} height={200} unstable_noReconciler loadWhenVisible>
+          <React.Fragment />
+        </Atlas>
+      );
       await flush();
     });
     expect(record.runtime.setIdle).toHaveBeenLastCalledWith(false);
     await act(async () => {
-      root.render(<Atlas width={300} height={200} unstable_noReconciler loadWhenVisible idle><React.Fragment /></Atlas>);
+      root.render(
+        <Atlas width={300} height={200} unstable_noReconciler loadWhenVisible idle>
+          <React.Fragment />
+        </Atlas>
+      );
       await flush();
     });
     expect(record.runtime.setIdle).toHaveBeenLastCalledWith(true);
@@ -361,7 +629,10 @@ describe('Atlas lifecycle runtime behavior', () => {
 
     const element = container.querySelector('.atlas')!;
     const measure = vi.spyOn(element, 'getBoundingClientRect');
-    for (const [width, height] of [[300, 200], [480, 320]]) {
+    for (const [width, height] of [
+      [300, 200],
+      [480, 320],
+    ]) {
       measure.mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height } as DOMRect);
       await act(async () => {
         window.dispatchEvent(new Event('resize'));

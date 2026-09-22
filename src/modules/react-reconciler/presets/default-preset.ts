@@ -3,7 +3,7 @@ import { World } from '../../../world';
 import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
 import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
 import { CompositeRenderer } from '../../composite-renderer/composite-renderer';
-import { NavigatorRenderer, type NavigatorRendererOptions } from '../../navigator-renderer/navigator-renderer';
+import { HomeNavigatorRenderer, type HomeNavigatorOptions } from '../../navigator-renderer/home-navigator-renderer';
 import { OverlayRenderer } from '../../overlay-renderer/overlay-renderer';
 import { pdfScrollZoneController } from '../../pdf-scroll-zone-controller/pdf-scroll-zone-controller';
 import { popmotionController } from '../../popmotion-controller/popmotion-controller';
@@ -23,7 +23,8 @@ export type DefaultPresetOptions = {
   debug?: boolean;
   canvasBox?: boolean;
   polygon?: boolean;
-  navigatorRendererOptions?: NavigatorRendererOptions;
+  navigatorRendererOptions?: Pick<HomeNavigatorOptions, 'viewportStroke' | 'onRequestRender'>;
+  navigatorShowAnnotations?: boolean;
 };
 
 export function defaultPreset({
@@ -48,6 +49,7 @@ export function defaultPreset({
   webglFallbackOnImageLoadError,
   webglReadiness,
   navigatorRendererOptions,
+  navigatorShowAnnotations = false,
 }: PresetArgs & DefaultPresetOptions): Preset {
   if (!canvasElement) {
     throw new Error('Invalid container');
@@ -124,16 +126,13 @@ export function defaultPreset({
   const runtimeRef: { current?: Runtime } = {};
   const externalNavigatorRenderRequest = navigatorRendererOptions?.onRequestRender;
   const navigatorRenderer = navigatorElement
-    ? new NavigatorRenderer(navigatorElement, {
-        ...(navigatorRendererOptions || {}),
-        sharedCanvasRenderer: baseRenderer instanceof CanvasRenderer ? (baseRenderer as any) : undefined,
+    ? new HomeNavigatorRenderer(navigatorElement, {
+        showAnnotations: navigatorShowAnnotations,
+        viewportStroke: navigatorRendererOptions?.viewportStroke,
+        sharedCanvasRenderer: baseRenderer instanceof CanvasRenderer ? baseRenderer : undefined,
         onRequestRender: () => {
-          if (externalNavigatorRenderRequest) {
-            externalNavigatorRenderRequest();
-          }
-          if (runtimeRef.current) {
-            runtimeRef.current.updateNextFrame();
-          }
+          externalNavigatorRenderRequest?.();
+          runtimeRef.current?.updateNextFrame();
         },
       })
     : undefined;

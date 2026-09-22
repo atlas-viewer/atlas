@@ -9,6 +9,7 @@ describe('Atlas DPI wiring', () => {
     expect(source).toContain('const dpi = primaryRenderer?.dpi;');
     expect(source).toContain('const ratio = getRendererDpi();');
     expect(source).toContain('preset.canvas.width = canvasWidth * ratio;');
-    expect(source).toContain('preset.navigator.width = canvasWidth * ratio;');
+    expect(source).toContain('const backingWidth = canvasWidth * ratio;');
+    expect(source).toContain('preset.navigator.width = backingWidth;');
   });
 });

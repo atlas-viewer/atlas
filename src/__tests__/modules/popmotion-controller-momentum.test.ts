@@ -12,6 +12,7 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
   const worldListeners = new Map<string, Set<WorldListener>>();
   const layoutListeners = new Set<LayoutListener>();
   const hookListeners = {
+    useBeforeFrame: new Set<(delta: number) => void>(),
     useFrame: new Set<(delta: number) => void>(),
   };
 
@@ -65,7 +66,7 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
     getRendererScreenPosition: () => ({ x: 0, y: 0, width: 100, height: 100 }),
     viewerToWorld: (x: number, y: number) => ({ x, y }),
     getScaleFactor: () => 1,
-    registerHook: (name: 'useFrame', listener: (delta: number) => void) => {
+    registerHook: (name: keyof typeof hookListeners, listener: (delta: number) => void) => {
       hookListeners[name].add(listener);
       return () => {
         hookListeners[name].delete(listener);
@@ -122,6 +123,9 @@ function createRuntimeHarness(config: PopmotionControllerConfig = {}) {
       }
     },
     runFrame(delta: number) {
+      for (const listener of hookListeners.useBeforeFrame) {
+        listener(delta);
+      }
       for (const listener of hookListeners.useFrame) {
         listener(delta);
       }

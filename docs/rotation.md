@@ -5,17 +5,24 @@ object rotations unchanged. Canvas, WebGL, HTML overlays, pointer coordinates,
 and tile selection use the same view rotation.
 
 ```tsx
-const controllerConfig = { enableTouchRotation: true, touchRotationSnap: 90 };
+const controllerConfig = { enableTouchRotation: true, touchRotationThreshold: 15, touchRotationSnap: 90 };
 
 <AtlasAuto controllerConfig={controllerConfig}>{/* scene */}</AtlasAuto>;
 ```
 
 `enableTouchRotation` defaults to `true`. With it enabled, two fingers pan,
 zoom, and rotate together around their midpoint. Lifting a finger or cancelling
-ends the gesture and applies zoom/pan constraints. `touchRotationSnap` snaps the
+ends the gesture and applies zoom/pan constraints. `touchRotationThreshold` keeps
+the view aligned until the fingers rotate by 15° (the default) from where the
+gesture began. Once crossed, the threshold angle eases into place over 150 ms,
+while further finger rotation responds immediately. Rotation stays active for the
+rest of that gesture. Set it to `0` to rotate immediately. A pinch
+that stays below the threshold does not snap an existing view angle on release.
+`touchRotationSnap` snaps the
 angle on release to the nearest interval in degrees: `90` (default) for right angles,
 `15` for finer steps, or `0` for free rotation. It accepts finite values
-from 0 to 360. Cancellation does not snap. Snapping animates over 250 ms through the transition manager, keeping the
+from 0 to 360. The threshold also accepts finite values from 0 to 360 degrees.
+Cancellation does not snap. Snapping animates over 250 ms through the transition manager, keeping the
 last touch midpoint anchored before settling bounds constraints. A new gesture
 interrupts the animation at its current angle. `ignoreSingleFingerTouch`
 continues to control whether single-finger movement scrolls the surrounding page.
@@ -36,7 +43,8 @@ in view coordinates. This allows every image corner to remain reachable while
 zoomed in. Empty background around diagonal edges is expected. Home fitting
 includes the rotated content's full extent.
 
-Try **View rotation → Pivot And Touch** (`pnpm storybook`). It includes arbitrary
+Try **View rotation → Pivot And Touch** (`pnpm storybook`). It includes controls
+for the touch threshold and release snap interval, along with arbitrary
 pivot controls, a non-square image, clickable markers, a green HTML overlay,
 constraint/home buttons, and a scene re-render check.
 

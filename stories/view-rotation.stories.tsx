@@ -7,7 +7,12 @@ export default { title: 'View rotation' };
 const renderPreset = ['default-preset', { canvasBox: true }] as const;
 
 function RotationExample({ snap = 0 }: { snap?: number }) {
-  const controllerConfig = useMemo(() => ({ enableTouchRotation: true, touchRotationSnap: snap }), [snap]);
+  const [snapInterval, setSnapInterval] = useState(snap);
+  const [threshold, setThreshold] = useState(15);
+  const controllerConfig = useMemo(
+    () => ({ enableTouchRotation: true, touchRotationSnap: snapInterval, touchRotationThreshold: threshold }),
+    [snapInterval, threshold]
+  );
   const preset = useRef<Preset>();
   const [angle, setAngle] = useState(0);
   const [pivot, setPivot] = useState('center');
@@ -27,8 +32,16 @@ function RotationExample({ snap = 0 }: { snap?: number }) {
       <h2>View rotation: pivot, bounds and touch</h2>
       <p>
         Pan with one finger or the mouse. Use two fingers to pan, pinch and rotate together.{' '}
-        {snap ? `On release, rotation snaps to the nearest ${snap}°. ` : 'Rotation is free, with no snapping.'}
+        {snapInterval ? `On release, rotation snaps to the nearest ${snapInterval}°. ` : 'Rotation is free, with no snapping.'}
       </p>
+      <label>
+        Rotation start threshold: {threshold}°{' '}
+        <input type="range" min="0" max="45" value={threshold} onChange={(event) => setThreshold(event.target.valueAsNumber)} />
+      </label>{' '}
+      <label>
+        Release snap interval: {snapInterval}°{' '}
+        <input type="range" min="0" max="180" step="5" value={snapInterval} onChange={(event) => setSnapInterval(event.target.valueAsNumber)} />
+      </label>
       <label>
         Button pivot{' '}
         <select value={pivot} onChange={(event) => setPivot(event.target.value)}>

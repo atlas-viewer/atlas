@@ -115,6 +115,7 @@ export const SelectionDemo = () => {
 	]);
 	const [tileIndex, setTileIndex] = useState(0);
 	const [isWebGL, setIsWebGL] = useState(false);
+	const [navigatorShowAnnotations, setNavigatorShowAnnotations] = useState(false);
 	const [size, setSize] = useState<any>({
 		width: undefined,
 		height: undefined,
@@ -205,6 +206,14 @@ export const SelectionDemo = () => {
 					>
 						Change image
 					</button>
+					<label>
+						<input
+							type="checkbox"
+							checked={navigatorShowAnnotations}
+							onChange={(event) => setNavigatorShowAnnotations(event.target.checked)}
+						/>
+						Show annotations in navigator
+					</label>
 					|
 					<button
 						onClick={() =>
@@ -255,6 +264,7 @@ export const SelectionDemo = () => {
 									width={size.width}
 									height={size.height}
 									enableNavigator
+									navigatorOptions={{ showAnnotations: navigatorShowAnnotations }}
 								>
 									<world onClick={onDeselect}>
 										<ImageService
