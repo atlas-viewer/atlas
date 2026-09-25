@@ -197,6 +197,7 @@ export class TiledImage extends BaseObject implements SpacialContent {
 
     tiledImage.applyProps({
       service,
+      format,
     });
 
     return tiledImage;
