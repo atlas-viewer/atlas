@@ -619,14 +619,21 @@ export class Runtime {
     //      for example if it expand beyond the world, we can crop the focal point.
     this.updateFocalPosition(fromWidth - toWidth, fromHeight - toHeight);
 
-    const widthRatio = toWidth / fromWidth;
-    const heightRatio = toHeight / fromHeight;
+    // The focal region already includes padding and rotation; fit it to the new size without applying either again.
+    const focalWidth = this.focalPosition[3] - this.focalPosition[1];
+    const focalHeight = this.focalPosition[4] - this.focalPosition[2];
+    const aspect = toWidth / toHeight;
+    const width = Math.max(focalWidth, focalHeight * aspect);
+    const height = Math.max(focalHeight, focalWidth / aspect);
+    const x = this.focalPosition[1] - (width - focalWidth) / 2;
+    const y = this.focalPosition[2] - (height - focalHeight) / 2;
+    this.target[1] = Math.round(x);
+    this.target[2] = Math.round(y);
+    this.target[3] = Math.round(x + width);
+    this.target[4] = Math.round(y + height);
 
-    this.target[3] = this.target[1] + (this.target[3] - this.target[1]) * widthRatio;
-    this.target[4] = this.target[2] + (this.target[4] - this.target[2]) * heightRatio;
-
-    this.goHome({ position: this.focalPosition });
     this.renderer.resize(toWidth, toHeight);
+    this.updateControllerPosition();
     this.pendingUpdate = true;
 
     this.transitionManager.resumeTransition();

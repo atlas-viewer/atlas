@@ -76,6 +76,7 @@ export type AtlasProps = {
   renderPreset?: PresetNames | Presets;
   hideInlineStyle?: boolean;
   homeCover?: true | false | 'start' | 'end';
+  /** Fit the home bounds after resizing; otherwise preserve the current focal region. */
   homeOnResize?: boolean;
   homePosition?: Projection;
   /**
@@ -462,25 +463,6 @@ export const Atlas: React.FC<
     }
   }, [preset, homePaddingPx]);
 
-  // When the width and height change this will resize the viewer and then reset the view to fit the element.
-  // @todo improve or make configurable.
-  // @todo resize event.
-  useEffect(() => {
-    if (preset) {
-      const rt: Runtime = preset.runtime;
-      const didDimensionChange =
-        viewport.current.width !== restProps.width || viewport.current.height !== restProps.height;
-
-      if (didDimensionChange) {
-        rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
-        viewport.current.width = restProps.width;
-        viewport.current.height = restProps.height;
-        viewport.current.didUpdate = true;
-        rt.updateNextFrame();
-      }
-    }
-  }, [preset, restProps.width, restProps.height, viewport]);
-
   useEffect(() => {
     if (preset && viewRotation !== undefined) preset.runtime.viewRotation = viewRotation;
   }, [preset, viewRotation]);
@@ -580,9 +562,6 @@ export const Atlas: React.FC<
 
           preset.runtime.setHomePosition(newHomePosition);
         }
-        if (homeOnResize) {
-          preset.runtime.goHome({});
-        }
       }
     }
   }
@@ -592,27 +571,6 @@ export const Atlas: React.FC<
   useIsomorphicLayoutEffect(() => {
     recalculateHomeCover();
   }, [preset, props.runtimeOptions?.maxOverZoom, bounds.height, bounds.width, homeCover]);
-
-  // When the window resizes we need to recalculate the width.
-  // @todo possibly move to controller.
-  useIsomorphicLayoutEffect(() => {
-    const windowResizeCallback = () => {
-      if (preset) {
-        const rt: Runtime = preset.runtime;
-        if (viewport.current.width !== restProps.width || viewport.current.height !== restProps.height) {
-          rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
-          viewport.current.width = restProps.width;
-          viewport.current.height = restProps.height;
-          rt.updateNextFrame();
-          viewport.current.didUpdate = true;
-        }
-      }
-    };
-
-    window.addEventListener('resize', windowResizeCallback);
-
-    return () => window.removeEventListener('resize', windowResizeCallback);
-  }, [preset, restProps.height, restProps.width]);
 
   const getNavigatorRenderer = () => {
     if (!preset) {
@@ -646,6 +604,59 @@ export const Atlas: React.FC<
     }
     return window.devicePixelRatio || 1;
   }, [preset]);
+
+  useEffect(() => {
+    if (!preset) return;
+    const rt = preset.runtime;
+    const previousWidth = viewport.current.width;
+    const previousHeight = viewport.current.height;
+    const canvasWidth = restProps.width;
+    const canvasHeight = restProps.height;
+    const didDimensionChange = previousWidth !== canvasWidth || previousHeight !== canvasHeight;
+    if (!didDimensionChange && !viewport.current.didUpdate) {
+      if (homeCover && homeOnResize && interactionMode !== 'pdf-scroll-zone') rt.goHome();
+      return;
+    }
+
+    viewport.current.width = canvasWidth;
+    viewport.current.height = canvasHeight;
+    recalculateHomeCover();
+    if (preset.container) {
+      preset.container.style.width = canvasWidth + 'px';
+      preset.container.style.height = canvasHeight + 'px';
+    }
+    if (preset.canvas) {
+      const ratio = getRendererDpi();
+      preset.canvas.width = canvasWidth * ratio;
+      preset.canvas.height = canvasHeight * ratio;
+      preset.canvas.style.width = canvasWidth + 'px';
+      preset.canvas.style.height = canvasHeight + 'px';
+      const context = preset.canvas.getContext('2d');
+      if (context) {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.scale(ratio, ratio);
+      }
+      if (preset.parityCanvas) {
+        preset.parityCanvas.width = canvasWidth * ratio;
+        preset.parityCanvas.height = canvasHeight * ratio;
+        preset.parityCanvas.style.width = canvasWidth + 'px';
+        preset.parityCanvas.style.height = canvasHeight + 'px';
+        const parityContext = preset.parityCanvas.getContext('2d');
+        if (parityContext) {
+          parityContext.setTransform(1, 0, 0, 1, 0, 0);
+          parityContext.scale(ratio, ratio);
+        }
+      }
+    }
+    preset.em?.updateBounds();
+    if (didDimensionChange) {
+      rt.resize(previousWidth, canvasWidth, previousHeight, canvasHeight);
+      if (homeOnResize && interactionMode !== 'pdf-scroll-zone') rt.goHome();
+    }
+    recalculateNavigatorDimensions();
+    viewport.current.didUpdate = false;
+    rt.updateNextFrame();
+  }, [preset, restProps.width, restProps.height, getRendererDpi, homeOnResize, homeCover, interactionMode]);
 
   const getNavigatorRegion = useCallback(
     (runtime: Runtime) => runtime.getHomeTarget({ cover: !!homeCover }),
@@ -708,13 +719,8 @@ export const Atlas: React.FC<
         }
         if (type === 'recalculate-world-size' || type === 'zone-changed') {
           recalculateHomeCover();
+          if (homeCover && homeOnResize && interactionMode !== 'pdf-scroll-zone') rt.goHome();
           recalculateNavigatorDimensions();
-          if (
-            type === 'recalculate-world-size' &&
-            (viewport.current.width !== restProps.width || viewport.current.height !== restProps.height)
-          ) {
-            rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
-          }
         }
       });
       return () => {
@@ -722,7 +728,7 @@ export const Atlas: React.FC<
         unsubscribeLayout();
       };
     }
-  }, [preset, restProps.width, restProps.height, resolvedNavigatorOptions.width, navigatorUserWidth, getNavigatorRegion, getRendererDpi, bounds.width, bounds.height]);
+  }, [preset, restProps.width, restProps.height, resolvedNavigatorOptions.width, navigatorUserWidth, getNavigatorRegion, getRendererDpi, bounds.width, bounds.height, homeCover, homeOnResize, interactionMode]);
 
   useIsomorphicLayoutEffect(() => {
     getNavigatorRenderer()?.setShowAnnotations?.(resolvedNavigatorOptions.showAnnotations);
@@ -789,52 +795,6 @@ export const Atlas: React.FC<
       // no-op
     };
   }, [preset, resetWorldOnChange, interactionMode]);
-
-  useEffect(() => {
-    if (preset) {
-      const rt = preset.runtime;
-      return rt.registerHook('useBeforeFrame', () => {
-        if (viewport.current.didUpdate && preset.canvas) {
-          const ratio = getRendererDpi();
-          const canvasWidth = viewport.current.width;
-          const canvasHeight = viewport.current.height;
-
-          preset.canvas.width = canvasWidth * ratio;
-          preset.canvas.height = canvasHeight * ratio;
-          preset.canvas.style.width = canvasWidth + 'px';
-          preset.canvas.style.height = canvasHeight + 'px';
-
-          const context = preset.canvas.getContext('2d');
-          if (context) {
-            context.setTransform(1, 0, 0, 1, 0, 0);
-            context.scale(ratio, ratio);
-          }
-
-          if (preset.parityCanvas) {
-            preset.parityCanvas.width = canvasWidth * ratio;
-            preset.parityCanvas.height = canvasHeight * ratio;
-            preset.parityCanvas.style.width = canvasWidth + 'px';
-            preset.parityCanvas.style.height = canvasHeight + 'px';
-
-            const parityContext = preset.parityCanvas.getContext('2d');
-            if (parityContext) {
-              parityContext.setTransform(1, 0, 0, 1, 0, 0);
-              parityContext.scale(ratio, ratio);
-            }
-          }
-
-          if (preset && preset.em) {
-            preset.em.updateBounds();
-          }
-
-          viewport.current.didUpdate = false;
-        }
-      });
-    }
-    return () => {
-      // no-op
-    };
-  }, [preset, resetWorldOnChange, getRendererDpi]);
 
   // @todo move to controller.
   useEffect(() => {
