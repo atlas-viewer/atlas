@@ -21,6 +21,10 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./allmaps": {
+      "import": "./dist/allmaps.js",
+      "require": "./dist/allmaps.cjs"
+    },
     "./react": {
       "import": "./dist/react.js",
       "require": "./dist/react.cjs"

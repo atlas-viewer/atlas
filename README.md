@@ -695,3 +695,14 @@ For a focused run, pass a test file after `pnpm test --run`. When contributing a
 ## License
 
 [MIT](LICENSE). Images and tiles shown in examples remain subject to their providers' terms.
+
+The optional Allmaps URL loader is available from `@atlas-viewer/atlas/allmaps`:
+
+```ts
+import { loadAllmaps } from "@atlas-viewer/atlas/allmaps";
+
+const controller = new AbortController();
+const result = await loadAllmaps(annotationUrl, controller.signal);
+```
+
+It resolves Allmaps and IIIF URLs in the browser, validates annotations, and returns maps, bounds and per-sheet warnings. It requires browser fetch, DOMParser and Web Crypto. The loader is excluded from the default and React entries. Warped image services currently support up to 30,000 tile meshes; larger services report an error instead of allocating an unbounded mesh.
