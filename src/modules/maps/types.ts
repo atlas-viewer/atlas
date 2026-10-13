@@ -73,13 +73,19 @@ export type GeoJSONMultiPolygon = {
   coordinates: Array<Array<Array<[number, number]>>>;
 };
 
+export type GeoJSONGeometryCollection = {
+  type: 'GeometryCollection';
+  geometries: MapGeoJSONGeometry[];
+};
+
 export type MapGeoJSONGeometry =
   | GeoJSONPoint
   | GeoJSONMultiPoint
   | GeoJSONLineString
   | GeoJSONMultiLineString
   | GeoJSONPolygon
-  | GeoJSONMultiPolygon;
+  | GeoJSONMultiPolygon
+  | GeoJSONGeometryCollection;
 
 export type MapGeoJSONFeature<
   TGeometry extends MapGeoJSONGeometry | null = MapGeoJSONGeometry,

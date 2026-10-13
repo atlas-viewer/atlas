@@ -28,6 +28,7 @@ export * from './hooks/use-controlled-annotation-list';
 export * from './hooks/use-frame';
 export * from './hooks/use-map-geojson';
 export * from './hooks/use-map-projection';
+export * from './hooks/use-map-viewport-scale';
 export * from './hooks/use-mode';
 export * from './hooks/use-resize-world-item';
 export * from './hooks/use-runtime';

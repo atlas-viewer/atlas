@@ -25,6 +25,7 @@ export * from './modules/react-reconciler/hooks/use-controlled-annotation-list';
 export * from './modules/react-reconciler/hooks/use-frame';
 export * from './modules/react-reconciler/hooks/use-map-geojson';
 export * from './modules/react-reconciler/hooks/use-map-projection';
+export * from './modules/react-reconciler/hooks/use-map-viewport-scale';
 export * from './modules/react-reconciler/hooks/use-mode';
 export * from './modules/react-reconciler/hooks/use-resize-world-item';
 export * from './modules/react-reconciler/hooks/use-runtime';

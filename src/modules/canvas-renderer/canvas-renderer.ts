@@ -1326,20 +1326,32 @@ export class CanvasRenderer implements Renderer {
 
         if (isGeometry) {
           const shape = (paint as any).shape;
-          const points = shape.points || [];
-          const len = points.length;
-          this.ctx.beginPath();
-          for (let i = 0; i < len; i++) {
-            this.ctx.lineTo(x + points[i][0] * this.lastKnownScale, y + points[i][1] * this.lastKnownScale);
+          const rings: [number, number][][] = [shape.points || []];
+          if (!shape.open && shape.holes) {
+            for (const hole of shape.holes) rings.push(hole);
           }
-          if (!shape.open) {
-            this.ctx.closePath();
+          this.ctx.beginPath();
+          for (const ring of rings) {
+            const len = ring.length;
+            for (let i = 0; i < len; i++) {
+              const px = x + ring[i][0] * this.lastKnownScale;
+              const py = y + ring[i][1] * this.lastKnownScale;
+              if (i === 0) {
+                this.ctx.moveTo(px, py);
+              } else {
+                this.ctx.lineTo(px, py);
+              }
+            }
+            if (!shape.open) {
+              this.ctx.closePath();
+            }
           }
           if (bw) {
             this.ctx.stroke();
           }
           if (!shape.open) {
-            this.ctx.fill();
+            // Even-odd so that holes are cut out regardless of ring winding.
+            this.ctx.fill(shape.holes && shape.holes.length ? 'evenodd' : 'nonzero');
           }
         } else {
           if (bw) {
