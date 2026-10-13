@@ -1,6 +1,6 @@
 import { AtlasObjectModel } from '../aom';
 import { WorldTime } from '../types';
-import { dna, mutate, scaleAtOrigin, Strand, translate } from '@atlas-viewer/dna';
+import { dna, mutate, scaleAtOrigin, Strand, translate } from '../utility/precise-dna';
 import { Paint } from '../world-objects/paint';
 import { nanoid } from 'nanoid';
 import { CompositeResource } from '../spacial-content/composite-resource';

@@ -9,7 +9,7 @@ import {
   scale,
   scaleAtOrigin,
   translate,
-} from '@atlas-viewer/dna';
+} from './utility/precise-dna';
 import type { SupportedEvents } from './events';
 import type { WorldDebugEvent } from './modules/react-reconciler/devtools/types';
 import { BaseObject } from './objects/base-object';
@@ -359,6 +359,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const pointValues = object.points;
     object.points = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
     object.points[1] = pointValues[1];
+    object.points[0] = pointValues[0];
     object.points[2] = pointValues[2];
     object.points[3] = pointValues[3];
     object.points[4] = pointValues[4];
@@ -375,23 +376,21 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   recalculateWorldSize() {
     let didChange = false;
     if (this.needsRecalculate) {
-      const wBuffer = new Int32Array(this.objects.length);
-      const hBuffer = new Int32Array(this.objects.length);
+      let newWidth = 0;
+      let newHeight = 0;
       const len = this.renderOrder.length;
       for (let _index = 0; _index < len; _index++) {
         const index = this.renderOrder[_index];
         const object = this.objects[index];
         if (object) {
-          wBuffer[_index] = this.points[index * 5 + 3];
-          hBuffer[_index] = this.points[index * 5 + 4];
+          newWidth = Math.max(newWidth, this.points[index * 5 + 3]);
+          newHeight = Math.max(newHeight, this.points[index * 5 + 4]);
         }
       }
-      const newWidth = Math.max(...wBuffer);
       if (newWidth !== this._width) {
         this._width = newWidth;
         didChange = true;
       }
-      const newHeight = Math.max(...hBuffer);
       if (newHeight !== this._height) {
         this._height = newHeight;
         didChange = true;

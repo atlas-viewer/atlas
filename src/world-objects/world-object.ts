@@ -9,7 +9,7 @@ import {
   transform,
   translate,
   hidePointsOutsideRegion,
-} from '@atlas-viewer/dna';
+} from '../utility/precise-dna';
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from '../spacial-content';
 import { Geometry } from '../objects/geometry';

@@ -1,7 +1,7 @@
 import { rotatePoint } from '../../world-objects/world-object';
 import { Runtime } from '../../renderer/runtime';
 import { Position } from '../../types';
-import { dna, DnaFactory, Strand } from '@atlas-viewer/dna';
+import { dna, DnaFactory, Strand } from '../../utility/precise-dna';
 import { easingFunctions, EasingFunction } from '../../utility/easing-functions';
 
 export type PendingTransition = {

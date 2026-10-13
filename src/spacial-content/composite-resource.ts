@@ -1,4 +1,4 @@
-import { compose, DnaFactory, dna, type Strand, translate } from '@atlas-viewer/dna';
+import { compose, DnaFactory, dna, type Strand, translate } from '../utility/precise-dna';
 import type { AtlasObjectModel } from '../aom';
 import type { DisplayData } from '../types';
 import { bestResourceIndexAtRatio } from '../utils';
