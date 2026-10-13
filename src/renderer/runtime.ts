@@ -210,6 +210,8 @@ export class Runtime {
   };
   fpsLimit: number | undefined;
   options: RuntimeOptions;
+  private unsubscribeWorld: () => void;
+  private disposed = false;
   hookOptions: HookOptions = {
     filters: {
       grayscale: 0,
@@ -248,7 +250,7 @@ export class Runtime {
     this.updateFocalPosition();
     this.transitionManager = new TransitionManager(this);
     this.aggregate = scale(1);
-    this.world.addLayoutSubscriber((type: string) => {
+    this.unsubscribeWorld = this.world.addLayoutSubscriber((type: string) => {
       if (type === 'repaint' || type === 'zone-changed') {
         this.pendingUpdate = true;
       }
@@ -264,9 +266,14 @@ export class Runtime {
     });
     this.lastTime = performance.now();
     this.controllers = controllers;
-    this.render(this.lastTime);
-    this.startControllers();
     this.homePaddingPx = undefined;
+    try {
+      this.render(this.lastTime);
+      this.startControllers();
+    } catch (error) {
+      this.dispose();
+      throw error;
+    }
   }
 
   setHomePosition(position?: Projection) {
@@ -1187,6 +1194,18 @@ export class Runtime {
   reset() {
     this.renderer.reset();
     this.resetReadyState('runtime-reset');
+  }
+
+  /** Permanently release this runtime. Use stop() for a temporary pause. */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.stopControllers();
+    this.stop();
+    this.reset();
+    this.unsubscribeWorld();
+    for (const hooks of Object.values(this.hooks)) hooks.length = 0;
+    this.debugSubscribers.clear();
   }
 
   /** Pause rendering and image requests while retaining the current view. */

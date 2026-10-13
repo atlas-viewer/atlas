@@ -337,6 +337,7 @@ export class BrowserEventManager {
 
     // Edge-cases
     this.element.removeEventListener('wheel', this.onWheelEvent);
+    this.element.removeEventListener('contextmenu', this.onContextMenu);
 
     // Touch events.
     this.element.removeEventListener('touchstart', this.onTouchEvent);
