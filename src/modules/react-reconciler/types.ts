@@ -1,6 +1,7 @@
 import type React from 'react';
 import type { EventListenerProps } from '../../clean-objects/traits/evented';
 import type { BoxStyle } from '../../objects/box';
+import type { TextLabelObjectProps } from '../../objects/text-label';
 import type { GeometryProps } from '../../objects/geometry';
 import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
 import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
@@ -80,6 +81,7 @@ declare global {
         height: number;
         children?: React.ReactNode;
       };
+      'text-label': BaseElement & TextLabelObjectProps & AllEvents;
       shape: BaseElement & GeometryProps;
       ['composite-image']: BaseElement & {
         id?: string;

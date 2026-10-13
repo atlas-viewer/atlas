@@ -2,6 +2,7 @@ import type { Strand } from '@atlas-viewer/dna';
 import LRUCache from 'lru-cache';
 import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
+import { TextLabelObject } from '../../objects/text-label';
 import type { Text } from '../../objects/text';
 import type { Renderer } from '../../renderer/renderer';
 import { SingleImage } from '../../spacial-content/single-image';
@@ -1109,6 +1110,14 @@ export class CanvasRenderer implements Renderer {
     const ga = this.ctx.globalAlpha;
     const zoneVisibilityAlpha =
       typeof (paint as any).__zoneVisibilityAlpha === 'number' ? (paint as any).__zoneVisibilityAlpha : 1;
+
+    if (paint instanceof TextLabelObject) {
+      this.ctx.save();
+      this.ctx.globalAlpha *= zoneVisibilityAlpha;
+      paint.draw(this.ctx, x, y, width, height, this.dpi);
+      this.ctx.restore();
+      return;
+    }
 
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {

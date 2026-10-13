@@ -6,6 +6,7 @@ import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { BaseObject } from '../../objects/base-object';
 import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
+import { TextLabelObject } from '../../objects/text-label';
 import { Text } from '../../objects/text';
 import { Runtime } from '../../renderer/runtime';
 import { CompositeResource } from '../../spacial-content/composite-resource';
@@ -271,6 +272,9 @@ function createInstance(
       break;
     case 'box':
       instance = new Box();
+      break;
+    case 'text-label':
+      instance = new TextLabelObject();
       break;
     case 'shape':
       instance = new Geometry();

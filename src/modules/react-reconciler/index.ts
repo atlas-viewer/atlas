@@ -15,6 +15,7 @@ export * from './components/MapObject';
 export * from './components/MapTileLayer';
 export * from './components/MapWarpedImage';
 export * from './components/WarpedMapLayer';
+export * from './components/TextLabel';
 export * from './components/RegionHighlight';
 export * from './components/ResizeWorldItem';
 export * from './components/TileSet';
