@@ -13,12 +13,12 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v2
         with:
-          node-version: "22.x"
+          node-version: "24.x"
 
       - uses: pnpm/action-setup@v2
         name: Install pnpm
         with:
-          version: 9
+          version: 11
           run_install: false
 
       - name: Get pnpm store directory
@@ -47,7 +47,7 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v2
         with:
-          node-version: "22.x"
+          node-version: "24.x"
 
       - name: Set tag
         id: tagName
@@ -56,7 +56,7 @@ jobs:
       - uses: pnpm/action-setup@v2
         name: Install pnpm
         with:
-          version: 9
+          version: 11
           run_install: false
 
       - name: Get pnpm store directory

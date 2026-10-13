@@ -9,6 +9,12 @@ import { presets } from '../../../modules/react-reconciler/presets';
 type MockPresetRecord = ReturnType<typeof createMockPreset>;
 
 function createMockPreset(options: any) {
+  if (options.canvasElement && !options.canvasElement.getContext) {
+    options.canvasElement.getContext = vi.fn(() => null);
+  }
+  if (options.parityCanvasElement && !options.parityCanvasElement.getContext) {
+    options.parityCanvasElement.getContext = vi.fn(() => null);
+  }
   const layoutSubscribers = new Set<(type: string) => void>();
   const runtime = {
     id: `runtime-${Math.random().toString(36).slice(2)}`,
@@ -55,7 +61,7 @@ function createMockPreset(options: any) {
     updateNextFrame: vi.fn(),
     setIdle: vi.fn(),
     setOptions: vi.fn(),
-    setHomePosition: vi.fn(),
+    setHomePosition: vi.fn((_position?: { x: number; y: number; width: number; height: number }) => {}),
     setHomePaddingPx: vi.fn(),
     resize: vi.fn(),
     registerHook: vi.fn(() => () => undefined),
@@ -645,6 +651,71 @@ describe('Atlas lifecycle runtime behavior', () => {
           expect(target.style.height).toBe(`${height}px`);
         }
       }
+    }
+  });
+
+  test.each([
+    { homeOnResize: false },
+    { homeOnResize: true },
+    { homeOnResize: true, homeCover: true },
+    { homeOnResize: true, homeCover: 'start' },
+    { homeOnResize: true, homeCover: 'end' },
+    { homeOnResize: true, interactionMode: 'pdf-scroll-zone' },
+    { homeOnResize: true, renderPreset: 'static-preset' },
+  ] as const)('sizes the renderer before positioning the view: %j', async (props) => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    let record!: MockPresetRecord;
+    originalDefaultPreset = presets['default-preset'];
+    vi.spyOn(presets, 'renderPreset' in props ? props.renderPreset : 'default-preset').mockImplementation((options: any) => {
+      record = createMockPreset(options);
+      return record.preset as any;
+    });
+
+    const render = async (width: number, height = 711) => {
+      await act(async () => {
+        root.render(
+          <Atlas width={width} height={height} homePaddingPx={5} {...props} unstable_noReconciler>
+            <React.Fragment />
+          </Atlas>
+        );
+        await flush();
+      });
+    };
+
+    await render(546);
+    for (const [width, height] of [[355, 711], [546, 711], [700, 500], [546, 711]]) {
+      record.runtime.goHome.mockClear();
+      record.runtime.resize.mockClear();
+      record.preset.em.updateBounds.mockClear();
+      record.runtime.resize.mockImplementation(() => {
+        const element = record.preset.canvas || record.preset.container;
+        expect(element.style.width).toBe(`${width}px`);
+        expect(element.style.height).toBe(`${height}px`);
+        if (record.preset.canvas) {
+          expect(record.preset.canvas.width).toBe(width);
+          expect(record.preset.canvas.height).toBe(height);
+        }
+        expect(record.preset.em.updateBounds).toHaveBeenCalled();
+      });
+      record.runtime.goHome.mockImplementation(() => {
+        expect(record.runtime.resize).toHaveBeenCalledTimes(1);
+      });
+      await render(width, height);
+      expect(record.runtime.resize).toHaveBeenCalledTimes(1);
+      const shouldGoHome = props.homeOnResize && !('interactionMode' in props);
+      expect(record.runtime.goHome).toHaveBeenCalledTimes(shouldGoHome ? 1 : 0);
+      if ('homeCover' in props) {
+        const home = record.runtime.setHomePosition.mock.lastCall![0]!;
+        expect(home.width / home.height).toBeCloseTo(width / height);
+      }
+      await act(async () => {
+        window.dispatchEvent(new Event('resize'));
+        record.layoutSubscribers.forEach((callback) => callback('recalculate-world-size'));
+        await flush();
+      });
+      expect(record.runtime.resize).toHaveBeenCalledTimes(1);
     }
   });
 
