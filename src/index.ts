@@ -19,6 +19,7 @@ export * from './modules/webgl-renderer/webgl-renderer';
 export * from './objects/box';
 export * from './objects/geometry';
 export * from './objects/text';
+export * from './objects/text-label';
 export * from './renderer/renderer';
 export * from './renderer/runtime';
 export * from './spacial-content/index';

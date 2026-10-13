@@ -6,13 +6,17 @@ import { supportedEventAttributes, supportedEventMap } from '../../events';
 import { BaseObject } from '../../objects/base-object';
 import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
+import { TextLabelObject } from '../../objects/text-label';
 import { Text } from '../../objects/text';
 import { Runtime } from '../../renderer/runtime';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { MapTilePyramid } from '../../spacial-content/map-tile-pyramid';
 import { MapTiledImage } from '../../spacial-content/map-tiled-image';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
+import { WarpedImage } from '../../spacial-content/warped-image';
+import { WarpedMapResource } from '../../spacial-content/warped-map-layer';
 import { World } from '../../world';
 import { WorldObject } from '../../world-objects/world-object';
 import { Zone } from '../../world-objects/zone';
@@ -269,6 +273,9 @@ function createInstance(
     case 'box':
       instance = new Box();
       break;
+    case 'text-label':
+      instance = new TextLabelObject();
+      break;
     case 'shape':
       instance = new Geometry();
       break;
@@ -323,7 +330,21 @@ function createInstance(
         tileSource: props.tileSource,
         tileUrlTemplate: props.tileUrlTemplate,
         subdomains: props.subdomains,
+        retina: props.retina,
+        region: props.region,
+        maxTiles: props.maxTiles,
       });
+      break;
+    case 'mapTilePyramid':
+    case 'map-tile-pyramid':
+      instance = new MapTilePyramid(props);
+      break;
+    case 'warpedImage':
+    case 'warped-image':
+      instance = new WarpedImage(props);
+      break;
+    case 'warped-map-layer':
+      instance = new WarpedMapResource(props);
       break;
     case 'paragraph':
       instance = new Text();

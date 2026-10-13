@@ -37,6 +37,8 @@ export type MapTileUrlContext = {
   s?: string;
   subdomains?: string[];
   tileSize?: number;
+  /** Used to resolve the `{r}` token (`@2x` when true, empty otherwise). */
+  retina?: boolean;
 };
 
 export type MapTileSource = string | ((ctx: MapTileUrlContext) => string);
@@ -71,13 +73,19 @@ export type GeoJSONMultiPolygon = {
   coordinates: Array<Array<Array<[number, number]>>>;
 };
 
+export type GeoJSONGeometryCollection = {
+  type: 'GeometryCollection';
+  geometries: MapGeoJSONGeometry[];
+};
+
 export type MapGeoJSONGeometry =
   | GeoJSONPoint
   | GeoJSONMultiPoint
   | GeoJSONLineString
   | GeoJSONMultiLineString
   | GeoJSONPolygon
-  | GeoJSONMultiPolygon;
+  | GeoJSONMultiPolygon
+  | GeoJSONGeometryCollection;
 
 export type MapGeoJSONFeature<
   TGeometry extends MapGeoJSONGeometry | null = MapGeoJSONGeometry,

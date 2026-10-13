@@ -192,3 +192,81 @@ export function createMapProjection(config: { bounds: MapBounds; width: number; 
     projectRing,
   };
 }
+
+/**
+ * The rectangle (in a `width` x `height` frame) that the bounds occupy. With
+ * `preserveAspectRatio` the bounds are letterboxed and centered; otherwise they fill the frame.
+ */
+export function fitMapBoundsToRect(config: {
+  bounds: MapBounds;
+  width: number;
+  height: number;
+  preserveAspectRatio?: boolean;
+}): WorldRect {
+  const { bounds, width, height } = config;
+  if (config.preserveAspectRatio === false) {
+    return { x: 0, y: 0, width, height };
+  }
+
+  const mercatorWidth = longitudeToMercatorX(bounds.east) - longitudeToMercatorX(bounds.west);
+  const mercatorHeight = latitudeToMercatorY(bounds.south) - latitudeToMercatorY(bounds.north);
+  const mapAspect = mercatorWidth / mercatorHeight;
+  const frameAspect = width / height;
+
+  if (!Number.isFinite(mapAspect) || mapAspect <= 0) {
+    return { x: 0, y: 0, width, height };
+  }
+
+  if (frameAspect > mapAspect) {
+    const fittedWidth = height * mapAspect;
+    return { x: (width - fittedWidth) / 2, y: 0, width: fittedWidth, height };
+  }
+
+  const fittedHeight = width / mapAspect;
+  return { x: 0, y: (height - fittedHeight) / 2, width, height: fittedHeight };
+}
+
+/**
+ * A projection for bounds fitted into a frame, in the frame's coordinates. This is the projection
+ * `<MapObject />` provides, so it can also be used outside of React (e.g. to move the viewport to
+ * a place on the map).
+ */
+export function createFittedMapProjection(config: {
+  bounds: MapBounds;
+  width: number;
+  height: number;
+  preserveAspectRatio?: boolean;
+}): { mapRect: WorldRect; projection: MapProjection } {
+  const mapRect = fitMapBoundsToRect(config);
+  const base = createMapProjection({ bounds: config.bounds, width: mapRect.width, height: mapRect.height });
+
+  const projection: MapProjection = {
+    lngLatToWorld(lng, lat) {
+      const world = base.lngLatToWorld(lng, lat);
+      return { x: world.x + mapRect.x, y: world.y + mapRect.y };
+    },
+    worldToLngLat(x, y) {
+      return base.worldToLngLat(x - mapRect.x, y - mapRect.y);
+    },
+    lngLatBoundsToWorldRect(inputBounds) {
+      const rect = base.lngLatBoundsToWorldRect(inputBounds);
+      return { x: rect.x + mapRect.x, y: rect.y + mapRect.y, width: rect.width, height: rect.height };
+    },
+    worldRectToLngLatBounds(rect) {
+      return base.worldRectToLngLatBounds({
+        x: rect.x - mapRect.x,
+        y: rect.y - mapRect.y,
+        width: rect.width,
+        height: rect.height,
+      });
+    },
+    projectRing(ring) {
+      return ring.map(([lng, lat]) => {
+        const point = base.lngLatToWorld(lng, lat);
+        return [point.x + mapRect.x, point.y + mapRect.y] as [number, number];
+      });
+    },
+  };
+
+  return { mapRect, projection };
+}

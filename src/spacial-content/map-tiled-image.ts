@@ -18,7 +18,10 @@ export type MapTileCoordinate = {
 };
 
 export type MapTileGrid = {
+  /** Tile rectangles in world units. */
   points: Strand;
+  /** Tile rectangles in whole source pixels (`tileSize` square), laid out as a grid. */
+  pixelPoints: Strand;
   tiles: MapTileCoordinate[];
   columns: number;
   rows: number;
@@ -29,7 +32,7 @@ export type MapTileGrid = {
   maxTileY: number;
 };
 
-export type MapTileGridCoverage = Omit<MapTileGrid, 'points' | 'tiles'> & {
+export type MapTileGridCoverage = Omit<MapTileGrid, 'points' | 'pixelPoints' | 'tiles'> & {
   westTile: number;
   eastTile: number;
   northTile: number;
@@ -49,13 +52,39 @@ export type MapTiledImageProps = {
   tileSource?: MapTileSource;
   tileUrlTemplate?: string;
   subdomains?: string[];
+  /** Request `@2x` style tiles when the template uses `{r}`. */
+  retina?: boolean;
+  /**
+   * Restrict the generated grid to the tiles intersecting this lng/lat region.
+   * Tile positions are still projected against the full `bounds`, so a windowed
+   * image lines up exactly with a full-bounds image at the same zoom.
+   */
+  region?: MapBounds;
+  /** Throw if the generated grid would exceed this many tiles. */
+  maxTiles?: number;
 };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function estimateFiniteTileGridCoverage(config: { bounds: MapBounds; zoom: number }): MapTileGridCoverage {
+export function intersectMapBounds(a: MapBounds, b: MapBounds): MapBounds | null {
+  const west = Math.max(a.west, b.west);
+  const east = Math.min(a.east, b.east);
+  const south = Math.max(a.south, b.south);
+  const north = Math.min(a.north, b.north);
+  if (west >= east || south >= north) {
+    return null;
+  }
+  return { west, south, east, north };
+}
+
+export function estimateFiniteTileGridCoverage(config: {
+  bounds: MapBounds;
+  zoom: number;
+  /** Optional sub-region (lng/lat). Only the tile range is affected; the tile span always describes `bounds`. */
+  region?: MapBounds;
+}): MapTileGridCoverage {
   validateMapBounds(config.bounds);
 
   const zoom = Math.max(0, Math.floor(config.zoom));
@@ -76,13 +105,30 @@ export function estimateFiniteTileGridCoverage(config: { bounds: MapBounds; zoom
   const tileSpanX = Math.max(1e-9, eastTile - westTile);
   const tileSpanY = Math.max(1e-9, southTile - northTile);
 
-  const minTileX = clamp(Math.floor(westTileFloat), 0, maxTileIndex);
-  const maxTileX = clamp(Math.ceil(eastTileFloat) - 1, 0, maxTileIndex);
-  const minTileY = clamp(Math.floor(northTileFloat), 0, maxTileIndex);
-  const maxTileY = clamp(Math.ceil(southTileFloat) - 1, 0, maxTileIndex);
+  let rangeWest = westTileFloat;
+  let rangeEast = eastTileFloat;
+  let rangeNorth = northTileFloat;
+  let rangeSouth = southTileFloat;
+  let empty = false;
+  if (config.region) {
+    const clipped = intersectMapBounds(config.bounds, config.region);
+    if (clipped) {
+      rangeWest = lngToTileX(clipped.west, zoom);
+      rangeEast = lngToTileX(clipped.east, zoom);
+      rangeNorth = latToTileY(clipped.north, zoom);
+      rangeSouth = latToTileY(clipped.south, zoom);
+    } else {
+      empty = true;
+    }
+  }
 
-  const columns = Math.max(1, maxTileX - minTileX + 1);
-  const rows = Math.max(1, maxTileY - minTileY + 1);
+  const minTileX = clamp(Math.floor(rangeWest), 0, maxTileIndex);
+  const maxTileX = clamp(Math.ceil(rangeEast) - 1, 0, maxTileIndex);
+  const minTileY = clamp(Math.floor(rangeNorth), 0, maxTileIndex);
+  const maxTileY = clamp(Math.ceil(rangeSouth) - 1, 0, maxTileIndex);
+
+  const columns = empty ? 0 : Math.max(1, maxTileX - minTileX + 1);
+  const rows = empty ? 0 : Math.max(1, maxTileY - minTileY + 1);
   return {
     columns,
     rows,
@@ -106,6 +152,8 @@ export function createFiniteTileGrid(config: {
   worldWidth: number;
   worldHeight: number;
   maxTiles?: number;
+  region?: MapBounds;
+  tileSize?: number;
 }): MapTileGrid {
   validateMapBounds(config.bounds);
 
@@ -119,6 +167,7 @@ export function createFiniteTileGrid(config: {
   const coverage = estimateFiniteTileGridCoverage({
     bounds: config.bounds,
     zoom,
+    region: config.region,
   });
   const maxTiles = typeof config.maxTiles === 'number' ? config.maxTiles : Number.POSITIVE_INFINITY;
   if (coverage.count > maxTiles) {
@@ -128,9 +177,12 @@ export function createFiniteTileGrid(config: {
   }
 
   const points: number[] = [];
+  const pixelPoints: number[] = [];
+  const tileSize = config.tileSize || 256;
   const tiles: MapTileCoordinate[] = [];
 
-  for (let tileY = coverage.minTileY; tileY <= coverage.maxTileY; tileY++) {
+  const hasTiles = coverage.count > 0;
+  for (let tileY = coverage.minTileY; hasTiles && tileY <= coverage.maxTileY; tileY++) {
     for (let tileX = coverage.minTileX; tileX <= coverage.maxTileX; tileX++) {
       const tileWestLng = tileXToLng(tileX, zoom);
       const tileEastLng = tileXToLng(tileX + 1, zoom);
@@ -141,12 +193,19 @@ export function createFiniteTileGrid(config: {
       const southEast = projection.lngLatToWorld(tileEastLng, tileSouthLat);
 
       points.push(1, northWest.x, northWest.y, southEast.x, southEast.y);
+      // Whole pixels: these size the renderers' tile canvases, and a fractional size (from
+      // dividing world units back down) would truncate and leave a gap row/column.
+      const px = (tileX - coverage.minTileX) * tileSize;
+      const py = (tileY - coverage.minTileY) * tileSize;
+      pixelPoints.push(1, px, py, px + tileSize, py + tileSize);
       tiles.push({ x: tileX, y: tileY, z: zoom });
     }
   }
 
   return {
-    points: dna(points.length ? points : [0]),
+    // An empty grid keeps one hidden (flag = 0) tile so downstream strand maths stays valid.
+    points: dna(points.length ? points : [0, 0, 0, 0, 0]),
+    pixelPoints: dna(pixelPoints.length ? pixelPoints : [0, 0, 0, 0, 0]),
     tiles,
     columns: coverage.columns,
     rows: coverage.rows,
@@ -166,6 +225,8 @@ export class MapTiledImage extends TiledImage {
   readonly tileSize: number;
   readonly tileSource: MapTileSource;
   readonly subdomains: string[];
+  readonly retina: boolean;
+  readonly region?: MapBounds;
   readonly tileCoordinates: MapTileCoordinate[];
   readonly minTileX: number;
   readonly maxTileX: number;
@@ -181,17 +242,24 @@ export class MapTiledImage extends TiledImage {
       zoom: props.zoom,
       worldWidth: props.worldWidth,
       worldHeight: props.worldHeight,
+      region: props.region,
+      maxTiles: props.maxTiles,
+      tileSize,
     });
 
     const id =
       props.id ||
       `map-tiled-image-z${props.zoom}-${props.worldWidth}x${props.worldHeight}-${grid.minTileX}:${grid.maxTileX}-${grid.minTileY}:${grid.maxTileY}`;
 
+    // `points` are source-pixel coordinates (what the canvas renderer sizes its
+    // tile canvases from), `displayPoints` are world coordinates (what is used
+    // for culling and painting). Both being world coordinates made every tile
+    // canvas as large as the tile's footprint in the world.
     super({
       id,
       url: 'map://tile-source',
       scaleFactor,
-      points: grid.points,
+      points: grid.pixelPoints,
       displayPoints: grid.points,
       tileWidth: tileSize,
       tileHeight: tileSize,
@@ -210,11 +278,22 @@ export class MapTiledImage extends TiledImage {
     this.tileSize = tileSize;
     this.tileSource = tileSource;
     this.subdomains = [...(props.subdomains || [])];
+    this.retina = !!props.retina;
+    this.region = props.region ? { ...props.region } : undefined;
     this.tileCoordinates = grid.tiles;
     this.minTileX = grid.minTileX;
     this.maxTileX = grid.maxTileX;
     this.minTileY = grid.minTileY;
     this.maxTileY = grid.maxTileY;
+  }
+
+  applyProps(props: any) {
+    super.applyProps(props);
+    // TiledImage resets `format` when it is not provided; map tiles are always png-like.
+    this.format = 'png';
+    // Tile source / grid changes are intentionally not applied in place: tiles that were
+    // already decoded are cached per index by the renderers, so the owning layer rebuilds
+    // the image instead (see MapTilePyramid).
   }
 
   getImageUrl(index: number): string {
@@ -229,6 +308,7 @@ export class MapTiledImage extends TiledImage {
       y: tile.y,
       tileSize: this.tileSize,
       subdomains: this.subdomains,
+      retina: this.retina,
     });
   }
 }

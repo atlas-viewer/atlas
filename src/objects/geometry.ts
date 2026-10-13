@@ -18,6 +18,8 @@ export type GeometryProps = {
 
   open?: boolean;
   points: [number, number][];
+  /** Rings cut out of the polygon (rendered with the even-odd rule). Ignored for open shapes. */
+  holes?: [number, number][][];
 
   className?: string;
   href?: string;
@@ -99,6 +101,33 @@ const styleProps: Array<keyof GeometryStyle> = [
 //     ['borderStyle', ['setLineDash', 'lineDashOffset']],
 //   ];
 
+function pointInRing(x: number, y: number, ring: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    if (
+      ring[i][1] > y != ring[j][1] > y &&
+      x < ((ring[j][0] - ring[i][0]) * (y - ring[i][1])) / (ring[j][1] - ring[i][1]) + ring[i][0]
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function sameRings(a?: [number, number][][], b?: [number, number][][]): boolean {
+  if (a === b) return true;
+  const left = a || [];
+  const right = b || [];
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i].length !== right[i].length) return false;
+    for (let j = 0; j < left[i].length; j++) {
+      if (left[i][j][0] !== right[i][j][0] || left[i][j][1] !== right[i][j][1]) return false;
+    }
+  }
+  return true;
+}
+
 export class Geometry extends BaseObject<GeometryProps> implements SpacialContent {
   id: string;
   type: 'spacial-content' = 'spacial-content';
@@ -142,7 +171,11 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
     pressStyles?: GeometryStyle;
   } = {};
 
-  shape: { type: 'none' } | { type: 'polygon'; points: [number, number][]; open?: boolean } = { type: 'none' };
+  shape:
+    | { type: 'none' }
+    | { type: 'polygon'; points: [number, number][]; open?: boolean; holes?: [number, number][][] } = {
+    type: 'none',
+  };
 
   constructor() {
     super();
@@ -203,6 +236,14 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
         x < ((points[j][0] - points[i][0]) * (y - points[i][1])) / (points[j][1] - points[i][1]) + points[i][0]
       ) {
         inside = !inside;
+      }
+    }
+
+    if (inside && this.shape.holes) {
+      for (const hole of this.shape.holes) {
+        if (pointInRing(x, y, hole)) {
+          return false;
+        }
       }
     }
 
@@ -271,6 +312,14 @@ export class Geometry extends BaseObject<GeometryProps> implements SpacialConten
           };
           this.updateBoundingBox();
         }
+      }
+    }
+
+    if (this.shape.type === 'polygon') {
+      const nextHoles = props.holes && props.holes.length ? props.holes : undefined;
+      if (!sameRings(this.shape.holes, nextHoles)) {
+        this.shape.holes = nextHoles;
+        didUpdate = true;
       }
     }
 

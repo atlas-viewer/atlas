@@ -1,11 +1,19 @@
 import { useMemo } from 'react';
-import type { MapGeoJSONFeature, MapGeoJSONFeatureCollection, MapGeoJSONGeometry, MapGeoJSONInput } from '../../maps/types';
+import type {
+  MapGeoJSONFeature,
+  MapGeoJSONFeatureCollection,
+  MapGeoJSONGeometry,
+  MapGeoJSONInput,
+} from '../../maps/types';
 import { useMapProjection } from './use-map-projection';
 
 export type ProjectedMapGeoJSONShape = {
   kind: 'shape';
+  /** Open shapes are lines; closed shapes are polygons. */
   open: boolean;
   points: Array<[number, number]>;
+  /** Rings cut out of a polygon. Only present for polygons that have holes. */
+  holes?: Array<Array<[number, number]>>;
   key: string;
   feature?: MapGeoJSONFeature;
 };
@@ -20,22 +28,49 @@ export type ProjectedMapGeoJSONPoint = {
 
 export type ProjectedMapGeoJSONItem = ProjectedMapGeoJSONShape | ProjectedMapGeoJSONPoint;
 
+type Projector = {
+  projectRing: (ring: Array<[number, number]>) => Array<[number, number]>;
+  lngLatToWorld: (lng: number, lat: number) => { x: number; y: number };
+};
+
+function projectPolygon(
+  rings: Array<Array<[number, number]>>,
+  projection: Projector,
+  key: string,
+  feature?: MapGeoJSONFeature
+): ProjectedMapGeoJSONShape[] {
+  if (!rings.length) {
+    return [];
+  }
+  const [outer, ...holes] = rings;
+  const shape: ProjectedMapGeoJSONShape = {
+    kind: 'shape',
+    open: false,
+    points: projection.projectRing(outer),
+    key,
+    feature,
+  };
+  if (holes.length) {
+    shape.holes = holes.map((hole) => projection.projectRing(hole));
+  }
+  return [shape];
+}
+
 function projectGeometry(
   geometry: MapGeoJSONGeometry,
-  projectRing: (ring: Array<[number, number]>) => Array<[number, number]>,
-  lngLatToWorld: (lng: number, lat: number) => { x: number; y: number },
+  projection: Projector,
   keyPrefix: string,
   feature?: MapGeoJSONFeature
 ): ProjectedMapGeoJSONItem[] {
   switch (geometry.type) {
     case 'Point': {
-      const point = lngLatToWorld(geometry.coordinates[0], geometry.coordinates[1]);
+      const point = projection.lngLatToWorld(geometry.coordinates[0], geometry.coordinates[1]);
       return [{ kind: 'point', x: point.x, y: point.y, key: `${keyPrefix}-point`, feature }];
     }
 
     case 'MultiPoint': {
       return geometry.coordinates.map(([lng, lat], idx) => {
-        const point = lngLatToWorld(lng, lat);
+        const point = projection.lngLatToWorld(lng, lat);
         return {
           kind: 'point' as const,
           x: point.x,
@@ -51,7 +86,7 @@ function projectGeometry(
         {
           kind: 'shape',
           open: true,
-          points: projectRing(geometry.coordinates),
+          points: projection.projectRing(geometry.coordinates),
           key: `${keyPrefix}-line`,
           feature,
         },
@@ -62,35 +97,30 @@ function projectGeometry(
       return geometry.coordinates.map((line, idx) => ({
         kind: 'shape' as const,
         open: true,
-        points: projectRing(line),
+        points: projection.projectRing(line),
         key: `${keyPrefix}-line-${idx}`,
         feature,
       }));
     }
 
     case 'Polygon': {
-      return geometry.coordinates.map((ring, idx) => ({
-        kind: 'shape' as const,
-        open: false,
-        points: projectRing(ring),
-        key: `${keyPrefix}-polygon-${idx}`,
-        feature,
-      }));
+      return projectPolygon(geometry.coordinates, projection, `${keyPrefix}-polygon`, feature);
     }
 
     case 'MultiPolygon': {
       const items: ProjectedMapGeoJSONItem[] = [];
       for (let polygonIndex = 0; polygonIndex < geometry.coordinates.length; polygonIndex++) {
-        const polygon = geometry.coordinates[polygonIndex];
-        for (let ringIndex = 0; ringIndex < polygon.length; ringIndex++) {
-          items.push({
-            kind: 'shape',
-            open: false,
-            points: projectRing(polygon[ringIndex]),
-            key: `${keyPrefix}-polygon-${polygonIndex}-${ringIndex}`,
-            feature,
-          });
-        }
+        items.push(
+          ...projectPolygon(geometry.coordinates[polygonIndex], projection, `${keyPrefix}-polygon-${polygonIndex}`, feature)
+        );
+      }
+      return items;
+    }
+
+    case 'GeometryCollection': {
+      const items: ProjectedMapGeoJSONItem[] = [];
+      for (let index = 0; index < geometry.geometries.length; index++) {
+        items.push(...projectGeometry(geometry.geometries[index], projection, `${keyPrefix}-geometry-${index}`, feature));
       }
       return items;
     }
@@ -100,13 +130,20 @@ function projectGeometry(
   }
 }
 
-export function projectMapGeoJSON(
-  input: MapGeoJSONInput | null | undefined,
-  projection: {
-    projectRing: (ring: Array<[number, number]>) => Array<[number, number]>;
-    lngLatToWorld: (lng: number, lat: number) => { x: number; y: number };
+function uniqueKeys(items: ProjectedMapGeoJSONItem[]): ProjectedMapGeoJSONItem[] {
+  const seen = new Map<string, number>();
+  for (const item of items) {
+    const count = seen.get(item.key) || 0;
+    seen.set(item.key, count + 1);
+    if (count > 0) {
+      // Duplicate feature ids would otherwise collide as React keys / object ids.
+      item.key = `${item.key}~${count}`;
+    }
   }
-): ProjectedMapGeoJSONItem[] {
+  return items;
+}
+
+export function projectMapGeoJSON(input: MapGeoJSONInput | null | undefined, projection: Projector): ProjectedMapGeoJSONItem[] {
   if (!input) {
     return [];
   }
@@ -116,20 +153,14 @@ export function projectMapGeoJSON(
     const all: ProjectedMapGeoJSONItem[] = [];
     for (let i = 0; i < collection.features.length; i++) {
       const feature = collection.features[i];
-      if (!feature.geometry) {
+      if (!feature || !feature.geometry) {
         continue;
       }
-      all.push(
-        ...projectGeometry(
-          feature.geometry,
-          projection.projectRing,
-          projection.lngLatToWorld,
-          `feature-${feature.id || i}`,
-          feature
-        )
-      );
+      // `id` can legitimately be 0.
+      const id = feature.id === undefined || feature.id === null ? i : feature.id;
+      all.push(...projectGeometry(feature.geometry, projection, `feature-${id}`, feature));
     }
-    return all;
+    return uniqueKeys(all);
   }
 
   if (input.type === 'Feature') {
@@ -137,10 +168,11 @@ export function projectMapGeoJSON(
     if (!feature.geometry) {
       return [];
     }
-    return projectGeometry(feature.geometry, projection.projectRing, projection.lngLatToWorld, `feature-${feature.id || 0}`, feature);
+    const id = feature.id === undefined || feature.id === null ? 0 : feature.id;
+    return uniqueKeys(projectGeometry(feature.geometry, projection, `feature-${id}`, feature));
   }
 
-  return projectGeometry(input as MapGeoJSONGeometry, projection.projectRing, projection.lngLatToWorld, 'geometry');
+  return uniqueKeys(projectGeometry(input as MapGeoJSONGeometry, projection, 'geometry'));
 }
 
 export type MapGeoJSONProjector = {

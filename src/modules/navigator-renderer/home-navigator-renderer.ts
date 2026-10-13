@@ -159,16 +159,18 @@ export class HomeNavigatorRenderer extends DebugRenderer {
           ctx.globalAlpha = typeof style?.opacity === 'number' ? style.opacity : 1;
           if (paint instanceof Geometry && paint.shape.type === 'polygon') {
             ctx.beginPath();
-            paint.shape.points.forEach(([px, py], pointIndex) => {
-              if (pointIndex === 0) ctx.moveTo(x + px * scale, y + py * scale);
-              else ctx.lineTo(x + px * scale, y + py * scale);
-            });
-            if (!paint.shape.open) {
-              ctx.closePath();
-              if (style?.backgroundColor) {
-                ctx.fillStyle = style.backgroundColor;
-                ctx.fill();
-              }
+            const rings: [number, number][][] = [paint.shape.points];
+            if (!paint.shape.open && paint.shape.holes) rings.push(...paint.shape.holes);
+            for (const ring of rings) {
+              ring.forEach(([px, py], pointIndex) => {
+                if (pointIndex === 0) ctx.moveTo(x + px * scale, y + py * scale);
+                else ctx.lineTo(x + px * scale, y + py * scale);
+              });
+              if (!paint.shape.open) ctx.closePath();
+            }
+            if (!paint.shape.open && style?.backgroundColor) {
+              ctx.fillStyle = style.backgroundColor;
+              ctx.fill(paint.shape.holes && paint.shape.holes.length ? 'evenodd' : 'nonzero');
             }
           } else {
             if (style?.backgroundColor) {
