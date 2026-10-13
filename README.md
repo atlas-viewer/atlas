@@ -298,6 +298,57 @@ export function ViewerWithControls() {
 
 Components inside the Atlas scene can use `useRuntime()`, `useAtlas()`, and the frame hooks. Hooks return an undefined runtime until one is available. Application React contexts do not automatically cross into the separate Atlas reconciler root; pass values as props or provide the context inside the scene. Use `HTMLPortal` when HTML needs to be anchored to a region in world coordinates.
 
+### Warped maps over an unchanged IIIF image
+
+`WarpedMapLayer` draws OSM/XYZ tiles in the original image's pixel coordinates. Place it after a normal `ImageService` in a shared frame:
+
+```tsx
+import { ImageService, WarpedMapLayer } from '@atlas-viewer/atlas/react';
+
+<world-object width={imageWidth} height={imageHeight}>
+  <ImageService id={serviceId} width={imageWidth} height={imageHeight} />
+  <WarpedMapLayer
+    imageWidth={imageWidth}
+    imageHeight={imageHeight}
+    controlPoints={controlPoints}
+    transformationType="thinPlateSpline"
+    opacity={0.5}
+  />
+</world-object>
+```
+
+Control points use `{ image: { x, y }, map: { lng, lat } }` with full-resolution image pixels. Apply placement and scale to the shared frame so both layers stay aligned. A `transformer` (which only needs `toGeo`) or a `controller` can replace the control-point props. This component needs no `MapObject`.
+
+The overlay samples the original forward transformation and splits image-space triangles at map tile boundaries. It never fits a reverse transformation. Nonlinear alignment is approximated by the mesh; `resolution` controls cells along the viewport window's longest side (defaults to 24 for nonlinear warps and 12 for projective warps). Zooming in rebuilds that mesh over a smaller image region.
+
+`resourceMask` is a polygon in original image pixels. `tileSource` accepts an XYZ URL template or function; change `tileSourceKey` when a function starts returning different tiles. `tileSize` must match the decoded square tile size. The default source is OpenStreetMap; show visible attribution using `MapAttribution` in the viewer's HTML controls.
+
+The layer chooses zoom locally (`minZoom`/`maxZoom`, default 0–19), with at most `maxTiles` tiles per window (default 256). It reduces zoom to meet that budget, down to `minZoom`, and reports failures through `onError`. The previous loaded window remains underneath incoming tiles until the visible replacement is ready; opacity is applied once to the combined overlay. Rendering uses Canvas, including the WebGL preset's Canvas overlay. Antimeridian-crossing maps are not supported.
+
+### Text labels on shapes and lines
+
+`TextLabel` places screen-sized text inside the visible portion of a polygon, or along a visible straight segment of an open line. Coordinates belong to the enclosing `world-object`, so it also works with ordinary images without a map projection.
+
+```tsx
+import { TextLabel } from '@atlas-viewer/atlas/react';
+
+<TextLabel
+  text="East Boston"
+  points={[[700, 1700], [2300, 1400], [3000, 2600], [1800, 3400], [700, 2800]]}
+  style={{ fontSize: 22, color: '#153b57', haloColor: 'white', haloWidth: 2,
+    ':hover': { color: '#a12360' }, ':active': { color: '#e15516' } }}
+  onClick={() => console.log('East Boston')}
+/>
+```
+
+Set `open` for a line (at least two points); polygons need at least three points and support `holes`. Placement follows the visible geometry during pan, zoom, and rotation. Labels hide when there is insufficient room at the requested size. Lines use one upright text run along a straight segment; glyphs do not bend around corners. Labels are placed independently, without collision avoidance between labels.
+
+`style` supports `fontSize` (default 18 CSS pixels), `fontFamily`, `fontWeight`, `fontStyle`, `color`, `opacity`, `haloColor`, and `haloWidth`, with `:hover` and `:active` overrides. `padding` defaults to 4 CSS pixels. Polygon wrapping uses `maxWidth` (240 CSS pixels), `maxLines` (3), and `lineHeight` (1.2 times the font size). Geometry has no fill, border, or background. Pointer/click handlers target the displayed text bounds; `interactive={false}` disables hit testing. Rendering uses Canvas, including the WebGL preset's Canvas overlay. The native scene object is `TextLabelObject`, with the `text-label` reconciler element.
+
+See **Maps / Image overlays → OSM Over IIIF With Text Labels** for toggleable Boston area and line labels.
+
+See the **OSM Over IIIF** story for the East Boston annotation, mask, transformation selector, and opacity controls.
+
 ## Using your own canvas and camera
 
 For editors, whiteboards, or an existing camera system, disable Atlas input and set the viewport yourself. This is the setup used by integrations such as the [tldraw IIIF adapter](https://github.com/tu-delft-heritage/tldraw-iiif/blob/main/src/atlas-adapter.ts).
