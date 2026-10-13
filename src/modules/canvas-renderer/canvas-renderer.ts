@@ -963,8 +963,8 @@ export class CanvasRenderer implements Renderer {
       return;
     }
 
-    const columns = paint.columns;
-    const rows = paint.rows;
+    const columns = paint.renderColumns;
+    const rows = paint.renderRows;
     if (!columns || !rows) {
       return;
     }
@@ -1642,6 +1642,36 @@ export class CanvasRenderer implements Renderer {
     // canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
     paint.__host.canvas = {
+      dispose: () => {
+        const buffer = paint.__host?.canvas as ImageBuffer;
+        this.loadingQueue = this.loadingQueue.filter((request) => request.paint !== paint);
+        for (const [key, request] of this.inFlightImageLoads) {
+          if (request.paint === paint) this.releaseInFlightTileLoad(key, { silent: true });
+        }
+        for (const [key, pending] of this.pendingTileReveals) {
+          if (pending.imageBuffer === buffer) this.pendingTileReveals.delete(key);
+        }
+        for (const key of buffer.canvases) {
+          const canvas = this.hostCache.get(key);
+          if (canvas) { canvas.width = 0; canvas.height = 0; }
+          this.hostCache.delete(key);
+        }
+        // LRU deletions enqueue invalidations; retired windows will never consume them.
+        const retiredKeys = new Set(buffer.canvases);
+        this.invalidated = this.invalidated.filter((key) => !retiredKeys.has(key));
+        // Invalidate queued decode/draw closures before their indices can be reused.
+        buffer.tiles = {};
+        this.imageBuffers.delete(buffer);
+      },
+      isTileLoaded: (index: number) => {
+        const buffer = paint.__host.canvas as ImageBuffer;
+        const key = buffer.canvases[index];
+        return (
+          buffer.tiles?.[index]?.state === 'decoded' &&
+          !!this.hostCache.get(key) && !this.invalidated.includes(key) &&
+          this.getFadeAlpha(paint, buffer.tiles?.[index], this.isLayerActive(paint)) === 1
+        );
+      },
       canvas: undefined,
       canvases: [],
       tiles: {},

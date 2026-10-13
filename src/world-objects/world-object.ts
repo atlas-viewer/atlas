@@ -228,6 +228,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   }
 
   removeChild(item: Paintable) {
+    if (this.layers.includes(item)) item.dispose?.();
     this.layers = this.layers.filter((layer) => layer !== item);
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
@@ -246,6 +247,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     const afterLayers = this.layers.slice(index);
 
     this.layers = [...beforeLayers, item, ...afterLayers];
+    item.__owner.value = this;
   }
 
   hideInstance() {

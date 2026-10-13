@@ -159,9 +159,17 @@ export class CompositeResource
     }
 
     const key = this.getImageDedupeKey(item);
+    for (const image of new Set([...this.images, ...this.allImages])) {
+      if (image === item || this.getImageDedupeKey(image) === key) image.dispose?.();
+    }
     this.images = this.images.filter((image) => image !== item && this.getImageDedupeKey(image) !== key);
     this.allImages = this.allImages.filter((image) => image !== item && this.getImageDedupeKey(image) !== key);
     this.sortByScales();
+  }
+
+  dispose(): void {
+    for (const image of new Set([...this.images, ...this.allImages])) image.dispose?.();
+    super.dispose();
   }
 
   insertBefore(item: SpacialContent, before: SpacialContent) {

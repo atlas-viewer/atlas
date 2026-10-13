@@ -135,6 +135,13 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
     // do nothing.
     this.__revision++;
   }
+  /** Release renderer resources when this object leaves the scene. Safe to call again. */
+  dispose(): void {
+    this.__host?.canvas?.dispose?.();
+    this.__host?.webgl?.dispose?.();
+    this.__host = undefined;
+    for (const child of this.layers) (child as BaseObject)?.dispose?.();
+  }
   appendChild(item: SupportedChildElements): void {
     // do nothing.
   }

@@ -232,6 +232,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       return;
     }
 
+    item.dispose();
     this.objects[index] = null;
     this.renderOrder = this.renderOrder.filter((t) => t !== index);
     this.points[index * 5] = 0;
@@ -358,8 +359,8 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     const index = this.objects.length * 5;
     const pointValues = object.points;
     object.points = this.points.subarray(this.objects.length * 5, this.objects.length * 5 + 5);
-    object.points[1] = pointValues[1];
     object.points[0] = pointValues[0];
+    object.points[1] = pointValues[1];
     object.points[2] = pointValues[2];
     object.points[3] = pointValues[3];
     object.points[4] = pointValues[4];
