@@ -525,7 +525,7 @@ const viewer = atlas(element, {
 | Option                                   | Default          | Purpose                                                    |
 | ---------------------------------------- | ---------------- | ---------------------------------------------------------- |
 | `quality`                                | `1.3`            | Bias resolution selection.                                 |
-| `renderLayers`                           | `2`              | Number of image levels considered for rendering.           |
+| `renderLayers`                           | `2`              | Loaded visible levels to retain; loading levels do not count toward this limit. |
 | `renderSmallestFallback`                 | `true`           | Keep a small image level available while detail loads.     |
 | `layerPolicy`                            | `'always-blend'` | Also accepts `'fallback-only'` and `'active-only'`.        |
 | `loadingBias`                            | `'balanced'`     | Also accepts `'speed'` and `'data'`.                       |

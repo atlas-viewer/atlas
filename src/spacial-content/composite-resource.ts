@@ -9,6 +9,7 @@ import type { SpacialContent } from './spacial-content';
 
 type RenderOptions = {
   renderSmallestFallback: boolean;
+  /** Number of fully loaded visible layers; loading layers do not consume this limit. */
   renderLayers: number;
   minSize: number;
   maxImageSize: number;
@@ -21,6 +22,13 @@ type RenderOptions = {
   fadeFallbackTiles: boolean;
   fadeOnLayerChange: boolean;
   clipToBounds: boolean;
+  /**
+   * Layers whose `display.scale` differs by less than this are treated as the same
+   * quality level, and only one of them is kept. The default suits IIIF scale factors
+   * (1, 2, 4, ...). Content whose scales are fractional (e.g. map tile pyramids, where
+   * scale is world units per source pixel) should set this to `0` to keep every level.
+   */
+  minScaleGap: number;
 };
 
 export type CompositeResourceProps = Partial<RenderOptions>;
@@ -82,6 +90,7 @@ export class CompositeResource
       fadeFallbackTiles: false,
       fadeOnLayerChange: false,
       clipToBounds: false,
+      minScaleGap: 0.25,
       ...(data.renderOptions || {}),
     };
 
@@ -142,6 +151,10 @@ export class CompositeResource
     }
     if (typeof props.clipToBounds !== 'undefined' && props.clipToBounds !== this.renderOptions.clipToBounds) {
       this.renderOptions.clipToBounds = props.clipToBounds;
+    }
+    if (typeof props.minScaleGap !== 'undefined' && props.minScaleGap !== this.renderOptions.minScaleGap) {
+      this.renderOptions.minScaleGap = props.minScaleGap;
+      shouldResort = true;
     }
 
     if (shouldResort) {
@@ -235,7 +248,7 @@ export class CompositeResource
       }
 
       const diff = Math.abs(image.display.scale - lastScale);
-      if (diff < 0.25 || image.priority) {
+      if (diff < this.renderOptions.minScaleGap || image.priority) {
         const otherImage = this.images.pop();
         if (otherImage && (otherImage instanceof SingleImage || otherImage.priority)) {
           if (image.priority) {
@@ -320,7 +333,12 @@ export class CompositeResource
       }
       const smallestIdx = toPaintIdx[0];
       if (this.renderOptions.renderLayers) {
-        toPaintIdx = toPaintIdx.slice(-Math.min(toPaintIdx.length, this.renderOptions.renderLayers));
+        let loadedLayers = 0;
+        toPaintIdx = [];
+        for (let i = bestIndex; i < len; i++) {
+          toPaintIdx.unshift(i);
+          if (this.isImageLoaded(this.images[i], target) && ++loadedLayers >= this.renderOptions.renderLayers) break;
+        }
       }
 
       if (this.renderOptions.renderSmallestFallback && toPaintIdx.indexOf(smallestIdx) === -1) {
@@ -401,6 +419,20 @@ export class CompositeResource
     }
 
     return toPaint;
+  }
+
+  protected isImageLoaded(image: SpacialContent, target: Strand): boolean {
+    if (!image.getImageUrl) return true;
+    let visible = false;
+    for (const [paint, points] of image.getAllPointsAt(target)) {
+      const hosts = [paint.__host?.canvas, paint.__host?.webgl];
+      for (let offset = 0; offset < points.length; offset += 5) {
+        if (!points[offset]) continue;
+        visible = true;
+        if (!hosts.some((host) => host?.isTileLoaded?.(offset / 5))) return false;
+      }
+    }
+    return visible;
   }
 
   isImageActive(image: SpacialContent): boolean {

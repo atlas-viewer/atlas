@@ -1496,7 +1496,6 @@ export class CanvasRenderer implements Renderer {
                 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
                 canvas.width = points[3] - points[1];
                 canvas.height = points[4] - points[2];
-                this.hostCache.set(imageBuffer.canvases[index], canvas);
                 this.drawCalls.push(() => {
                   const commitState = this.getTileState(imageBuffer, index);
                   if (commitState.lastRequestKey !== requestKey || commitState.state !== 'loading') {
@@ -1521,6 +1520,8 @@ export class CanvasRenderer implements Renderer {
                     });
                   }
                   ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
+                  // An empty cached canvas must not displace the loaded fallback before this draw commits.
+                  this.hostCache.set(imageBuffer.canvases[index], canvas);
                   const finalState = this.getTileState(imageBuffer, index);
                   this.setTileState(imageBuffer, index, {
                     ...finalState,
