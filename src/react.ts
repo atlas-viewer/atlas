@@ -14,6 +14,8 @@ export * from './modules/react-reconciler/components/MapAttribution';
 export * from './modules/react-reconciler/components/MapGeoJSON';
 export * from './modules/react-reconciler/components/MapObject';
 export * from './modules/react-reconciler/components/MapTileLayer';
+export * from './modules/react-reconciler/components/MapWarpedImage';
+export * from './modules/react-reconciler/components/WarpedMapLayer';
 export * from './modules/react-reconciler/components/TileSet';
 export * from './modules/react-reconciler/hooks/use-after-frame';
 export * from './modules/react-reconciler/hooks/use-after-paint';

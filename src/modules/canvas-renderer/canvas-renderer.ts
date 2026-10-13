@@ -7,6 +7,8 @@ import type { Renderer } from '../../renderer/renderer';
 import { SingleImage } from '../../spacial-content/single-image';
 import type { SpacialContent } from '../../spacial-content/spacial-content';
 import { TiledImage } from '../../spacial-content/tiled-image';
+import { isWarpedImage } from '../../spacial-content/warped-image';
+import type { WarpMeshTile } from '../maps/warped/mesh';
 import type { HookOptions } from '../../standalone';
 import type { PositionPair } from '../../types';
 import { getZoneConstrainedBounds } from '../../utility/get-zone-constrained-bounds';
@@ -231,6 +233,11 @@ export class CanvasRenderer implements Renderer {
    * Canvas context for `this.canvas`
    */
   ctx: CanvasRenderingContext2D;
+  private warpCompositeCanvas?: HTMLCanvasElement;
+  private warpCompositeContext?: CanvasRenderingContext2D;
+  private warpCompositeAlpha = 1;
+  private warpCompositeGroup?: SpacialContent;
+  private warpCompositePending = false;
 
   /**
    * Rendering options added in the constructor.
@@ -396,6 +403,7 @@ export class CanvasRenderer implements Renderer {
   private viewTransformSaved = false;
 
   afterFrame(world: World): void {
+    this.flushWarpComposite();
     // this.lastPaintedObject = paint.__owner.value;
     this.clearTransform();
     this.lastPaintedObject = undefined;
@@ -1130,7 +1138,7 @@ export class CanvasRenderer implements Renderer {
         this.visible.push(paint);
 
         const baseOpacity =
-          (typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) * zoneVisibilityAlpha;
+          (this.warpCompositeContext ? 1 : typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) * zoneVisibilityAlpha;
         if (!baseOpacity) {
           return;
         }
@@ -1181,7 +1189,10 @@ export class CanvasRenderer implements Renderer {
           }
           this.ctx.globalAlpha = ga * baseOpacity * fadeAlpha;
 
-          if (paint.crop && paint.cropData) {
+          const warpTile = isWarpedImage(paint) ? paint.getWarpTile(index) : undefined;
+          if (warpTile) {
+            this.drawWarpedTile(canvasToPaint, warpTile, x, y, width, height);
+          } else if (paint.crop && paint.cropData) {
             if (paint.crop[index * 5]) {
               const source = [
                 paint.crop[index * 5 + 1] / paint.display.scale - paint.display.points[index * 5 + 1],
@@ -1378,6 +1389,123 @@ export class CanvasRenderer implements Renderer {
 
       this.ctx.globalAlpha = ga;
     }
+  }
+
+  /**
+   * Draws one tile of a warped image: either a single affine draw, or a triangle mesh where each
+   * triangle is clipped and drawn with the affine transform that maps its texture triangle onto its
+   * destination triangle.
+   */
+  private drawWarpedTile(
+    source: CanvasImageSource,
+    tile: WarpMeshTile,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ) {
+    const boundsWidth = tile.bounds.x2 - tile.bounds.x1;
+    const boundsHeight = tile.bounds.y2 - tile.bounds.y1;
+    if (!(boundsWidth > 0) || !(boundsHeight > 0) || tile.indices.length === 0) {
+      return;
+    }
+
+    const ctx = this.ctx;
+    // Map-frame units to screen pixels for this tile.
+    const kx = width / boundsWidth;
+    const ky = height / boundsHeight;
+    ctx.imageSmoothingEnabled = true;
+
+    if (tile.destinationMask) {
+      const mask = tile.destinationMask;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x + mask[0] * kx, y + mask[1] * ky);
+      for (let i = 2; i < mask.length; i += 2) ctx.lineTo(x + mask[i] * kx, y + mask[i + 1] * ky);
+      ctx.closePath();
+      ctx.clip('evenodd');
+    }
+
+    if (tile.affine) {
+      const [a, b, c, d, e, f] = tile.affine;
+      ctx.save();
+      ctx.transform(a * kx, b * ky, c * kx, d * ky, x + e * kx, y + f * ky);
+      this.clipWarpResourceMask(tile);
+      ctx.drawImage(source, 0, 0);
+      ctx.restore();
+      if (tile.destinationMask) ctx.restore();
+      return;
+    }
+
+    const { src, dst, indices } = tile;
+    // Grow each clip triangle slightly so neighbouring triangles overlap instead of leaving seams.
+    const grow = 0.5;
+    for (let t = 0; t < indices.length; t += 3) {
+      const i0 = indices[t] * 2;
+      const i1 = indices[t + 1] * 2;
+      const i2 = indices[t + 2] * 2;
+
+      const s0x = src[i0];
+      const s0y = src[i0 + 1];
+      const s1x = src[i1];
+      const s1y = src[i1 + 1];
+      const s2x = src[i2];
+      const s2y = src[i2 + 1];
+
+      const d0x = x + dst[i0] * kx;
+      const d0y = y + dst[i0 + 1] * ky;
+      const d1x = x + dst[i1] * kx;
+      const d1y = y + dst[i1 + 1] * ky;
+      const d2x = x + dst[i2] * kx;
+      const d2y = y + dst[i2 + 1] * ky;
+
+      const det = (s1x - s0x) * (s2y - s0y) - (s2x - s0x) * (s1y - s0y);
+      if (!det) {
+        continue;
+      }
+
+      const a = ((d1x - d0x) * (s2y - s0y) - (d2x - d0x) * (s1y - s0y)) / det;
+      const c = ((d2x - d0x) * (s1x - s0x) - (d1x - d0x) * (s2x - s0x)) / det;
+      const e = d0x - a * s0x - c * s0y;
+      const b = ((d1y - d0y) * (s2y - s0y) - (d2y - d0y) * (s1y - s0y)) / det;
+      const d = ((d2y - d0y) * (s1x - s0x) - (d1y - d0y) * (s2x - s0x)) / det;
+      const f = d0y - b * s0x - d * s0y;
+
+      const cx = (d0x + d1x + d2x) / 3;
+      const cy = (d0y + d1y + d2y) / 3;
+      const grown = (px: number, py: number): [number, number] => {
+        const dx = px - cx;
+        const dy = py - cy;
+        const length = Math.hypot(dx, dy) || 1;
+        return [px + (dx / length) * grow, py + (dy / length) * grow];
+      };
+      const g0 = grown(d0x, d0y);
+      const g1 = grown(d1x, d1y);
+      const g2 = grown(d2x, d2y);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(g0[0], g0[1]);
+      ctx.lineTo(g1[0], g1[1]);
+      ctx.lineTo(g2[0], g2[1]);
+      ctx.closePath();
+      ctx.clip();
+      ctx.transform(a, b, c, d, e, f);
+      this.clipWarpResourceMask(tile);
+      ctx.drawImage(source, 0, 0);
+      ctx.restore();
+    }
+    if (tile.destinationMask) ctx.restore();
+  }
+
+  private clipWarpResourceMask(tile: WarpMeshTile) {
+    const mask = tile.resourceMask;
+    if (!mask) return;
+    this.ctx.beginPath();
+    this.ctx.moveTo(mask[0], mask[1]);
+    for (let i = 2; i < mask.length; i += 2) this.ctx.lineTo(mask[i], mask[i + 1]);
+    this.ctx.closePath();
+    this.ctx.clip('evenodd');
   }
 
   schedulePaintToCanvas(
@@ -1614,9 +1742,36 @@ export class CanvasRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent, points: Strand): void {
     this.hasActiveLayerClip = false;
+    const compositeOpacity =
+      isWarpedImage(paint) && paint.compositeOpacity && paint.style.opacity > 0 && paint.style.opacity < 1;
+    const group = compositeOpacity ? paint.__parent : undefined;
+    if (
+      this.warpCompositePending &&
+      (group !== this.warpCompositeGroup || paint.style?.opacity !== this.warpCompositeAlpha)
+    ) {
+      this.flushWarpComposite();
+    }
 
     if (paint.__owner.value) {
       this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+    }
+
+    if (compositeOpacity) {
+      // Apply opacity once across mesh triangles and zoom levels so their overlaps do not darken the overlay.
+      const canvas = this.warpCompositeCanvas || (this.warpCompositeCanvas = document.createElement('canvas'));
+      if (canvas.width !== this.canvas.width) canvas.width = this.canvas.width;
+      if (canvas.height !== this.canvas.height) canvas.height = this.canvas.height;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        if (!this.warpCompositePending) context.clearRect(0, 0, canvas.width, canvas.height);
+        context.setTransform(this.ctx.getTransform());
+        context.globalAlpha = 1;
+        this.warpCompositeAlpha = paint.style!.opacity;
+        this.warpCompositeGroup = group;
+        this.warpCompositeContext = this.ctx;
+        this.ctx = context;
+      }
     }
 
     if (this.shouldClipLayerToBounds(paint)) {
@@ -1643,9 +1798,26 @@ export class CanvasRenderer implements Renderer {
       this.ctx.restore();
       this.hasActiveLayerClip = false;
     }
+    if (this.warpCompositeContext) {
+      this.ctx = this.warpCompositeContext;
+      this.warpCompositeContext = undefined;
+      this.warpCompositePending = true;
+      if (!this.warpCompositeGroup) this.flushWarpComposite();
+    }
     if (this.lastPaintedObject) {
       this.clearTransform();
     }
+  }
+
+  private flushWarpComposite() {
+    if (!this.warpCompositePending) return;
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.globalAlpha *= this.warpCompositeAlpha;
+    this.ctx.drawImage(this.warpCompositeCanvas!, 0, 0);
+    this.ctx.restore();
+    this.warpCompositePending = false;
+    this.warpCompositeGroup = undefined;
   }
 
   createImageHost(paint: SingleImage | TiledImage) {
@@ -1824,6 +1996,13 @@ export class CanvasRenderer implements Renderer {
   }
 
   reset() {
+    this.warpCompositePending = false;
+    this.warpCompositeGroup = undefined;
+    if (this.warpCompositeCanvas) {
+      this.warpCompositeCanvas.width = 0;
+      this.warpCompositeCanvas.height = 0;
+      this.warpCompositeCanvas = undefined;
+    }
     this.resetGeneration += 1;
     this.loadingQueue = [];
     this.drawCalls = [];

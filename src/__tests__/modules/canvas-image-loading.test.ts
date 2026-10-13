@@ -1,3 +1,8 @@
+import { MapTilePyramid } from '../../spacial-content/map-tile-pyramid';
+import { WarpedMapResource } from '../../spacial-content/warped-map-layer';
+import { mercatorXToLongitude, mercatorYToLatitude } from '../../modules/maps/projection';
+import { World } from '../../world';
+import { WorldObject } from '../../world-objects/world-object';
 /** @vitest-environment happy-dom */
 
 import { describe, expect, test, vi } from 'vitest';
@@ -710,3 +715,53 @@ test('moving a massive tile window releases old canvases and pending work before
   expect(image.renderRows * image.renderColumns).toBe(image.points.length / 5);
   renderer.reset();
 });
+
+test.each(['map', 'warp'])(
+  '%s panning releases obsolete renderer buffers and unmount releases retained windows',
+  async (kind) => {
+    const { renderer } = createRenderer({ lruCache: true });
+    const layer =
+      kind === 'map'
+        ? new MapTilePyramid({
+            id: 'map',
+            bounds: { west: -74.3, south: 40.45, east: -73.6, north: 40.95 },
+            worldWidth: 2400,
+            worldHeight: 1600,
+            minZoom: 8,
+            maxZoom: 21,
+            maxTilesPerLayer: 4096,
+          })
+        : new WarpedMapResource({
+            id: 'warp',
+            imageWidth: 6000,
+            imageHeight: 4000,
+            transformer: {
+              type: 'affine',
+              toGeo: (x, y) => [mercatorXToLongitude(0.3 + x * 1e-6), mercatorYToLatitude(0.4 + y * 1e-6)],
+            },
+          });
+    layer._sortByScales();
+    const world = new World(6000, 4000);
+    const object = new WorldObject({ id: 'parent', width: 6000, height: 4000, layers: [layer] });
+    world.appendChild(object);
+    for (const x of [200, 600, 1000, 1400]) {
+      const target = new Float32Array([1, x, 700, x + 60, 740]);
+      layer.getAllPointsAt(target, undefined, 20);
+      for (const update of layer.getScheduledUpdates(target, 20)) await update();
+      for (const image of layer.allImages) if (!image.__host) renderer.createImageHost(image as TiledImage);
+      expect((renderer as any).imageBuffers.size).toBe(layer.allImages.length);
+    }
+    const current = layer.allImages[0];
+    const buffer = current.__host.canvas;
+    const canvas = { width: 256, height: 256 } as HTMLCanvasElement;
+    buffer.canvases[0] = 'retained';
+    renderer.hostCache.set('retained', canvas);
+    world.removeChild(object);
+    expect((renderer as any).imageBuffers.size).toBe(0);
+    expect(renderer.hostCache.size).toBe(0);
+    expect(renderer.invalidated).toHaveLength(0);
+    expect(canvas.width).toBe(0);
+    expect(current.__host).toBeUndefined();
+    renderer.reset();
+  }
+);

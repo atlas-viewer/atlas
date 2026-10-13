@@ -14,6 +14,8 @@ import { MapTilePyramid } from '../../spacial-content/map-tile-pyramid';
 import { MapTiledImage } from '../../spacial-content/map-tiled-image';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
+import { WarpedImage } from '../../spacial-content/warped-image';
+import { WarpedMapResource } from '../../spacial-content/warped-map-layer';
 import { World } from '../../world';
 import { WorldObject } from '../../world-objects/world-object';
 import { Zone } from '../../world-objects/zone';
@@ -332,6 +334,13 @@ function createInstance(
     case 'mapTilePyramid':
     case 'map-tile-pyramid':
       instance = new MapTilePyramid(props);
+      break;
+    case 'warpedImage':
+    case 'warped-image':
+      instance = new WarpedImage(props);
+      break;
+    case 'warped-map-layer':
+      instance = new WarpedMapResource(props);
       break;
     case 'paragraph':
       instance = new Text();

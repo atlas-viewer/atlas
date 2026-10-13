@@ -5,6 +5,8 @@ import type { GeometryProps } from '../../objects/geometry';
 import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
 import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
 import type { MapTilePyramidProps } from '../../spacial-content/map-tile-pyramid';
+import type { WarpedImageProps } from '../../spacial-content/warped-image';
+import type { WarpedMapResourceProps } from '../../spacial-content/warped-map-layer';
 import type { MapBounds, MapTileSource } from '../maps/types';
 
 type BaseElement = {
@@ -115,6 +117,9 @@ declare global {
         region?: MapBounds;
         maxTiles?: number;
       } & AllEvents;
+      warpedImage: BaseElement & WarpedImageProps & { style?: { opacity?: number } } & AllEvents;
+      ['warped-map-layer']: BaseElement & WarpedMapResourceProps & AllEvents;
+      ['warped-image']: BaseElement & WarpedImageProps & { style?: { opacity?: number } } & AllEvents;
       mapTilePyramid: BaseElement & MapTilePyramidProps & AllEvents;
       ['map-tile-pyramid']: BaseElement & MapTilePyramidProps & AllEvents;
       ['map-tiled-image']: BaseElement & {

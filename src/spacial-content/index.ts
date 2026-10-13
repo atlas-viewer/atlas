@@ -5,3 +5,5 @@ export * from './map-tiled-image';
 export * from './single-image';
 export * from './spacial-content';
 export * from './tiled-image';
+export * from './warped-image';
+export * from './warped-map-layer';

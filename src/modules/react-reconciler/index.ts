@@ -13,6 +13,8 @@ export * from './components/MapAttribution';
 export * from './components/MapGeoJSON';
 export * from './components/MapObject';
 export * from './components/MapTileLayer';
+export * from './components/MapWarpedImage';
+export * from './components/WarpedMapLayer';
 export * from './components/RegionHighlight';
 export * from './components/ResizeWorldItem';
 export * from './components/TileSet';
