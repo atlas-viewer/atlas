@@ -10,6 +10,7 @@ import { Text } from '../../objects/text';
 import { Runtime } from '../../renderer/runtime';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { ImageTexture } from '../../spacial-content/image-texture';
+import { MapTilePyramid } from '../../spacial-content/map-tile-pyramid';
 import { MapTiledImage } from '../../spacial-content/map-tiled-image';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
@@ -323,7 +324,14 @@ function createInstance(
         tileSource: props.tileSource,
         tileUrlTemplate: props.tileUrlTemplate,
         subdomains: props.subdomains,
+        retina: props.retina,
+        region: props.region,
+        maxTiles: props.maxTiles,
       });
+      break;
+    case 'mapTilePyramid':
+    case 'map-tile-pyramid':
+      instance = new MapTilePyramid(props);
       break;
     case 'paragraph':
       instance = new Text();

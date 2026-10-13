@@ -10,6 +10,7 @@ export * from './utility/easing-functions';
 export * from './utility/merge-styles';
 export * from './modules/react-reconciler/components/AtlasContext';
 export * from './modules/react-reconciler/components/ImageService';
+export * from './modules/react-reconciler/components/MapAttribution';
 export * from './modules/react-reconciler/components/MapGeoJSON';
 export * from './modules/react-reconciler/components/MapObject';
 export * from './modules/react-reconciler/components/MapTileLayer';

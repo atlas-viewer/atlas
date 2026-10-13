@@ -37,6 +37,8 @@ export type MapTileUrlContext = {
   s?: string;
   subdomains?: string[];
   tileSize?: number;
+  /** Used to resolve the `{r}` token (`@2x` when true, empty otherwise). */
+  retina?: boolean;
 };
 
 export type MapTileSource = string | ((ctx: MapTileUrlContext) => string);

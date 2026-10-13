@@ -4,6 +4,7 @@ import type { BoxStyle } from '../../objects/box';
 import type { GeometryProps } from '../../objects/geometry';
 import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
 import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
+import type { MapTilePyramidProps } from '../../spacial-content/map-tile-pyramid';
 import type { MapBounds, MapTileSource } from '../maps/types';
 
 type BaseElement = {
@@ -110,7 +111,12 @@ declare global {
         tileSource?: MapTileSource;
         tileUrlTemplate?: string;
         subdomains?: string[];
+        retina?: boolean;
+        region?: MapBounds;
+        maxTiles?: number;
       } & AllEvents;
+      mapTilePyramid: BaseElement & MapTilePyramidProps & AllEvents;
+      ['map-tile-pyramid']: BaseElement & MapTilePyramidProps & AllEvents;
       ['map-tiled-image']: BaseElement & {
         bounds: MapBounds;
         worldWidth: number;
@@ -121,6 +127,9 @@ declare global {
         tileSource?: MapTileSource;
         tileUrlTemplate?: string;
         subdomains?: string[];
+        retina?: boolean;
+        region?: MapBounds;
+        maxTiles?: number;
       } & AllEvents;
       box: BaseElement & {
         interactive?: boolean;

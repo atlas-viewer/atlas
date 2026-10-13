@@ -9,6 +9,7 @@ export * from './components/BoxDraw';
 export * from './components/DevTools';
 export * from './components/HTMLPortal';
 export * from './components/ImageService';
+export * from './components/MapAttribution';
 export * from './components/MapGeoJSON';
 export * from './components/MapObject';
 export * from './components/MapTileLayer';
