@@ -2,7 +2,7 @@
 
 Canvas2D resource changes keep the previous presentation on screen while the replacement is prepared offscreen. Call `runtime.resetReadyState()` before replacing a scene, or use the React `<Atlas readyResetKey={resourceId}>` property. The key must change when the displayed resource changes. Panning and zooming continue to draw directly.
 
-The renderer now drains each queued draw batch completely and reuses decoded tile bitmaps by image URL and dimensions across scene objects. Its default bitmap cache retains up to 64 MiB of estimated RGBA memory; `lruCache: false` explicitly disables that retention. One oversized bitmap may occupy the budget alone. A resource handoff does not use the initial-load progressive-reveal timeout. Failed image requests retain the existing error handling; this does not promise complete imagery when the provider fails.
+The renderer now drains each queued draw batch completely and reuses decoded tile bitmaps by image URL and dimensions across scene objects. Its default bitmap cache retains up to 64 MiB of estimated RGBA memory; `lruCache: false` explicitly disables that retention. Cached bitmaps survive scene and map-window disposal within that budget; renderer reset releases them. With `lruCache: false`, bitmaps are released after their last scene consumer is disposed. One oversized bitmap may occupy the budget alone. A resource handoff does not use the initial-load progressive-reveal timeout. Failed image requests retain the existing error handling; this does not promise complete imagery when the provider fails.
 
 ## Preload an adjacent canvas
 

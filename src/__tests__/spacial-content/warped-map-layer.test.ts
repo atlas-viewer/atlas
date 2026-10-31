@@ -127,3 +127,27 @@ test('invalid configuration is rejected before attempting tile work', () => {
   expect(() => new WarpedMapResource({ ...props, maxZoom: NaN })).toThrow(/zoom/);
   expect(() => new WarpedMapResource({ ...props, maxTiles: 0 })).toThrow(/budget/);
 });
+
+test('preserves fractional tile bounds on a very large image', async () => {
+  const layer = new WarpedMapResource({
+    id: 'large',
+    imageWidth: 2 ** 28,
+    imageHeight: 2 ** 28,
+    transformer: {
+      type: 'affine',
+      toGeo: (x, y) => [mercatorXToLongitude(0.3 + x * 1e-9), mercatorYToLatitude(0.3 + y * 1e-9)],
+    },
+  });
+  const target = new Float64Array([1, 100000000.125, 100000000.25, 100000100.125, 100000100.25]) as any;
+  layer.getAllPointsAt(target, undefined, 4);
+  for (const update of layer.getScheduledUpdates(target, 4)) await update();
+  expect(layer.images.length).toBe(1);
+  const image = layer.images[0] as any;
+  for (let i = 0; i < image.tiles.length; i++) {
+    const bounds = image.getWarpTile(i).bounds;
+    expect(image.points[i * 5 + 1]).toBeCloseTo(bounds.x1, 5);
+    expect(image.points[i * 5 + 2]).toBeCloseTo(bounds.y1, 5);
+    expect(image.points[i * 5 + 3]).toBeCloseTo(bounds.x2, 5);
+    expect(image.points[i * 5 + 4]).toBeCloseTo(bounds.y2, 5);
+  }
+});

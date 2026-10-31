@@ -118,6 +118,66 @@ function setCompositeState(
 }
 
 describe('Canvas image loading behavior', () => {
+  test.each([false, true])('disposing one image preserves a shared bitmap (lruCache: %s)', (lruCache) => {
+    const { renderer, context } = createRenderer({ readiness: 'immediate', lruCache });
+    const first = createImage('shared-first');
+    const second = createImage('shared-second');
+    second.uri = first.uri;
+    const tile = { width: 100, height: 100 } as HTMLCanvasElement;
+    renderer.hostCache.set(`${first.uri}::100x100`, tile);
+    renderer.paint(first, 0, 0, 0, 100, 100);
+    renderer.paint(second, 0, 0, 0, 100, 100);
+    first.dispose();
+    context.drawImage.mockClear();
+    renderer.paint(second, 0, 0, 0, 100, 100);
+    expect(context.drawImage).toHaveBeenCalled();
+    expect(tile.width).toBe(100);
+    expect(renderer.loadingQueue).toHaveLength(0);
+    renderer.reset();
+  });
+
+  test('retains a bounded bitmap across a scene unmount and remount', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const first = createImage('retained-first');
+    const second = createImage('retained-second');
+    second.uri = first.uri;
+    const tile = { width: 100, height: 100 } as HTMLCanvasElement;
+    renderer.hostCache.set(`${first.uri}::100x100`, tile);
+    renderer.paint(first, 0, 0, 0, 100, 100);
+    first.dispose();
+    renderer.paint(second, 0, 0, 0, 100, 100);
+    expect(second.__host.canvas.isTileLoaded(0)).toBe(true);
+    expect(renderer.loadingQueue).toHaveLength(0);
+    renderer.reset();
+    expect(tile.width).toBe(0);
+  });
+
+  test('reuses a replacement cache entry without stale eviction invalidations', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const image = createImage('replacement');
+    const key = `${image.uri}::100x100`;
+    renderer.hostCache.set(key, { width: 100, height: 100 } as HTMLCanvasElement);
+    renderer.hostCache.set(key, { width: 100, height: 100 } as HTMLCanvasElement);
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    expect(image.__host.canvas.isTileLoaded(0)).toBe(true);
+    expect(renderer.loadingQueue).toHaveLength(0);
+    renderer.reset();
+  });
+
+  test('resizes the staging surface during a resource handoff', () => {
+    const { renderer } = createRenderer();
+    const staging = { width: 0, height: 0, getContext: () => createMockContext() };
+    vi.spyOn(document, 'createElement').mockReturnValue(staging as any);
+    renderer.firstMeaningfulPaint = true;
+    renderer.resetReadyState();
+    renderer.canvas.width = 512;
+    renderer.canvas.height = 384;
+    renderer.beforeFrame({} as any, 16, new Float32Array([1, 0, 0, 512, 384]), defaultHookOptions as any);
+    expect(staging.width).toBe(512);
+    expect(staging.height).toBe(384);
+    renderer.reset();
+  });
+
   test('retains one oversized image without allowing the cache to accumulate more entries', () => {
     const { renderer } = createRenderer();
     const huge = { width: 10000, height: 10000 } as HTMLCanvasElement;
@@ -132,7 +192,7 @@ describe('Canvas image loading behavior', () => {
     const draws = Array.from({ length: 5 }, () => vi.fn());
     renderer.drawCalls.push(...draws);
     renderer.afterFrame({ objects: [], hasActiveZone: () => true } as any);
-    expect(draws.every(draw => draw.mock.calls.length === 1)).toBe(true);
+    expect(draws.every((draw) => draw.mock.calls.length === 1)).toBe(true);
     expect(renderer.drawCalls).toHaveLength(0);
   });
 
@@ -714,7 +774,11 @@ describe('Canvas image loading behavior', () => {
   test('resetReadyState clears first meaningful paint in non-immediate mode', () => {
     const { renderer } = createRenderer();
     renderer.firstMeaningfulPaint = true;
-    vi.spyOn(document, 'createElement').mockReturnValue({ width: 256, height: 256, getContext: () => createMockContext() } as any);
+    vi.spyOn(document, 'createElement').mockReturnValue({
+      width: 256,
+      height: 256,
+      getContext: () => createMockContext(),
+    } as any);
 
     renderer.resetReadyState();
 
@@ -765,7 +829,11 @@ describe('Canvas image loading behavior', () => {
     vi.useFakeTimers();
     try {
       const { renderer } = createRenderer();
-      vi.spyOn(document, 'createElement').mockReturnValue({ width: 256, height: 256, getContext: () => createMockContext() } as any);
+      vi.spyOn(document, 'createElement').mockReturnValue({
+        width: 256,
+        height: 256,
+        getContext: () => createMockContext(),
+      } as any);
       renderer.firstMeaningfulPaint = true;
       renderer.resetReadyState('ready-reset-key-change');
       renderer.visible = [createImage('slow-replacement')];
@@ -780,7 +848,7 @@ describe('Canvas image loading behavior', () => {
 });
 
 test('moving a massive tile window releases old canvases and pending work before reusing indices', () => {
-  const { renderer } = createRenderer();
+  const { renderer } = createRenderer({ lruCache: false });
   const image = TiledImage.fromTile(
     'https://example.org/huge',
     { width: 134217728, height: 134217728 },
@@ -855,10 +923,28 @@ test.each(['map', 'warp'])(
     renderer.hostCache.set('retained', canvas);
     world.removeChild(object);
     expect((renderer as any).imageBuffers.size).toBe(0);
-    expect(renderer.hostCache.size).toBe(0);
+    expect(renderer.hostCache.size).toBe(1);
     expect(renderer.invalidated).toHaveLength(0);
-    expect(canvas.width).toBe(0);
+    expect(canvas.width).toBe(256);
     expect(current.__host).toBeUndefined();
     renderer.reset();
+    expect(renderer.hostCache.size).toBe(0);
+    expect(canvas.width).toBe(0);
   }
 );
+
+test('retired scenes stay within the bitmap budget without accumulating eviction keys', () => {
+  const { renderer } = createRenderer({ readiness: 'immediate' });
+  for (let i = 0; i < 100; i++) {
+    const image = createImage(`retired-${i}`);
+    const key = `${image.uri}::100x100`;
+    renderer.hostCache.set(key, { width: 512, height: 512 } as HTMLCanvasElement);
+    renderer.paint(image, 0, 0, 0, 100, 100);
+    image.dispose();
+  }
+  expect(renderer.hostCache.size).toBe(64);
+  expect(renderer.invalidated).toHaveLength(0);
+  expect((renderer as any).imageBuffers.size).toBe(0);
+  renderer.reset();
+  expect(renderer.hostCache.size).toBe(0);
+});

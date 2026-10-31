@@ -51,7 +51,24 @@ function scaleFactorFor(coverage: MapTileGridCoverage, tileSize: number, worldWi
  * tile budgets. Deeper zooms are served by viewport windows (see MapTilePyramid).
  */
 export function planMapTileLevels(config: MapTilePlanConfig): MapTilePlan {
-  const tileSize = config.tileSize || 256;
+  for (const value of [config.worldWidth, config.worldHeight]) {
+    if (!Number.isFinite(value) || value <= 0) throw new Error('Map dimensions must be positive finite numbers');
+  }
+  for (const value of [config.minZoom ?? 0, config.maxZoom ?? 19]) {
+    if (!Number.isInteger(value) || value < 0 || value > 22)
+      throw new Error('Map zoom must be an integer between 0 and 22');
+  }
+  if ((config.minZoom ?? 0) > (config.maxZoom ?? 19)) throw new Error('minZoom must not exceed maxZoom');
+  for (const value of [
+    config.tileSize ?? 256,
+    config.maxQualityLevels ?? DEFAULT_MAP_MAX_QUALITY_LEVELS,
+    config.maxTilesPerLayer ?? DEFAULT_MAP_MAX_TILES_PER_LAYER,
+    config.maxTotalTiles ?? DEFAULT_MAP_MAX_TOTAL_TILES,
+  ]) {
+    if (!Number.isSafeInteger(value) || value <= 0)
+      throw new Error('Tile size and budgets must be positive safe integers');
+  }
+  const tileSize = config.tileSize ?? 256;
   const minZoom = Math.max(0, Math.floor(config.minZoom ?? 0));
   const maxZoom = Math.max(minZoom, Math.floor(config.maxZoom ?? 19));
   const maxQualityLevels = config.maxQualityLevels ?? DEFAULT_MAP_MAX_QUALITY_LEVELS;
@@ -79,7 +96,7 @@ export function planMapTileLevels(config: MapTilePlanConfig): MapTilePlan {
   if (!levels.length) {
     let fallbackZoom = minZoom;
     while (fallbackZoom > 0) {
-      if (coverageAt(fallbackZoom).count <= maxTilesPerLayer) {
+      if (coverageAt(fallbackZoom).count <= Math.min(maxTilesPerLayer, maxTotalTiles)) {
         break;
       }
       fallbackZoom -= 1;
@@ -143,6 +160,8 @@ type PyramidWindow = {
   image: MapTiledImage | null;
   /** Area (map frame) the window covers. */
   rect: WindowRect;
+  /** Reuse bounds based on the margin actually affordable for this window. */
+  reuseRect?: WindowRect;
 };
 
 export const MAP_TILE_PYRAMID_RENDER_OPTIONS: CompositeResourceProps = {
@@ -211,6 +230,14 @@ export class MapTilePyramid extends CompositeResource {
   /** Number of times the static levels were (re)built. Mostly useful for diagnostics and tests. */
   buildCount = 0;
 
+  private validateWindows(config: MapTilePyramidProps | MapTilePyramid['config']) {
+    const budget = config.maxTilesPerWindow ?? DEFAULT_MAP_MAX_TILES_PER_WINDOW;
+    const margin = config.windowMargin ?? DEFAULT_MAP_WINDOW_MARGIN;
+    if (!Number.isSafeInteger(budget) || budget <= 0)
+      throw new Error('Window tile budget must be a positive safe integer');
+    if (!Number.isFinite(margin) || margin < 0) throw new Error('Window margin must be finite and nonnegative');
+  }
+
   constructor(props: MapTilePyramidProps) {
     super({
       id: props.id,
@@ -223,9 +250,10 @@ export class MapTilePyramid extends CompositeResource {
     const { id: _id, ...rest } = props;
     this.config = {
       ...rest,
-      tileSize: props.tileSize || 256,
+      tileSize: props.tileSize ?? 256,
       viewportWindows: props.viewportWindows !== false,
     };
+    this.validateWindows(this.config);
     this.plan = planMapTileLevels(this.config);
     this.rebuildStaticLevels();
   }
@@ -291,6 +319,21 @@ export class MapTilePyramid extends CompositeResource {
   applyProps(props: any) {
     if (!props) {
       return;
+    }
+
+    // Explicitly removed React props restore defaults; omitted imperative updates stay partial.
+    props = { ...props };
+    const defaults = {
+      retina: false,
+      subdomains: [],
+      maxQualityLevels: DEFAULT_MAP_MAX_QUALITY_LEVELS,
+      maxTilesPerLayer: DEFAULT_MAP_MAX_TILES_PER_LAYER,
+      maxTotalTiles: DEFAULT_MAP_MAX_TOTAL_TILES,
+      maxTilesPerWindow: DEFAULT_MAP_MAX_TILES_PER_WINDOW,
+      windowMargin: DEFAULT_MAP_WINDOW_MARGIN,
+    };
+    for (const key of Object.keys(defaults)) {
+      if (key in props && props[key] === undefined) props[key] = defaults[key as keyof typeof defaults];
     }
 
     const nextRenderOptions: CompositeResourceProps = {};
@@ -372,6 +415,8 @@ export class MapTilePyramid extends CompositeResource {
       return;
     }
 
+    this.validateWindows(next);
+    const plan = planMapTileLevels(next);
     const sizeChanged = next.worldWidth !== this.config.worldWidth || next.worldHeight !== this.config.worldHeight;
     this.config = next;
     if (sizeChanged) {
@@ -380,7 +425,7 @@ export class MapTilePyramid extends CompositeResource {
       this.points.set([1, 0, 0, next.worldWidth, next.worldHeight]);
       this.display.points.set([1, 0, 0, next.worldWidth, next.worldHeight]);
     }
-    this.plan = planMapTileLevels(this.config);
+    this.plan = plan;
     this.rebuildStaticLevels();
     this._sortByScales();
     this.__revision++;
@@ -440,26 +485,25 @@ export class MapTilePyramid extends CompositeResource {
       return true;
     }
     const target = this.lastTarget as WindowRect;
-    const margin = this.config.windowMargin ?? DEFAULT_MAP_WINDOW_MARGIN;
-    const slackX = ((target.x2 - target.x1) * margin) / 4;
-    const slackY = ((target.y2 - target.y1) * margin) / 4;
-    for (const zoom of required) {
-      const existing = this.windows.get(zoom);
-      if (!existing) {
-        return true;
-      }
-      // Rebuild once the viewport gets into the outer half of the margin, unless the window
-      // already reaches the edge of the map there.
-      const rect = existing.rect;
-      const limitX1 = rect.x1 <= 0 ? -Infinity : rect.x1 + slackX;
-      const limitY1 = rect.y1 <= 0 ? -Infinity : rect.y1 + slackY;
-      const limitX2 = rect.x2 >= this.config.worldWidth ? Infinity : rect.x2 - slackX;
-      const limitY2 = rect.y2 >= this.config.worldHeight ? Infinity : rect.y2 - slackY;
-      if (target.x1 < limitX1 || target.y1 < limitY1 || target.x2 > limitX2 || target.y2 > limitY2) {
-        return true;
-      }
+    return required.some((zoom) => !this.windowCovers(this.windows.get(zoom), target));
+  }
+
+  private windowCovers(existing: PyramidWindow | undefined, target: WindowRect): boolean {
+    if (!existing) return false;
+    if (!existing.image) {
+      // A failed budget attempt is stable until the viewport changes. A smaller
+      // viewport may fit, so retry even when it is contained in the old rectangle.
+      return Object.keys(target).every(
+        (key) => target[key as keyof WindowRect] === existing.rect[key as keyof WindowRect]
+      );
     }
-    return false;
+    const rect = existing.reuseRect || existing.rect;
+    return (
+      (rect.x1 <= 0 || target.x1 >= rect.x1) &&
+      (rect.y1 <= 0 || target.y1 >= rect.y1) &&
+      (rect.x2 >= this.config.worldWidth || target.x2 <= rect.x2) &&
+      (rect.y2 >= this.config.worldHeight || target.y2 <= rect.y2)
+    );
   }
 
   private buildWindow(zoom: number, target: WindowRect): PyramidWindow {
@@ -509,7 +553,15 @@ export class MapTilePyramid extends CompositeResource {
           region,
           maxTiles,
         });
-        return { zoom, image, rect };
+        const slackX = (halfW * currentMargin) / 2;
+        const slackY = (halfH * currentMargin) / 2;
+        const reuseRect = {
+          x1: rect.x1 <= 0 ? 0 : rect.x1 + slackX,
+          y1: rect.y1 <= 0 ? 0 : rect.y1 + slackY,
+          x2: rect.x2 >= worldWidth ? worldWidth : rect.x2 - slackX,
+          y2: rect.y2 >= worldHeight ? worldHeight : rect.y2 - slackY,
+        };
+        return { zoom, image, rect, reuseRect };
       }
 
       if (currentMargin <= 0) {
@@ -539,23 +591,9 @@ export class MapTilePyramid extends CompositeResource {
       }
     }
 
-    const margin = this.config.windowMargin ?? DEFAULT_MAP_WINDOW_MARGIN;
-    const slackX = ((target.x2 - target.x1) * margin) / 4;
-    const slackY = ((target.y2 - target.y1) * margin) / 4;
-
     for (const zoom of required) {
       const existing = this.windows.get(zoom);
-      if (existing) {
-        const rect = existing.rect;
-        const covered =
-          (rect.x1 <= 0 || target.x1 >= rect.x1 + slackX) &&
-          (rect.y1 <= 0 || target.y1 >= rect.y1 + slackY) &&
-          (rect.x2 >= this.config.worldWidth || target.x2 <= rect.x2 - slackX) &&
-          (rect.y2 >= this.config.worldHeight || target.y2 <= rect.y2 - slackY);
-        if (covered) {
-          continue;
-        }
-      }
+      if (this.windowCovers(existing, target)) continue;
 
       const built = this.buildWindow(zoom, target);
       if (existing?.image) {

@@ -340,20 +340,20 @@ export class CanvasRenderer implements Renderer {
       this.canvas.style.opacity = '1';
     }
 
-    this.hostCache = options?.lruCache !== false
-      ? new LRUCache<string, HTMLCanvasElement>({
-        maxSize: 64 * 1024 * 1024, // 64 MiB of RGBA tile pixels per renderer.
-        dispose: (value, key, reason) => {
-          this.invalidated.push(key);
-          value.width = 0;
-          value.height = 0;
-        },
-        sizeCalculation: (value, key) => {
-          // A single untiled image can exceed the budget: retain it alone rather than reload forever.
-          return Math.min(64 * 1024 * 1024, Math.max(1, (value.width || 0) * (value.height || 0) * 4));
-        },
-      })
-      : new Map<string, HTMLCanvasElement>();
+    this.hostCache =
+      options?.lruCache !== false
+        ? new LRUCache<string, HTMLCanvasElement>({
+            maxSize: 64 * 1024 * 1024, // 64 MiB of RGBA tile pixels per renderer.
+            dispose: (value) => {
+              value.width = 0;
+              value.height = 0;
+            },
+            sizeCalculation: (value) => {
+              // A single untiled image can exceed the budget: retain it alone rather than reload forever.
+              return Math.min(64 * 1024 * 1024, Math.max(1, (value.width || 0) * (value.height || 0) * 4));
+            },
+          })
+        : new Map<string, HTMLCanvasElement>();
 
     // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
     //   import('stats.js')
@@ -384,10 +384,7 @@ export class CanvasRenderer implements Renderer {
     return parent && parent.renderOptions ? parent : undefined;
   }
 
-  private compareCompositeLoadPriority(
-    aPaint?: SingleImage | TiledImage,
-    bPaint?: SingleImage | TiledImage
-  ): number {
+  private compareCompositeLoadPriority(aPaint?: SingleImage | TiledImage, bPaint?: SingleImage | TiledImage): number {
     const aOwner = this.getCompositeOwner(aPaint);
     const bOwner = this.getCompositeOwner(bPaint);
     if (!aOwner || aOwner !== bOwner) {
@@ -427,9 +424,13 @@ export class CanvasRenderer implements Renderer {
       canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
       this.hostCache.set(key, canvas);
     }
-    this.setTileState(buffer, index, canvas && canvas.width && canvas.height
-      ? { state: 'decoded', loadedAt: performance.now(), skipFade: true, url }
-      : { state: 'idle', url });
+    this.setTileState(
+      buffer,
+      index,
+      canvas && canvas.width && canvas.height
+        ? { state: 'decoded', loadedAt: performance.now(), skipFade: true, url }
+        : { state: 'idle', url }
+    );
   }
 
   private viewTransformSaved = false;
@@ -453,8 +454,11 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
     if (this.stagingCanvas && !this.stagedSceneChanged) {
-      this.stagedSceneChanged = this.visible.some(paint =>
-        !this.stagedFrom.has(paint) || this.stagedFrom.get(paint) !== (paint as SingleImage | TiledImage).getImageUrl?.(0));
+      this.stagedSceneChanged = this.visible.some(
+        (paint) =>
+          !this.stagedFrom.has(paint) ||
+          this.stagedFrom.get(paint) !== (paint as SingleImage | TiledImage).getImageUrl?.(0)
+      );
     }
     if (this.stagingCanvas && this.presentationContext && this.firstMeaningfulPaint && this.visible.length) {
       const context = this.presentationContext;
@@ -604,6 +608,10 @@ export class CanvasRenderer implements Renderer {
     if (this.options.debug && this.stats) {
       this.stats.begin();
     }
+    if (this.stagingCanvas) {
+      if (this.stagingCanvas.width !== this.canvas.width) this.stagingCanvas.width = this.canvas.width;
+      if (this.stagingCanvas.height !== this.canvas.height) this.stagingCanvas.height = this.canvas.height;
+    }
     this.frameIsRendering = true;
     this.frameCounter += 1;
     this.visible = [];
@@ -635,7 +643,7 @@ export class CanvasRenderer implements Renderer {
       this.ctx.save();
       this.viewTransformSaved = true;
       this.ctx.translate(options.viewCenter.x, options.viewCenter.y);
-      this.ctx.rotate(options.viewRotation * Math.PI / 180);
+      this.ctx.rotate((options.viewRotation * Math.PI) / 180);
       this.ctx.translate(-options.viewCenter.x, -options.viewCenter.y);
     }
     const filter = buildCssFilter(options);
@@ -1200,7 +1208,8 @@ export class CanvasRenderer implements Renderer {
         this.visible.push(paint);
 
         const baseOpacity =
-          (this.warpCompositeContext ? 1 : typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) * zoneVisibilityAlpha;
+          (this.warpCompositeContext ? 1 : typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) *
+          zoneVisibilityAlpha;
         if (!baseOpacity) {
           return;
         }
@@ -1220,9 +1229,11 @@ export class CanvasRenderer implements Renderer {
           { x: x + width / 2, y: y + height / 2 },
           { x: canvas.width / 2, y: canvas.height / 2 }
         );
-        const isInvalidated = this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1;
         const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
-        const hasImage = !!canvasToPaint && !isInvalidated;
+        const hasImage = !!canvasToPaint;
+        // Cache entries are shared by URL. Their presence, not a stale eviction key,
+        // determines validity after another scene has repopulated the same URL.
+        const isInvalidated = !hasImage && tileState.state === 'decoded';
 
         if (isInvalidated) {
           this.setTileState(imageBuffer, index, {
@@ -1596,10 +1607,6 @@ export class CanvasRenderer implements Renderer {
     const id = this.imageCacheKey(paint, index);
     const requestKey = this.nextRequestKey(tileKey);
     imageBuffer.canvases[index] = id;
-    const idx = this.invalidated.indexOf(id);
-    if (idx !== -1) {
-      this.invalidated.splice(idx, 1);
-    }
 
     this.setTileState(imageBuffer, index, {
       ...tileState,
@@ -1653,7 +1660,13 @@ export class CanvasRenderer implements Renderer {
         });
 
         if (CanvasRenderer.debugTileLoad) {
-          CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'requested' });
+          CanvasRenderer.debugTileLoad({
+            paintId: paint.id,
+            index,
+            scale: paint.display.scale,
+            url,
+            status: 'requested',
+          });
         }
 
         try {
@@ -1737,7 +1750,13 @@ export class CanvasRenderer implements Renderer {
                   this.enqueueTileReveal(tileKey, imageBuffer, index);
                   this.imagesLoaded++;
                   if (CanvasRenderer.debugTileLoad) {
-                    CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'loaded' });
+                    CanvasRenderer.debugTileLoad({
+                      paintId: paint.id,
+                      index,
+                      scale: paint.display.scale,
+                      url,
+                      status: 'loaded',
+                    });
                   }
                   resolve();
                 });
@@ -1780,7 +1799,13 @@ export class CanvasRenderer implements Renderer {
           this.pendingTileReveals.delete(tileKey);
 
           if (!willRetry && CanvasRenderer.debugTileLoad) {
-            CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'failed' });
+            CanvasRenderer.debugTileLoad({
+              paintId: paint.id,
+              index,
+              scale: paint.display.scale,
+              url,
+              status: 'failed',
+            });
           }
 
           this.emitImageError({
@@ -1899,24 +1924,33 @@ export class CanvasRenderer implements Renderer {
         for (const [key, pending] of this.pendingTileReveals) {
           if (pending.imageBuffer === buffer) this.pendingTileReveals.delete(key);
         }
-        for (const key of buffer.canvases) {
-          const canvas = this.hostCache.get(key);
-          if (canvas) { canvas.width = 0; canvas.height = 0; }
-          this.hostCache.delete(key);
+        this.imageBuffers.delete(buffer);
+        // The bounded LRU owns reusable bitmaps across scene/window lifetimes.
+        // With retention disabled, release only entries no remaining host uses.
+        if (this.options.lruCache === false) {
+          const retainedKeys = new Set<string>();
+          for (const other of this.imageBuffers) {
+            for (const key of other.canvases) retainedKeys.add(key);
+          }
+          for (const key of buffer.canvases) {
+            if (retainedKeys.has(key)) continue;
+            const canvas = this.hostCache.get(key);
+            if (canvas) {
+              canvas.width = 0;
+              canvas.height = 0;
+            }
+            this.hostCache.delete(key);
+          }
         }
-        // LRU deletions enqueue invalidations; retired windows will never consume them.
-        const retiredKeys = new Set(buffer.canvases);
-        this.invalidated = this.invalidated.filter((key) => !retiredKeys.has(key));
         // Invalidate queued decode/draw closures before their indices can be reused.
         buffer.tiles = {};
-        this.imageBuffers.delete(buffer);
       },
       isTileLoaded: (index: number) => {
         const buffer = paint.__host.canvas as ImageBuffer;
         const key = buffer.canvases[index];
         return (
           buffer.tiles?.[index]?.state === 'decoded' &&
-          !!this.hostCache.get(key) && !this.invalidated.includes(key) &&
+          !!this.hostCache.get(key) &&
           this.getFadeAlpha(paint, buffer.tiles?.[index], this.isLayerActive(paint)) === 1
         );
       },
@@ -1984,7 +2018,12 @@ export class CanvasRenderer implements Renderer {
     }
 
     const waitingForScene = this.stagingCanvas && this.waitForSceneChange && !this.stagedSceneChanged;
-    if (!waitingForScene && !this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
+    if (
+      !waitingForScene &&
+      !this.firstMeaningfulPaint &&
+      ready &&
+      (this.visible.length || this.options.readiness === 'immediate')
+    ) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
       // We've not rendered yet, can we render this  frame?
@@ -2026,7 +2065,9 @@ export class CanvasRenderer implements Renderer {
       }
     }
     if (this.stagingCanvas) {
-      this.stagedFrom = new Map(this.visible.map(paint => [paint, (paint as SingleImage | TiledImage).getImageUrl?.(0)]));
+      this.stagedFrom = new Map(
+        this.visible.map((paint) => [paint, (paint as SingleImage | TiledImage).getImageUrl?.(0)])
+      );
     }
     this.waitForSceneChange = reason === 'ready-reset-key-change' || reason === 'resource-transition-key-change';
     this.stagedSceneChanged = false;

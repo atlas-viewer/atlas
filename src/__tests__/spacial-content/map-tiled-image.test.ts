@@ -202,3 +202,21 @@ describe('MapTiledImage canvas sizing and regions', () => {
     expect(image.format).toBe('png');
   });
 });
+
+test('keeps subpixel map tile positions in large world frames', () => {
+  const bounds = { west: -74.3, south: 40.45, east: -73.6, north: 40.95 };
+  const config = {
+    bounds,
+    zoom: 18,
+    worldWidth: 2 ** 28,
+    worldHeight: 2 ** 28,
+    region: { west: -74, south: 40.7, east: -73.999, north: 40.701 },
+  };
+  const grid = createFiniteTileGrid(config);
+  const small = createFiniteTileGrid({ ...config, worldWidth: 2400, worldHeight: 2400 });
+  for (let i = 0; i < grid.points.length; i += 5) {
+    for (let axis = 1; axis <= 4; axis++) {
+      expect(grid.points[i + axis]).toBeCloseTo((small.points[i + axis] / 2400) * 2 ** 28, 5);
+    }
+  }
+});

@@ -124,7 +124,9 @@ describe('MapTilePyramid', () => {
     expect(rebuilt).toHaveLength(first.length);
 
     // The new windows contain tiles under the new viewport.
-    const top = rebuilt.find((image) => (image as MapTiledImage).zoom === Math.max(...pyramid.windowZooms)) as MapTiledImage;
+    const top = rebuilt.find(
+      (image) => (image as MapTiledImage).zoom === Math.max(...pyramid.windowZooms)
+    ) as MapTiledImage;
     const p = top.points;
     let covers = false;
     for (let i = 0; i < top.tileCoordinates.length; i++) {
@@ -159,7 +161,14 @@ describe('MapTilePyramid', () => {
   });
 
   test('ignores point (hit test) selections when tracking the viewport', () => {
-    const pyramid = new MapTilePyramid({ id: 'p', bounds: NYC, ...WORLD, minZoom: 8, maxZoom: 21, maxTilesPerLayer: 4096 });
+    const pyramid = new MapTilePyramid({
+      id: 'p',
+      bounds: NYC,
+      ...WORLD,
+      minZoom: 8,
+      maxZoom: 21,
+      maxTilesPerLayer: 4096,
+    });
     pyramid._sortByScales();
     pyramid.getAllPointsAt(DnaFactory.singleBox(1, 1, 1000, 700), undefined, 20);
     runUpdates(pyramid);
@@ -213,4 +222,66 @@ describe('MapTilePyramid', () => {
     expect(pyramid.renderOptions.fadeInMs).toBe(50);
     expect(pyramid.renderOptions.minScaleGap).toBe(0);
   });
+});
+
+test('budget-constrained windows do not rebuild for an unchanged viewport', () => {
+  const pyramid = new MapTilePyramid({
+    id: 'tight-budget',
+    bounds: NYC,
+    ...WORLD,
+    minZoom: 8,
+    maxZoom: 21,
+    maxTilesPerLayer: 100,
+    maxTilesPerWindow: 8,
+  });
+  pyramid._sortByScales();
+  const viewport = { x: 1000, y: 700, width: 60, height: 40 };
+  frame(pyramid, viewport, 20);
+  const refresh = vi.spyOn(pyramid, 'refreshWindows');
+  const ids = pyramid.allImages.map((image) => image.id);
+  for (let i = 0; i < 5; i++) frame(pyramid, viewport, 20);
+  expect(refresh).not.toHaveBeenCalled();
+  expect(pyramid.allImages.map((image) => image.id)).toEqual(ids);
+});
+
+test('the coarsest fallback respects the total tile budget', () => {
+  const plan = planMapTileLevels({
+    bounds: NYC,
+    ...WORLD,
+    minZoom: 18,
+    maxZoom: 19,
+    maxTilesPerLayer: 16000,
+    maxTotalTiles: 10,
+  });
+  expect(plan.levels.reduce((sum, level) => sum + level.coverage.count, 0)).toBeLessThanOrEqual(10);
+});
+
+test.each([
+  { maxZoom: NaN },
+  { minZoom: Infinity },
+  { maxQualityLevels: 0 },
+  { maxTotalTiles: -1 },
+  { tileSize: -256 },
+  { worldWidth: NaN },
+])('rejects invalid tile plans: %o', (invalid) => {
+  expect(() => planMapTileLevels({ bounds: NYC, ...WORLD, ...invalid })).toThrow();
+});
+
+test('removing optional tile props restores their defaults', () => {
+  const pyramid = new MapTilePyramid({
+    id: 'reset-props',
+    bounds: NYC,
+    ...WORLD,
+    maxZoom: 9,
+    retina: true,
+    subdomains: ['a'],
+    maxTilesPerLayer: 1,
+    tileUrlTemplate: 'https://{s}tiles.example/{z}/{x}/{y}{r}.png',
+  });
+  pyramid.applyProps({ retina: undefined, subdomains: undefined, maxTilesPerLayer: undefined });
+  expect(pyramid.staticMaxZoom).toBe(9);
+  const image = pyramid.allImages[0] as MapTiledImage;
+  expect(image.retina).toBe(false);
+  expect(image.subdomains).toEqual([]);
+  expect(image.getImageUrl(0)).not.toContain('@2x');
 });

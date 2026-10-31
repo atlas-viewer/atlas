@@ -1,4 +1,4 @@
-import { compose, dna, translate, type Strand } from '@atlas-viewer/dna';
+import { compose, dna, translate, type Strand } from '../utility/precise-dna';
 import {
   MapMeshBudgetError,
   sampleForwardMapMesh,

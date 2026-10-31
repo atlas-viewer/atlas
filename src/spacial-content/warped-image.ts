@@ -1,4 +1,4 @@
-import { dna } from '@atlas-viewer/dna';
+import { dna } from '../utility/precise-dna';
 import {
   buildWarpMesh,
   meshUnitsPerImagePixel,

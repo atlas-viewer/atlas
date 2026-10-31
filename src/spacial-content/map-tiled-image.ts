@@ -1,4 +1,4 @@
-import { dna, type Strand } from '@atlas-viewer/dna';
+import { dna, type Strand } from '../utility/precise-dna';
 import {
   createMapProjection,
   latToTileY,
