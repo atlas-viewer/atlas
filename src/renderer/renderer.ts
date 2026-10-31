@@ -4,6 +4,8 @@ import { Paint } from '../world-objects';
 import { PositionPair } from '../types';
 import { Strand } from '@atlas-viewer/dna';
 import { HookOptions } from './runtime';
+import type { ImagePreloadOptions } from '../modules/shared/image-request-pool';
+import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
 
 export interface Renderer {
   beforeFrame(world: World, delta: number, target: Strand, options: HookOptions): void;
@@ -20,9 +22,10 @@ export interface Renderer {
   resize(): void;
   resize(width?: number, height?: number): void;
   triggerResize?: () => void;
-  resetReadyState?: () => void;
+  resetReadyState?: (reason?: AtlasReadyResetReason) => void;
   resetImageFadeState?: () => void;
   setIdle?: (idle: boolean) => void;
+  preloadImages?: (urls: readonly string[], options?: ImagePreloadOptions) => Promise<void>;
 
   reset(): void;
   getRendererScreenPosition():

@@ -341,7 +341,7 @@ export const Atlas: React.FC<
     setMode(_mode);
   }, [_mode]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     setIsReady(false);
     currentRuntimeRef.current = preset ? preset.runtime : null;
     readyResetBaselineRef.current = undefined;
@@ -389,7 +389,7 @@ export const Atlas: React.FC<
     });
   }, [preset, onReady]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!preset) {
       return;
     }

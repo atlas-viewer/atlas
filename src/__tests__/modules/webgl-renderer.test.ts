@@ -87,6 +87,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     uniform2f: vi.fn(),
     uniform1f: vi.fn(),
     createTexture: vi.fn(() => ({})),
+    deleteTexture: vi.fn(),
     bindTexture: vi.fn(),
     pixelStorei: vi.fn(),
     texImage2D: vi.fn(),
@@ -136,7 +137,8 @@ describe('WebGLRenderer fallback events', () => {
       const canvas = createMockCanvas();
       canvas.getContext = vi.fn(() => createMockGL(canvas));
       const renderer = new WebGLRenderer(canvas);
-      const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
+      const createRequest = vi
+        .spyOn(renderer.imageRequestPool as any, 'createRequest')
         .mockResolvedValue({ naturalWidth: 100 });
       const request = renderer.imageRequestPool.acquire('https://example.org/shared.jpg', 'viewer');
       await request.promise;
@@ -154,13 +156,18 @@ describe('WebGLRenderer fallback events', () => {
     const onImageError = vi.fn();
     const renderer = new WebGLRenderer(canvas, { onImageError });
     const image = new SingleImage();
-    image.applyProps({ uri: 'https://example.org/idle.jpg', target: { width: 100, height: 100 },
-      display: { width: 100, height: 100 } } as any);
+    image.applyProps({
+      uri: 'https://example.org/idle.jpg',
+      target: { width: 100, height: 100 },
+      display: { width: 100, height: 100 },
+    } as any);
     renderer.prepareLayer(image);
     const firstLoad = deferred<HTMLImageElement>();
     const secondLoad = deferred<HTMLImageElement>();
-    const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
-      .mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
+    const createRequest = vi
+      .spyOn(renderer.imageRequestPool as any, 'createRequest')
+      .mockImplementationOnce(() => firstLoad.promise)
+      .mockImplementationOnce(() => secondLoad.promise);
     renderer.paint(image, 0, 0, 0, 100, 100);
     renderer.afterFrame();
     expect(createRequest).toHaveBeenCalledTimes(1);
@@ -402,6 +409,11 @@ describe('WebGLRenderer fallback events', () => {
     const alphaArg = gl.uniform1f.mock.calls[gl.uniform1f.mock.calls.length - 1][1];
     expect(alphaArg).toBeLessThan(1);
     expect(renderer.pendingUpdate()).toBe(true);
+    expect(image.__host.webgl.isTileLoaded(0)).toBe(false);
+    image.__host.webgl.tileState[0].fadeStartedAt = performance.now() - 2000;
+    expect(image.__host.webgl.isTileLoaded(0)).toBe(true);
+    image.__host.webgl.textures[0] = undefined;
+    expect(image.__host.webgl.isTileLoaded(0)).toBe(false);
   });
 
   test('fades a newly active layer even when the texture was decoded earlier', () => {
@@ -484,7 +496,9 @@ describe('WebGLRenderer fallback events', () => {
     expect(gl.disable).toHaveBeenCalledWith(gl.SCISSOR_TEST);
 
     renderer.beforeFrame({} as any, 16, {} as any, {
-      ...defaultHookOptions, viewRotation: 90, viewCenter: { x: 50, y: 50 },
+      ...defaultHookOptions,
+      viewRotation: 90,
+      viewCenter: { x: 50, y: 50 },
     });
     renderer.prepareLayer(image, new Float32Array([1, 5, 10, 45, 50]) as any);
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.viewCenter, 50, 50);
@@ -492,7 +506,6 @@ describe('WebGLRenderer fallback events', () => {
     expect(gl.uniform1f).toHaveBeenCalledWith(renderer.uniforms.viewClip, 1);
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.clipMin, 5, 10);
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.clipMax, 45, 50);
-
   });
 
   test('does not request inactive layers but still draws cached fallback textures', () => {
@@ -1065,4 +1078,64 @@ describe('WebGLRenderer fallback events', () => {
     renderer.resetReadyState();
     expect(renderer.isReady()).toBe(true);
   });
+});
+
+test('moving a massive tile window deletes GPU textures and cancels stale requests', () => {
+  const canvas = createMockCanvas();
+  const gl = createMockGL(canvas);
+  gl.deleteTexture = vi.fn();
+  canvas.getContext = vi.fn(() => gl);
+  const renderer = new WebGLRenderer(canvas);
+  const image = TiledImage.fromTile(
+    'https://example.org/huge',
+    { width: 134217728, height: 134217728 },
+    { width: 256 },
+    1
+  );
+  image.getAllPointsAt(new Float32Array([1, 0, 0, 512, 512]));
+  renderer.createImageHost(image);
+  renderer.imagePaints.add(image);
+  const texture = {};
+  image.__host.webgl.textures[0] = texture;
+  image.__host.webgl.loading.push(1);
+  renderer.loadingCount = 1;
+  const release = vi.fn();
+  renderer.inFlightImageLoads.set('old-tile', { paint: image, release } as any);
+  renderer.pendingTileReveals.set('old-tile', { paint: image, index: 0, queuedFrame: 0 } as any);
+  renderer.tileRequestQueue.push({ paint: image, key: 'old-request' } as any);
+  renderer.queuedTileRequestKeys.add('old-request');
+
+  image.getAllPointsAt(new Float32Array([1, 100000000, 100000000, 100001024, 100001024]));
+  expect(gl.deleteTexture).toHaveBeenCalledWith(texture);
+  expect(release).toHaveBeenCalledOnce();
+  expect(renderer.imagePaints.size).toBe(0);
+  expect(renderer.loadingCount).toBe(0);
+  expect(renderer.inFlightImageLoads.size).toBe(0);
+  expect(renderer.pendingTileReveals.size).toBe(0);
+  expect(renderer.tileRequestQueue).toHaveLength(0);
+  expect(renderer.queuedTileRequestKeys.size).toBe(0);
+  renderer.reset();
+});
+
+test('removing a composite child and resetting the renderer release textures exactly once', () => {
+  const canvas = createMockCanvas();
+  const gl = createMockGL(canvas);
+  canvas.getContext = vi.fn(() => gl);
+  const renderer = new WebGLRenderer(canvas);
+  const images = [1, 2].map((index) =>
+    TiledImage.fromTile(`/iiif/${index}`, { width: 256, height: 256 }, { width: 256 }, 1)
+  );
+  const composite = new CompositeResource({ id: 'tiles', width: 256, height: 256, images });
+  for (const image of images) {
+    renderer.prepareLayer(image);
+    image.__host.webgl.onLoad(0, {});
+  }
+  composite.removeChild(images[0]);
+  images[0].dispose();
+  expect(gl.deleteTexture).toHaveBeenCalledTimes(1);
+  expect(renderer.imagePaints.size).toBe(1);
+  renderer.reset();
+  expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
+  expect(renderer.imagePaints.size).toBe(0);
+  expect(images[1].__host.webgl).toBeUndefined();
 });

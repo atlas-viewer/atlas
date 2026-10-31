@@ -719,6 +719,28 @@ describe('Atlas lifecycle runtime behavior', () => {
     }
   });
 
+  test('resets readiness on the first key change after the initial effects have settled', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    let record!: MockPresetRecord;
+    originalDefaultPreset = presets['default-preset'];
+    presets['default-preset'] = ((options: any) => {
+      record = createMockPreset(options);
+      return record.preset;
+    }) as any;
+    const render = async (key: string) => {
+      await act(async () => {
+        root.render(<Atlas width={300} height={200} readyResetKey={key} unstable_noReconciler><React.Fragment /></Atlas>);
+        await flush();
+      });
+    };
+    await render('one');
+    expect(record.runtime.resetReadyState).not.toHaveBeenCalled();
+    await render('two');
+    expect(record.runtime.resetReadyState).toHaveBeenCalledExactlyOnceWith('ready-reset-key-change');
+  });
+
   test('forwards resourceTransitionKey to the runtime', async () => {
     container = document.createElement('div');
     document.body.appendChild(container);

@@ -9,7 +9,7 @@ import {
   scaleAtOrigin,
   transform,
   translate,
-} from '@atlas-viewer/dna';
+} from '../utility/precise-dna';
 import { nanoid } from 'nanoid';
 import type { RuntimeDebugEvent } from '../modules/react-reconciler/devtools/types';
 import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
@@ -368,6 +368,10 @@ export class Runtime {
     this.resetReadyState('resource-transition-key-change');
   }
 
+  async preloadImages(urls: readonly string[], options?: { signal?: AbortSignal }) {
+    await this.renderer.preloadImages?.(urls, options);
+  }
+
   /**
    * Normalize padding input to a consistent per-side format.
    */
@@ -709,8 +713,8 @@ export class Runtime {
    * @param data
    */
   setViewport = (data: { x?: number; y?: number; width?: number; height?: number }) => {
-    const x = Math.round(typeof data.x === 'undefined' ? this.target[1] : data.x);
-    const y = Math.round(typeof data.y === 'undefined' ? this.target[2] : data.y);
+    const x = typeof data.x === 'undefined' ? this.target[1] : data.x;
+    const y = typeof data.y === 'undefined' ? this.target[2] : data.y;
 
     if (data.width) {
       this.target[3] = x + data.width;
@@ -723,12 +727,8 @@ export class Runtime {
       this.target[4] = this.target[4] - this.target[2] + y;
     }
 
-    if (Math.abs(this.target[1] - x) > 0.01) {
-      this.target[1] = x;
-    }
-    if (Math.abs(this.target[2] - y) > 0.01) {
-      this.target[2] = y;
-    }
+    this.target[1] = x;
+    this.target[2] = y;
 
     this.pendingUpdate = true;
   };
@@ -1230,7 +1230,7 @@ export class Runtime {
     this.readyReason = reason;
     this.readyTimestamp = undefined;
     if (this.renderer.resetReadyState) {
-      this.renderer.resetReadyState();
+      this.renderer.resetReadyState(reason);
     }
     this.pendingUpdate = true;
   }

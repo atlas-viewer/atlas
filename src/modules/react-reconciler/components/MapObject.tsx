@@ -1,147 +1,91 @@
 /* @refresh skip */
-import React, { useMemo } from "react";
-import {
-	createMapProjection,
-	latitudeToMercatorY,
-	longitudeToMercatorX,
-	validateMapBounds,
-} from "../../maps/projection";
-import type { MapBounds } from "../../maps/types";
-import { MapProjectionContext } from "../hooks/use-map-projection";
+import React, { useEffect, useMemo, useRef } from 'react';
+import type { supportedEventAttributes } from '../../../events';
+import { createFittedMapProjection, validateMapBounds } from '../../maps/projection';
+import type { MapBounds } from '../../maps/types';
+import { MapProjectionContext } from '../hooks/use-map-projection';
+
+type MapObjectEvents = Partial<Record<(typeof supportedEventAttributes)[number], (e: any) => void>>;
 
 export type MapObjectProps = {
-	id?: string;
-	bounds: MapBounds;
-	x?: number;
-	y?: number;
-	width: number;
-	height: number;
-	preserveAspectRatio?: boolean;
-	scale?: number;
-	rotation?: number;
-	children?: React.ReactNode;
-};
+  id?: string;
+  bounds: MapBounds;
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  preserveAspectRatio?: boolean;
+  scale?: number;
+  rotation?: number;
+  /**
+   * Called when the map can not be rendered (e.g. invalid bounds or size). The map renders
+   * nothing in that case instead of throwing out of React's render.
+   */
+  onError?: (error: Error) => void;
+  children?: React.ReactNode;
+} & MapObjectEvents;
+
+import type { WorldObject } from '../../../world-objects/world-object';
 
 export const MapObject: React.FC<MapObjectProps> = ({
-	bounds,
-	width,
-	height,
-	preserveAspectRatio = true,
-	children,
-	...worldObjectProps
+  bounds: boundsProp,
+  width,
+  height,
+  preserveAspectRatio = true,
+  onError,
+  children,
+  ...worldObjectProps
 }) => {
-	validateMapBounds(bounds);
+  // Callers commonly pass inline bounds objects; key everything on the values.
+  const { west, south, east, north } = boundsProp;
+  const bounds = useMemo<MapBounds>(() => ({ west, south, east, north }), [west, south, east, north]);
 
-	const mapRect = useMemo(() => {
-		if (!preserveAspectRatio) {
-			return { x: 0, y: 0, width, height };
-		}
+  const object = useRef<WorldObject | null>(null);
+  const { fitted, error } = useMemo(() => {
+    try {
+      validateMapBounds(bounds);
+      if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
+        throw new Error('Map width and height must be finite and greater than 0');
+      }
+      return { fitted: createFittedMapProjection({ bounds, width, height, preserveAspectRatio }), error: null };
+    } catch (e) {
+      return { fitted: null, error: e instanceof Error ? e : new Error(String(e)) };
+    }
+  }, [bounds, width, height, preserveAspectRatio]);
 
-		const mercatorWidth =
-			longitudeToMercatorX(bounds.east) - longitudeToMercatorX(bounds.west);
-		const mercatorHeight =
-			latitudeToMercatorY(bounds.south) - latitudeToMercatorY(bounds.north);
-		const mapAspect = mercatorWidth / mercatorHeight;
-		const worldAspect = width / height;
+  useEffect(() => {
+    if (error) {
+      if (onError) {
+        onError(error);
+      } else {
+        console.error(`[MapObject] ${error.message}`);
+      }
+    }
+  }, [error, onError]);
 
-		if (!Number.isFinite(mapAspect) || mapAspect <= 0) {
-			return { x: 0, y: 0, width, height };
-		}
+  const contextValue = useMemo(
+    () =>
+      fitted
+        ? {
+            bounds,
+            width,
+            height,
+            scale: worldObjectProps.scale,
+            object,
+            mapRect: fitted.mapRect,
+            projection: fitted.projection,
+          }
+        : null,
+    [bounds, fitted, height, width, worldObjectProps.scale]
+  );
 
-		if (worldAspect > mapAspect) {
-			const fittedWidth = height * mapAspect;
-			return {
-				x: (width - fittedWidth) / 2,
-				y: 0,
-				width: fittedWidth,
-				height,
-			};
-		}
+  if (!contextValue) {
+    return null;
+  }
 
-		const fittedHeight = width / mapAspect;
-		return {
-			x: 0,
-			y: (height - fittedHeight) / 2,
-			width,
-			height: fittedHeight,
-		};
-	}, [
-		bounds.east,
-		bounds.north,
-		bounds.south,
-		bounds.west,
-		height,
-		preserveAspectRatio,
-		width,
-	]);
-
-	const projection = useMemo(() => {
-		const baseProjection = createMapProjection({
-			bounds,
-			width: mapRect.width,
-			height: mapRect.height,
-		});
-
-		return {
-			lngLatToWorld(lng: number, lat: number) {
-				const world = baseProjection.lngLatToWorld(lng, lat);
-				return {
-					x: world.x + mapRect.x,
-					y: world.y + mapRect.y,
-				};
-			},
-			worldToLngLat(x: number, y: number) {
-				return baseProjection.worldToLngLat(x - mapRect.x, y - mapRect.y);
-			},
-			lngLatBoundsToWorldRect(inputBounds: MapBounds) {
-				const rect = baseProjection.lngLatBoundsToWorldRect(inputBounds);
-				return {
-					x: rect.x + mapRect.x,
-					y: rect.y + mapRect.y,
-					width: rect.width,
-					height: rect.height,
-				};
-			},
-			worldRectToLngLatBounds(rect: {
-				x: number;
-				y: number;
-				width: number;
-				height: number;
-			}) {
-				return baseProjection.worldRectToLngLatBounds({
-					x: rect.x - mapRect.x,
-					y: rect.y - mapRect.y,
-					width: rect.width,
-					height: rect.height,
-				});
-			},
-			projectRing(ring: Array<[number, number]>) {
-				return ring.map(([lng, lat]) => {
-					const point = baseProjection.lngLatToWorld(lng, lat);
-					return [point.x + mapRect.x, point.y + mapRect.y] as [number, number];
-				});
-			},
-		};
-	}, [bounds, mapRect.height, mapRect.width, mapRect.x, mapRect.y]);
-
-	const contextValue = useMemo(
-		() => ({
-			bounds,
-			width,
-			height,
-			mapRect,
-			projection,
-		}),
-		[bounds, height, mapRect, projection, width],
-	);
-
-	return React.createElement(
-		MapProjectionContext.Provider,
-		{ value: contextValue },
-		React.createElement(
-			"world-object",
-			{ width, height, ...worldObjectProps },
-			children,
-		),
-	);
+  return React.createElement(
+    MapProjectionContext.Provider,
+    { value: contextValue },
+    React.createElement('world-object', { width, height, ...worldObjectProps, ref: object }, children)
+  );
 };

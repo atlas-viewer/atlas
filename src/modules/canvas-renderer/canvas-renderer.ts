@@ -2,11 +2,14 @@ import type { Strand } from '@atlas-viewer/dna';
 import LRUCache from 'lru-cache';
 import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
+import { TextLabelObject } from '../../objects/text-label';
 import type { Text } from '../../objects/text';
 import type { Renderer } from '../../renderer/renderer';
 import { SingleImage } from '../../spacial-content/single-image';
 import type { SpacialContent } from '../../spacial-content/spacial-content';
 import { TiledImage } from '../../spacial-content/tiled-image';
+import { isWarpedImage } from '../../spacial-content/warped-image';
+import type { WarpMeshTile } from '../maps/warped/mesh';
 import type { HookOptions } from '../../standalone';
 import type { PositionPair } from '../../types';
 import { getZoneConstrainedBounds } from '../../utility/get-zone-constrained-bounds';
@@ -17,6 +20,7 @@ import { buildCssFilter } from '../shared/build-css-filter';
 import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
 import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
 import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
+import type { AtlasReadyResetReason } from '../shared/ready-events';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -231,6 +235,11 @@ export class CanvasRenderer implements Renderer {
    * Canvas context for `this.canvas`
    */
   ctx: CanvasRenderingContext2D;
+  private warpCompositeCanvas?: HTMLCanvasElement;
+  private warpCompositeContext?: CanvasRenderingContext2D;
+  private warpCompositeAlpha = 1;
+  private warpCompositeGroup?: SpacialContent;
+  private warpCompositePending = false;
 
   /**
    * Rendering options added in the constructor.
@@ -331,19 +340,20 @@ export class CanvasRenderer implements Renderer {
       this.canvas.style.opacity = '1';
     }
 
-    this.hostCache = options?.lruCache
-      ? new LRUCache<string, HTMLCanvasElement>({
-        maxSize: 1024 * 512 * 512, // 250MB total.
-        dispose: (value, key, reason) => {
-          this.invalidated.push(key);
-          value.width = 0;
-          value.height = 0;
-        },
-        sizeCalculation: (value, key) => {
-          return value.width * value.height;
-        },
-      })
-      : new Map<string, HTMLCanvasElement>();
+    this.hostCache =
+      options?.lruCache !== false
+        ? new LRUCache<string, HTMLCanvasElement>({
+            maxSize: 64 * 1024 * 1024, // 64 MiB of RGBA tile pixels per renderer.
+            dispose: (value) => {
+              value.width = 0;
+              value.height = 0;
+            },
+            sizeCalculation: (value) => {
+              // A single untiled image can exceed the budget: retain it alone rather than reload forever.
+              return Math.min(64 * 1024 * 1024, Math.max(1, (value.width || 0) * (value.height || 0) * 4));
+            },
+          })
+        : new Map<string, HTMLCanvasElement>();
 
     // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
     //   import('stats.js')
@@ -374,10 +384,7 @@ export class CanvasRenderer implements Renderer {
     return parent && parent.renderOptions ? parent : undefined;
   }
 
-  private compareCompositeLoadPriority(
-    aPaint?: SingleImage | TiledImage,
-    bPaint?: SingleImage | TiledImage
-  ): number {
+  private compareCompositeLoadPriority(aPaint?: SingleImage | TiledImage, bPaint?: SingleImage | TiledImage): number {
     const aOwner = this.getCompositeOwner(aPaint);
     const bOwner = this.getCompositeOwner(bPaint);
     if (!aOwner || aOwner !== bOwner) {
@@ -393,9 +400,48 @@ export class CanvasRenderer implements Renderer {
     return this.firstMeaningfulPaint;
   }
 
+  preloadImages(urls: readonly string[], options?: { signal?: AbortSignal }) {
+    return this.imageRequestPool.preload(urls, options);
+  }
+
+  private imageCacheKey(paint: SingleImage | TiledImage, index: number) {
+    const p = paint.display.points;
+    return `${paint.getImageUrl(index)}::${p[index * 5 + 3] - p[index * 5 + 1]}x${p[index * 5 + 4] - p[index * 5 + 2]}`;
+  }
+
+  private restoreCachedTile(buffer: ImageBuffer, paint: SingleImage | TiledImage, index: number) {
+    const key = this.imageCacheKey(paint, index);
+    const url = paint.getImageUrl(index);
+    if (buffer.canvases[index] && (!buffer.tiles?.[index]?.url || buffer.tiles[index].url === url)) return;
+    buffer.canvases[index] = key;
+    let canvas = this.hostCache.get(key);
+    const image = !canvas && this.imageRequestPool.getCachedImage(paint.getImageUrl(index));
+    if (image) {
+      const p = paint.display.points;
+      canvas = document.createElement('canvas');
+      canvas.width = p[index * 5 + 3] - p[index * 5 + 1];
+      canvas.height = p[index * 5 + 4] - p[index * 5 + 2];
+      canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
+      this.hostCache.set(key, canvas);
+    }
+    this.setTileState(
+      buffer,
+      index,
+      canvas && canvas.width && canvas.height
+        ? { state: 'decoded', loadedAt: performance.now(), skipFade: true, url }
+        : { state: 'idle', url }
+    );
+  }
+
   private viewTransformSaved = false;
+  private presentationContext?: CanvasRenderingContext2D;
+  private stagingCanvas?: HTMLCanvasElement;
+  private stagedFrom = new Map<SpacialContent, string | undefined>();
+  private stagedSceneChanged = false;
+  private waitForSceneChange = false;
 
   afterFrame(world: World): void {
+    this.flushWarpComposite();
     // this.lastPaintedObject = paint.__owner.value;
     this.clearTransform();
     this.lastPaintedObject = undefined;
@@ -407,6 +453,28 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
+    if (this.stagingCanvas && !this.stagedSceneChanged) {
+      this.stagedSceneChanged = this.visible.some(
+        (paint) =>
+          !this.stagedFrom.has(paint) ||
+          this.stagedFrom.get(paint) !== (paint as SingleImage | TiledImage).getImageUrl?.(0)
+      );
+    }
+    if (this.stagingCanvas && this.presentationContext && this.firstMeaningfulPaint && this.visible.length) {
+      const context = this.presentationContext;
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalAlpha = 1;
+      context.filter = 'none';
+      context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      context.drawImage(this.stagingCanvas, 0, 0);
+      context.restore();
+      this.ctx = context;
+      this.presentationContext = undefined;
+      this.stagingCanvas.width = this.stagingCanvas.height = 0;
+      this.stagingCanvas = undefined;
+      this.stagedFrom.clear();
+    }
     this.imagesPending =
       this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     this.imagesLoaded = 0;
@@ -429,10 +497,8 @@ export class CanvasRenderer implements Renderer {
     this.pruneStaleTileWork();
     this.pendingDrawCall = !!this.drawCalls.length;
     if (this.pendingDrawCall) {
-      for (let i = 0; i < this.drawCalls.length; i++) {
-        const nextCall = this.drawCalls.shift();
-        if (nextCall) nextCall();
-      }
+      const calls = this.drawCalls.splice(0);
+      for (const draw of calls) draw();
     }
     // Some off-screen work might need done, like loading new images in.
     this.doOffscreenWork();
@@ -542,6 +608,10 @@ export class CanvasRenderer implements Renderer {
     if (this.options.debug && this.stats) {
       this.stats.begin();
     }
+    if (this.stagingCanvas) {
+      if (this.stagingCanvas.width !== this.canvas.width) this.stagingCanvas.width = this.canvas.width;
+      if (this.stagingCanvas.height !== this.canvas.height) this.stagingCanvas.height = this.canvas.height;
+    }
     this.frameIsRendering = true;
     this.frameCounter += 1;
     this.visible = [];
@@ -573,7 +643,7 @@ export class CanvasRenderer implements Renderer {
       this.ctx.save();
       this.viewTransformSaved = true;
       this.ctx.translate(options.viewCenter.x, options.viewCenter.y);
-      this.ctx.rotate(options.viewRotation * Math.PI / 180);
+      this.ctx.rotate((options.viewRotation * Math.PI) / 180);
       this.ctx.translate(-options.viewCenter.x, -options.viewCenter.y);
     }
     const filter = buildCssFilter(options);
@@ -963,8 +1033,8 @@ export class CanvasRenderer implements Renderer {
       return;
     }
 
-    const columns = paint.columns;
-    const rows = paint.rows;
+    const columns = paint.renderColumns;
+    const rows = paint.renderRows;
     if (!columns || !rows) {
       return;
     }
@@ -1102,6 +1172,14 @@ export class CanvasRenderer implements Renderer {
     const zoneVisibilityAlpha =
       typeof (paint as any).__zoneVisibilityAlpha === 'number' ? (paint as any).__zoneVisibilityAlpha : 1;
 
+    if (paint instanceof TextLabelObject) {
+      this.ctx.save();
+      this.ctx.globalAlpha *= zoneVisibilityAlpha;
+      paint.draw(this.ctx, x, y, width, height, this.dpi);
+      this.ctx.restore();
+      return;
+    }
+
     // Only supporting single and tiled images at the moment.
     if (paint instanceof SingleImage || paint instanceof TiledImage) {
       const rotation = paint.display.rotation || 0;
@@ -1130,13 +1208,15 @@ export class CanvasRenderer implements Renderer {
         this.visible.push(paint);
 
         const baseOpacity =
-          (typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) * zoneVisibilityAlpha;
+          (this.warpCompositeContext ? 1 : typeof paint.style?.opacity !== 'undefined' ? paint.style.opacity : 1) *
+          zoneVisibilityAlpha;
         if (!baseOpacity) {
           return;
         }
         this.ctx.globalAlpha = ga * baseOpacity;
 
         const imageBuffer = this.ensureImageBuffer(paint);
+        this.restoreCachedTile(imageBuffer, paint, index);
         const tileState = this.getTileState(imageBuffer, index);
         tileState.lastUsedAt = performance.now();
         this.setTileState(imageBuffer, index, tileState);
@@ -1149,9 +1229,11 @@ export class CanvasRenderer implements Renderer {
           { x: x + width / 2, y: y + height / 2 },
           { x: canvas.width / 2, y: canvas.height / 2 }
         );
-        const isInvalidated = this.invalidated.indexOf(imageBuffer.canvases[index]) !== -1;
         const canvasToPaint = this.hostCache.get(imageBuffer.canvases[index]);
-        const hasImage = !!canvasToPaint && !isInvalidated;
+        const hasImage = !!canvasToPaint;
+        // Cache entries are shared by URL. Their presence, not a stale eviction key,
+        // determines validity after another scene has repopulated the same URL.
+        const isInvalidated = !hasImage && tileState.state === 'decoded';
 
         if (isInvalidated) {
           this.setTileState(imageBuffer, index, {
@@ -1181,7 +1263,10 @@ export class CanvasRenderer implements Renderer {
           }
           this.ctx.globalAlpha = ga * baseOpacity * fadeAlpha;
 
-          if (paint.crop && paint.cropData) {
+          const warpTile = isWarpedImage(paint) ? paint.getWarpTile(index) : undefined;
+          if (warpTile) {
+            this.drawWarpedTile(canvasToPaint, warpTile, x, y, width, height);
+          } else if (paint.crop && paint.cropData) {
             if (paint.crop[index * 5]) {
               const source = [
                 paint.crop[index * 5 + 1] / paint.display.scale - paint.display.points[index * 5 + 1],
@@ -1326,20 +1411,32 @@ export class CanvasRenderer implements Renderer {
 
         if (isGeometry) {
           const shape = (paint as any).shape;
-          const points = shape.points || [];
-          const len = points.length;
-          this.ctx.beginPath();
-          for (let i = 0; i < len; i++) {
-            this.ctx.lineTo(x + points[i][0] * this.lastKnownScale, y + points[i][1] * this.lastKnownScale);
+          const rings: [number, number][][] = [shape.points || []];
+          if (!shape.open && shape.holes) {
+            for (const hole of shape.holes) rings.push(hole);
           }
-          if (!shape.open) {
-            this.ctx.closePath();
+          this.ctx.beginPath();
+          for (const ring of rings) {
+            const len = ring.length;
+            for (let i = 0; i < len; i++) {
+              const px = x + ring[i][0] * this.lastKnownScale;
+              const py = y + ring[i][1] * this.lastKnownScale;
+              if (i === 0) {
+                this.ctx.moveTo(px, py);
+              } else {
+                this.ctx.lineTo(px, py);
+              }
+            }
+            if (!shape.open) {
+              this.ctx.closePath();
+            }
           }
           if (bw) {
             this.ctx.stroke();
           }
           if (!shape.open) {
-            this.ctx.fill();
+            // Even-odd so that holes are cut out regardless of ring winding.
+            this.ctx.fill(shape.holes && shape.holes.length ? 'evenodd' : 'nonzero');
           }
         } else {
           if (bw) {
@@ -1368,6 +1465,123 @@ export class CanvasRenderer implements Renderer {
     }
   }
 
+  /**
+   * Draws one tile of a warped image: either a single affine draw, or a triangle mesh where each
+   * triangle is clipped and drawn with the affine transform that maps its texture triangle onto its
+   * destination triangle.
+   */
+  private drawWarpedTile(
+    source: CanvasImageSource,
+    tile: WarpMeshTile,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ) {
+    const boundsWidth = tile.bounds.x2 - tile.bounds.x1;
+    const boundsHeight = tile.bounds.y2 - tile.bounds.y1;
+    if (!(boundsWidth > 0) || !(boundsHeight > 0) || tile.indices.length === 0) {
+      return;
+    }
+
+    const ctx = this.ctx;
+    // Map-frame units to screen pixels for this tile.
+    const kx = width / boundsWidth;
+    const ky = height / boundsHeight;
+    ctx.imageSmoothingEnabled = true;
+
+    if (tile.destinationMask) {
+      const mask = tile.destinationMask;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x + mask[0] * kx, y + mask[1] * ky);
+      for (let i = 2; i < mask.length; i += 2) ctx.lineTo(x + mask[i] * kx, y + mask[i + 1] * ky);
+      ctx.closePath();
+      ctx.clip('evenodd');
+    }
+
+    if (tile.affine) {
+      const [a, b, c, d, e, f] = tile.affine;
+      ctx.save();
+      ctx.transform(a * kx, b * ky, c * kx, d * ky, x + e * kx, y + f * ky);
+      this.clipWarpResourceMask(tile);
+      ctx.drawImage(source, 0, 0);
+      ctx.restore();
+      if (tile.destinationMask) ctx.restore();
+      return;
+    }
+
+    const { src, dst, indices } = tile;
+    // Grow each clip triangle slightly so neighbouring triangles overlap instead of leaving seams.
+    const grow = 0.5;
+    for (let t = 0; t < indices.length; t += 3) {
+      const i0 = indices[t] * 2;
+      const i1 = indices[t + 1] * 2;
+      const i2 = indices[t + 2] * 2;
+
+      const s0x = src[i0];
+      const s0y = src[i0 + 1];
+      const s1x = src[i1];
+      const s1y = src[i1 + 1];
+      const s2x = src[i2];
+      const s2y = src[i2 + 1];
+
+      const d0x = x + dst[i0] * kx;
+      const d0y = y + dst[i0 + 1] * ky;
+      const d1x = x + dst[i1] * kx;
+      const d1y = y + dst[i1 + 1] * ky;
+      const d2x = x + dst[i2] * kx;
+      const d2y = y + dst[i2 + 1] * ky;
+
+      const det = (s1x - s0x) * (s2y - s0y) - (s2x - s0x) * (s1y - s0y);
+      if (!det) {
+        continue;
+      }
+
+      const a = ((d1x - d0x) * (s2y - s0y) - (d2x - d0x) * (s1y - s0y)) / det;
+      const c = ((d2x - d0x) * (s1x - s0x) - (d1x - d0x) * (s2x - s0x)) / det;
+      const e = d0x - a * s0x - c * s0y;
+      const b = ((d1y - d0y) * (s2y - s0y) - (d2y - d0y) * (s1y - s0y)) / det;
+      const d = ((d2y - d0y) * (s1x - s0x) - (d1y - d0y) * (s2x - s0x)) / det;
+      const f = d0y - b * s0x - d * s0y;
+
+      const cx = (d0x + d1x + d2x) / 3;
+      const cy = (d0y + d1y + d2y) / 3;
+      const grown = (px: number, py: number): [number, number] => {
+        const dx = px - cx;
+        const dy = py - cy;
+        const length = Math.hypot(dx, dy) || 1;
+        return [px + (dx / length) * grow, py + (dy / length) * grow];
+      };
+      const g0 = grown(d0x, d0y);
+      const g1 = grown(d1x, d1y);
+      const g2 = grown(d2x, d2y);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(g0[0], g0[1]);
+      ctx.lineTo(g1[0], g1[1]);
+      ctx.lineTo(g2[0], g2[1]);
+      ctx.closePath();
+      ctx.clip();
+      ctx.transform(a, b, c, d, e, f);
+      this.clipWarpResourceMask(tile);
+      ctx.drawImage(source, 0, 0);
+      ctx.restore();
+    }
+    if (tile.destinationMask) ctx.restore();
+  }
+
+  private clipWarpResourceMask(tile: WarpMeshTile) {
+    const mask = tile.resourceMask;
+    if (!mask) return;
+    this.ctx.beginPath();
+    this.ctx.moveTo(mask[0], mask[1]);
+    for (let i = 2; i < mask.length; i += 2) this.ctx.lineTo(mask[i], mask[i + 1]);
+    this.ctx.closePath();
+    this.ctx.clip('evenodd');
+  }
+
   schedulePaintToCanvas(
     imageBuffer: ImageBuffer,
     paint: SingleImage | TiledImage,
@@ -1390,13 +1604,9 @@ export class CanvasRenderer implements Renderer {
     }
 
     this.pendingTileReveals.delete(tileKey);
-    const id = `${paint.id}--${paint.display.scale}-${index}`;
+    const id = this.imageCacheKey(paint, index);
     const requestKey = this.nextRequestKey(tileKey);
     imageBuffer.canvases[index] = id;
-    const idx = this.invalidated.indexOf(id);
-    if (idx !== -1) {
-      this.invalidated.splice(idx, 1);
-    }
 
     this.setTileState(imageBuffer, index, {
       ...tileState,
@@ -1450,7 +1660,13 @@ export class CanvasRenderer implements Renderer {
         });
 
         if (CanvasRenderer.debugTileLoad) {
-          CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'requested' });
+          CanvasRenderer.debugTileLoad({
+            paintId: paint.id,
+            index,
+            scale: paint.display.scale,
+            url,
+            status: 'requested',
+          });
         }
 
         try {
@@ -1496,7 +1712,6 @@ export class CanvasRenderer implements Renderer {
                 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
                 canvas.width = points[3] - points[1];
                 canvas.height = points[4] - points[2];
-                this.hostCache.set(imageBuffer.canvases[index], canvas);
                 this.drawCalls.push(() => {
                   const commitState = this.getTileState(imageBuffer, index);
                   if (commitState.lastRequestKey !== requestKey || commitState.state !== 'loading') {
@@ -1521,6 +1736,8 @@ export class CanvasRenderer implements Renderer {
                     });
                   }
                   ctx.drawImage(image, 0, 0, points[3] - points[1], points[4] - points[2]);
+                  // An empty cached canvas must not displace the loaded fallback before this draw commits.
+                  this.hostCache.set(imageBuffer.canvases[index], canvas);
                   const finalState = this.getTileState(imageBuffer, index);
                   this.setTileState(imageBuffer, index, {
                     ...finalState,
@@ -1533,7 +1750,13 @@ export class CanvasRenderer implements Renderer {
                   this.enqueueTileReveal(tileKey, imageBuffer, index);
                   this.imagesLoaded++;
                   if (CanvasRenderer.debugTileLoad) {
-                    CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'loaded' });
+                    CanvasRenderer.debugTileLoad({
+                      paintId: paint.id,
+                      index,
+                      scale: paint.display.scale,
+                      url,
+                      status: 'loaded',
+                    });
                   }
                   resolve();
                 });
@@ -1576,7 +1799,13 @@ export class CanvasRenderer implements Renderer {
           this.pendingTileReveals.delete(tileKey);
 
           if (!willRetry && CanvasRenderer.debugTileLoad) {
-            CanvasRenderer.debugTileLoad({ paintId: paint.id, index, scale: paint.display.scale, url, status: 'failed' });
+            CanvasRenderer.debugTileLoad({
+              paintId: paint.id,
+              index,
+              scale: paint.display.scale,
+              url,
+              status: 'failed',
+            });
           }
 
           this.emitImageError({
@@ -1601,9 +1830,36 @@ export class CanvasRenderer implements Renderer {
 
   prepareLayer(paint: SpacialContent, points: Strand): void {
     this.hasActiveLayerClip = false;
+    const compositeOpacity =
+      isWarpedImage(paint) && paint.compositeOpacity && paint.style.opacity > 0 && paint.style.opacity < 1;
+    const group = compositeOpacity ? paint.__parent : undefined;
+    if (
+      this.warpCompositePending &&
+      (group !== this.warpCompositeGroup || paint.style?.opacity !== this.warpCompositeAlpha)
+    ) {
+      this.flushWarpComposite();
+    }
 
     if (paint.__owner.value) {
       this.applyTransform(paint, points[1], points[2], points[3] - points[1], points[4] - points[2]);
+    }
+
+    if (compositeOpacity) {
+      // Apply opacity once across mesh triangles and zoom levels so their overlaps do not darken the overlay.
+      const canvas = this.warpCompositeCanvas || (this.warpCompositeCanvas = document.createElement('canvas'));
+      if (canvas.width !== this.canvas.width) canvas.width = this.canvas.width;
+      if (canvas.height !== this.canvas.height) canvas.height = this.canvas.height;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        if (!this.warpCompositePending) context.clearRect(0, 0, canvas.width, canvas.height);
+        context.setTransform(this.ctx.getTransform());
+        context.globalAlpha = 1;
+        this.warpCompositeAlpha = paint.style!.opacity;
+        this.warpCompositeGroup = group;
+        this.warpCompositeContext = this.ctx;
+        this.ctx = context;
+      }
     }
 
     if (this.shouldClipLayerToBounds(paint)) {
@@ -1630,9 +1886,26 @@ export class CanvasRenderer implements Renderer {
       this.ctx.restore();
       this.hasActiveLayerClip = false;
     }
+    if (this.warpCompositeContext) {
+      this.ctx = this.warpCompositeContext;
+      this.warpCompositeContext = undefined;
+      this.warpCompositePending = true;
+      if (!this.warpCompositeGroup) this.flushWarpComposite();
+    }
     if (this.lastPaintedObject) {
       this.clearTransform();
     }
+  }
+
+  private flushWarpComposite() {
+    if (!this.warpCompositePending) return;
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.globalAlpha *= this.warpCompositeAlpha;
+    this.ctx.drawImage(this.warpCompositeCanvas!, 0, 0);
+    this.ctx.restore();
+    this.warpCompositePending = false;
+    this.warpCompositeGroup = undefined;
   }
 
   createImageHost(paint: SingleImage | TiledImage) {
@@ -1642,6 +1915,45 @@ export class CanvasRenderer implements Renderer {
     // canvas.getContext('2d')?.clearRect(0, 0, paint.display.width, paint.display.height);
     paint.__host = paint.__host ? paint.__host : {};
     paint.__host.canvas = {
+      dispose: () => {
+        const buffer = paint.__host?.canvas as ImageBuffer;
+        this.loadingQueue = this.loadingQueue.filter((request) => request.paint !== paint);
+        for (const [key, request] of this.inFlightImageLoads) {
+          if (request.paint === paint) this.releaseInFlightTileLoad(key, { silent: true });
+        }
+        for (const [key, pending] of this.pendingTileReveals) {
+          if (pending.imageBuffer === buffer) this.pendingTileReveals.delete(key);
+        }
+        this.imageBuffers.delete(buffer);
+        // The bounded LRU owns reusable bitmaps across scene/window lifetimes.
+        // With retention disabled, release only entries no remaining host uses.
+        if (this.options.lruCache === false) {
+          const retainedKeys = new Set<string>();
+          for (const other of this.imageBuffers) {
+            for (const key of other.canvases) retainedKeys.add(key);
+          }
+          for (const key of buffer.canvases) {
+            if (retainedKeys.has(key)) continue;
+            const canvas = this.hostCache.get(key);
+            if (canvas) {
+              canvas.width = 0;
+              canvas.height = 0;
+            }
+            this.hostCache.delete(key);
+          }
+        }
+        // Invalidate queued decode/draw closures before their indices can be reused.
+        buffer.tiles = {};
+      },
+      isTileLoaded: (index: number) => {
+        const buffer = paint.__host.canvas as ImageBuffer;
+        const key = buffer.canvases[index];
+        return (
+          buffer.tiles?.[index]?.state === 'decoded' &&
+          !!this.hostCache.get(key) &&
+          this.getFadeAlpha(paint, buffer.tiles?.[index], this.isLayerActive(paint)) === 1
+        );
+      },
       canvas: undefined,
       canvases: [],
       tiles: {},
@@ -1691,11 +2003,13 @@ export class CanvasRenderer implements Renderer {
     if (
       !ready &&
       !this.firstMeaningfulPaint &&
+      !this.stagingCanvas &&
       this.visible.length > 0 &&
       this.options.readiness !== 'immediate' &&
       this.fallbackRevealTimeout === null
     ) {
-      // If it's still not ready after a short wait, reveal what we have and let tile fades begin.
+      // Initial load may reveal progressively. A resource handoff keeps the complete
+      // previous presentation until its replacement is ready, even on a slow request.
       this.fallbackRevealTimeout = setTimeout(() => {
         this.canvas.style.opacity = '1';
         this.firstMeaningfulPaint = true;
@@ -1703,7 +2017,13 @@ export class CanvasRenderer implements Renderer {
       }, MAX_WAIT_FOR_MEANINGFUL_PAINT_MS);
     }
 
-    if (!this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
+    const waitingForScene = this.stagingCanvas && this.waitForSceneChange && !this.stagedSceneChanged;
+    if (
+      !waitingForScene &&
+      !this.firstMeaningfulPaint &&
+      ready &&
+      (this.visible.length || this.options.readiness === 'immediate')
+    ) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
       // We've not rendered yet, can we render this  frame?
@@ -1727,10 +2047,30 @@ export class CanvasRenderer implements Renderer {
     return this.rendererPosition;
   }
 
-  resetReadyState() {
+  resetReadyState(reason?: AtlasReadyResetReason) {
     if (this.options.readiness === 'immediate') {
       return;
     }
+    // Keep the last complete presentation while a new scene schedules/decodes its tiles.
+    // Normal panning/zooming remains a direct draw; only a resource readiness reset stages frames.
+    if (!this.stagingCanvas && this.firstMeaningfulPaint && this.canvas.width && this.canvas.height) {
+      const canvas = document.createElement('canvas');
+      canvas.width = this.canvas.width;
+      canvas.height = this.canvas.height;
+      const context = canvas.getContext('2d');
+      if (context) {
+        this.presentationContext = this.ctx;
+        this.stagingCanvas = canvas;
+        this.ctx = context;
+      }
+    }
+    if (this.stagingCanvas) {
+      this.stagedFrom = new Map(
+        this.visible.map((paint) => [paint, (paint as SingleImage | TiledImage).getImageUrl?.(0)])
+      );
+    }
+    this.waitForSceneChange = reason === 'ready-reset-key-change' || reason === 'resource-transition-key-change';
+    this.stagedSceneChanged = false;
     this.firstMeaningfulPaint = false;
     if (this.fallbackRevealTimeout) {
       clearTimeout(this.fallbackRevealTimeout);
@@ -1781,6 +2121,18 @@ export class CanvasRenderer implements Renderer {
   }
 
   reset() {
+    this.warpCompositePending = false;
+    this.warpCompositeGroup = undefined;
+    if (this.warpCompositeCanvas) {
+      this.warpCompositeCanvas.width = 0;
+      this.warpCompositeCanvas.height = 0;
+      this.warpCompositeCanvas = undefined;
+    }
+    if (this.presentationContext) this.ctx = this.presentationContext;
+    this.presentationContext = undefined;
+    if (this.stagingCanvas) this.stagingCanvas.width = this.stagingCanvas.height = 0;
+    this.stagingCanvas = undefined;
+    this.stagedFrom.clear();
     this.resetGeneration += 1;
     this.loadingQueue = [];
     this.drawCalls = [];

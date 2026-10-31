@@ -1,7 +1,9 @@
 import {
   MAX_MERCATOR_LATITUDE,
   clampMercatorLatitude,
+  createFittedMapProjection,
   createMapProjection,
+  fitMapBoundsToRect,
   validateMapBounds,
 } from '../../../modules/maps/projection';
 import type { MapBounds } from '../../../modules/maps/types';
@@ -81,5 +83,45 @@ describe('map projection', () => {
         north: 40,
       })
     ).toThrow(/south < north/);
+  });
+});
+
+describe('fitted map projection', () => {
+  test('letterboxes bounds in the frame and centres them', () => {
+    const tall = fitMapBoundsToRect({ bounds: nycBounds, width: 1000, height: 3000 });
+    expect(tall.width).toBe(1000);
+    expect(tall.height).toBeLessThan(3000);
+    expect(tall.y).toBeCloseTo((3000 - tall.height) / 2, 6);
+
+    const wide = fitMapBoundsToRect({ bounds: nycBounds, width: 5000, height: 500 });
+    expect(wide.height).toBe(500);
+    expect(wide.width).toBeLessThan(5000);
+    expect(wide.x).toBeCloseTo((5000 - wide.width) / 2, 6);
+  });
+
+  test('can stretch to fill the frame', () => {
+    expect(fitMapBoundsToRect({ bounds: nycBounds, width: 1000, height: 3000, preserveAspectRatio: false })).toEqual({
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 3000,
+    });
+  });
+
+  test('projection includes the letterbox offset and round-trips', () => {
+    const { mapRect, projection } = createFittedMapProjection({ bounds: nycBounds, width: 1000, height: 3000 });
+    const northWest = projection.lngLatToWorld(nycBounds.west, nycBounds.north);
+    expect(northWest.x).toBeCloseTo(mapRect.x, 6);
+    expect(northWest.y).toBeCloseTo(mapRect.y, 6);
+
+    const world = projection.lngLatToWorld(-74.0, 40.7);
+    const back = projection.worldToLngLat(world.x, world.y);
+    expect(back.lng).toBeCloseTo(-74.0, 9);
+    expect(back.lat).toBeCloseTo(40.7, 9);
+
+    const rect = projection.lngLatBoundsToWorldRect({ west: -74.1, south: 40.6, east: -73.9, north: 40.8 });
+    const bounds = projection.worldRectToLngLatBounds(rect);
+    expect(bounds.west).toBeCloseTo(-74.1, 9);
+    expect(bounds.north).toBeCloseTo(40.8, 9);
   });
 });

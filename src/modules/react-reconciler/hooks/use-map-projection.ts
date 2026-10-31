@@ -1,10 +1,14 @@
-import { createContext, useContext } from 'react';
+import type { WorldObject } from '../../../world-objects/world-object';
+import { createContext, useContext, type RefObject } from 'react';
 import type { MapBounds, MapProjection } from '../../maps/types';
 
 export type MapProjectionContextValue = {
   bounds: MapBounds;
   width: number;
   height: number;
+  /** The `scale` of the owning MapObject (local units -> world units). */
+  scale?: number;
+  object?: RefObject<WorldObject | null>;
   mapRect: {
     x: number;
     y: number;

@@ -14,6 +14,11 @@ export function isWebGLImageFastPathCandidate(
     return false;
   }
 
+  // Warped images are drawn as triangle meshes by the canvas renderer.
+  if ((paint as { isWarped?: boolean }).isWarped) {
+    return false;
+  }
+
   if (paint.display.rotation) {
     return false;
   }
