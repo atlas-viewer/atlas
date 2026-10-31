@@ -517,6 +517,25 @@ export class WebGLRenderer implements Renderer {
     paint.__host = paint.__host ? paint.__host : {};
 
     paint.__host.webgl = {
+      dispose: () => {
+        this.tileRequestQueue = this.tileRequestQueue.filter((request) => {
+          if (request.paint !== paint) return true;
+          this.queuedTileRequestKeys.delete(request.key);
+          return false;
+        });
+        for (const [key, request] of this.inFlightImageLoads) {
+          if (request.paint === paint) this.releaseInFlightTileLoad(key, { silent: true });
+        }
+        for (const [key, pending] of this.pendingTileReveals) {
+          if (pending.paint === paint) this.pendingTileReveals.delete(key);
+        }
+        for (const index of [...paint.__host.webgl.loading]) this.removeLoadingIndex(paint, index);
+        for (const texture of textures) if (texture) this.gl.deleteTexture(texture);
+        this.imagePaints.delete(paint);
+      },
+      isTileLoaded: (index: number) =>
+        !!paint.__host.webgl.textures[index] &&
+        this.getFadeAlpha(paint, index, this.isLayerActive(paint)) === 1,
       height: paint.height,
       width: paint.width,
       textures,
@@ -924,12 +943,12 @@ export class WebGLRenderer implements Renderer {
     }
 
     const radius = this.getPrefetchRadius(paint);
-    if (radius <= 0 || !paint.columns || !paint.rows) {
+    if (radius <= 0 || !paint.renderColumns || !paint.renderRows) {
       return;
     }
 
-    const x = index % paint.columns;
-    const y = Math.floor(index / paint.columns);
+    const x = index % paint.renderColumns;
+    const y = Math.floor(index / paint.renderColumns);
 
     for (let ring = 1; ring <= radius; ring++) {
       for (let dy = -ring; dy <= ring; dy++) {
@@ -940,11 +959,11 @@ export class WebGLRenderer implements Renderer {
 
           const nx = x + dx;
           const ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= paint.columns || ny >= paint.rows) {
+          if (nx < 0 || ny < 0 || nx >= paint.renderColumns || ny >= paint.renderRows) {
             continue;
           }
 
-          const neighbourIndex = ny * paint.columns + nx;
+          const neighbourIndex = ny * paint.renderColumns + nx;
           if (this.enqueueTileRequest(paint, neighbourIndex, priority + ring * 1000, true)) {
             this.framePrefetchCount++;
             if (this.framePrefetchCount >= this.maxPrefetchPerFrame) {
@@ -1393,6 +1412,10 @@ export class WebGLRenderer implements Renderer {
   }
 
   reset() {
+    for (const paint of this.imagePaints) {
+      paint.__host?.webgl?.dispose?.();
+      if (paint.__host) delete paint.__host.webgl;
+    }
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost as EventListener);
     this.canvas.style.filter = 'none';
     this.framePrefetchCount = 0;

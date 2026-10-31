@@ -1,9 +1,13 @@
 import type React from 'react';
 import type { EventListenerProps } from '../../clean-objects/traits/evented';
 import type { BoxStyle } from '../../objects/box';
+import type { TextLabelObjectProps } from '../../objects/text-label';
 import type { GeometryProps } from '../../objects/geometry';
 import type { CompositeResourceProps } from '../../spacial-content/composite-resource';
 import type { UpdateTextureFunction } from '../../spacial-content/image-texture';
+import type { MapTilePyramidProps } from '../../spacial-content/map-tile-pyramid';
+import type { WarpedImageProps } from '../../spacial-content/warped-image';
+import type { WarpedMapResourceProps } from '../../spacial-content/warped-map-layer';
 import type { MapBounds, MapTileSource } from '../maps/types';
 
 type BaseElement = {
@@ -77,6 +81,7 @@ declare global {
         height: number;
         children?: React.ReactNode;
       };
+      'text-label': BaseElement & TextLabelObjectProps & AllEvents;
       shape: BaseElement & GeometryProps;
       ['composite-image']: BaseElement & {
         id?: string;
@@ -110,7 +115,15 @@ declare global {
         tileSource?: MapTileSource;
         tileUrlTemplate?: string;
         subdomains?: string[];
+        retina?: boolean;
+        region?: MapBounds;
+        maxTiles?: number;
       } & AllEvents;
+      warpedImage: BaseElement & WarpedImageProps & { style?: { opacity?: number } } & AllEvents;
+      ['warped-map-layer']: BaseElement & WarpedMapResourceProps & AllEvents;
+      ['warped-image']: BaseElement & WarpedImageProps & { style?: { opacity?: number } } & AllEvents;
+      mapTilePyramid: BaseElement & MapTilePyramidProps & AllEvents;
+      ['map-tile-pyramid']: BaseElement & MapTilePyramidProps & AllEvents;
       ['map-tiled-image']: BaseElement & {
         bounds: MapBounds;
         worldWidth: number;
@@ -121,6 +134,9 @@ declare global {
         tileSource?: MapTileSource;
         tileUrlTemplate?: string;
         subdomains?: string[];
+        retina?: boolean;
+        region?: MapBounds;
+        maxTiles?: number;
       } & AllEvents;
       box: BaseElement & {
         interactive?: boolean;

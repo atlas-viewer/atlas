@@ -138,6 +138,18 @@ export function createInitialGrid(
   };
 }
 
+/** Shared by the experimental sparse grid and the IIIF viewport windows. */
+export function getSparseGridRange(
+  grid: { columns: number; rows: number; tile: { width: number; height: number } },
+  viewport: { x: number; y: number; width: number; height: number }
+) {
+  const columnStart = Math.max(0, Math.min(grid.columns, Math.floor(viewport.x / grid.tile.width)));
+  const rowStart = Math.max(0, Math.min(grid.rows, Math.floor(viewport.y / grid.tile.height)));
+  const columnEnd = Math.max(0, Math.min(grid.columns, Math.ceil((viewport.x + viewport.width) / grid.tile.width)));
+  const rowEnd = Math.max(0, Math.min(grid.rows, Math.ceil((viewport.y + viewport.height) / grid.tile.height)));
+  return { columnStart, rowStart, columnEnd, rowEnd };
+}
+
 export function generateSparseGrid(
   object: HasSparseGrid & GenericObject,
   viewport: { x: number; y: number; width: number; height: number }
@@ -147,10 +159,7 @@ export function generateSparseGrid(
   }
   const tiles: Array<{ r: number; c: number }> = [];
 
-  const columnStart = Math.floor(viewport.x / object.sparseGrid.tile.width);
-  const rowStart = Math.floor(viewport.y / object.sparseGrid.tile.height);
-  const columnEnd = Math.ceil((viewport.x + viewport.width) / object.sparseGrid.tile.width);
-  const rowEnd = Math.ceil((viewport.y + viewport.height) / object.sparseGrid.tile.height);
+  const { columnStart, rowStart, columnEnd, rowEnd } = getSparseGridRange(object.sparseGrid, viewport);
   const state = object.sparseGrid.state;
 
   for (let c = columnStart; c < columnEnd; c++) {

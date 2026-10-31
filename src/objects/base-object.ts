@@ -1,6 +1,6 @@
 import { AtlasObjectModel } from '../aom';
 import { WorldTime } from '../types';
-import { dna, mutate, scaleAtOrigin, Strand, translate } from '@atlas-viewer/dna';
+import { dna, mutate, scaleAtOrigin, Strand, translate } from '../utility/precise-dna';
 import { Paint } from '../world-objects/paint';
 import { nanoid } from 'nanoid';
 import { CompositeResource } from '../spacial-content/composite-resource';
@@ -134,6 +134,13 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   applyProps(props: Props): void {
     // do nothing.
     this.__revision++;
+  }
+  /** Release renderer resources when this object leaves the scene. Safe to call again. */
+  dispose(): void {
+    this.__host?.canvas?.dispose?.();
+    this.__host?.webgl?.dispose?.();
+    this.__host = undefined;
+    for (const child of this.layers) (child as BaseObject)?.dispose?.();
   }
   appendChild(item: SupportedChildElements): void {
     // do nothing.

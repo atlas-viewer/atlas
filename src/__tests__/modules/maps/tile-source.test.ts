@@ -36,3 +36,15 @@ describe('map tile source', () => {
     expect(url).toEqual('https://tiles.example.org/12/1450/2450.webp');
   });
 });
+
+describe('extra tile tokens', () => {
+  test('resolves TMS rows, retina suffix and quadkeys', async () => {
+    const { resolveTileTemplate, tileToQuadkey } = await import('../../../modules/maps/tile-source');
+    expect(resolveTileTemplate('/{z}/{x}/{-y}.png', { z: 3, x: 2, y: 1 })).toBe('/3/2/6.png');
+    expect(resolveTileTemplate('/{z}/{x}/{y}{r}.png', { z: 3, x: 2, y: 1, retina: true })).toBe('/3/2/1@2x.png');
+    expect(resolveTileTemplate('/{z}/{x}/{y}{r}.png', { z: 3, x: 2, y: 1 })).toBe('/3/2/1.png');
+    // Bing's documented example: tile (3, 5) at level 3 is quadkey 213.
+    expect(tileToQuadkey(3, 5, 3)).toBe('213');
+    expect(resolveTileTemplate('https://t.example/{q}.jpg', { z: 3, x: 3, y: 5 })).toBe('https://t.example/213.jpg');
+  });
+});

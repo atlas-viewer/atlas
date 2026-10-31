@@ -1,5 +1,17 @@
 import { dna, hidePointsOutsideRegion, Strand } from '@atlas-viewer/dna';
 import { WorldObject } from '../../world-objects/world-object';
+import { World } from '../../world';
+
+test('appending a world object preserves visibility before any subsequent React update', () => {
+  const world = new World(200, 100);
+  const visible = WorldObject.createWithProps({ id: 'visible', width: 200, height: 100 });
+  const hidden = WorldObject.createWithProps({ id: 'hidden', width: 200, height: 100 });
+  hidden.points[0] = 0;
+  world.appendChild(visible);
+  world.appendChild(hidden);
+  expect(visible.points[0]).toBe(1);
+  expect(hidden.points[0]).toBe(0);
+});
 function makeFakeLeaf(points: Strand) {
   return {
     points,

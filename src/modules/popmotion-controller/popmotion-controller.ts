@@ -1,4 +1,4 @@
-import { compose, DnaFactory, dna, scaleAtOrigin, transform, translate } from '@atlas-viewer/dna';
+import { compose, DnaFactory, dna, scaleAtOrigin, transform, translate } from '../../utility/precise-dna';
 /** @ts-expect-error */
 import normalizeWheel from 'normalize-wheel';
 import type { RuntimeController } from '../../types';

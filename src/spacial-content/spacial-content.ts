@@ -13,6 +13,7 @@ export interface SpacialContent {
   __owner: { value: WorldObject | undefined };
   __host?: any;
   priority?: boolean;
+  dispose?(): void;
 
   points: Strand;
   crop?: Strand;

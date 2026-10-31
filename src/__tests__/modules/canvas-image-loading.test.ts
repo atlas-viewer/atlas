@@ -1,3 +1,8 @@
+import { MapTilePyramid } from '../../spacial-content/map-tile-pyramid';
+import { WarpedMapResource } from '../../spacial-content/warped-map-layer';
+import { mercatorXToLongitude, mercatorYToLatitude } from '../../modules/maps/projection';
+import { World } from '../../world';
+import { WorldObject } from '../../world-objects/world-object';
 /** @vitest-environment happy-dom */
 
 import { describe, expect, test, vi } from 'vitest';
@@ -120,8 +125,10 @@ describe('Canvas image loading behavior', () => {
     renderer.hostCache.set('loaded-tile', cachedTile);
     const firstLoad = deferred<HTMLImageElement>();
     const secondLoad = deferred<HTMLImageElement>();
-    const createRequest = vi.spyOn(renderer.imageRequestPool as any, 'createRequest')
-      .mockImplementationOnce(() => firstLoad.promise).mockImplementationOnce(() => secondLoad.promise);
+    const createRequest = vi
+      .spyOn(renderer.imageRequestPool as any, 'createRequest')
+      .mockImplementationOnce(() => firstLoad.promise)
+      .mockImplementationOnce(() => secondLoad.promise);
 
     renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0);
     renderer._worker();
@@ -210,7 +217,9 @@ describe('Canvas image loading behavior', () => {
     const d = deferred<HTMLImageElement>();
     const release = vi.fn();
     const acquire = vi.spyOn(renderer.imageRequestPool, 'acquire').mockReturnValue({
-      requestKey: 'old', release, promise: d.promise,
+      requestKey: 'old',
+      release,
+      promise: d.promise,
     });
     renderer.schedulePaintToCanvas(image.__host.canvas, image, 0, 0, false);
     renderer._worker();
@@ -672,3 +681,87 @@ describe('Canvas image loading behavior', () => {
     expect(renderer.firstMeaningfulPaint).toBe(false);
   });
 });
+
+test('moving a massive tile window releases old canvases and pending work before reusing indices', () => {
+  const { renderer } = createRenderer();
+  const image = TiledImage.fromTile(
+    'https://example.org/huge',
+    { width: 134217728, height: 134217728 },
+    { width: 256 },
+    1
+  );
+  image.getAllPointsAt(new Float32Array([1, 0, 0, 512, 512]));
+  renderer.createImageHost(image);
+  const buffer = image.__host.canvas;
+  const canvas = { width: 256, height: 256 } as HTMLCanvasElement;
+  buffer.canvases[0] = 'old-tile';
+  buffer.tiles[0] = { state: 'loading', lastRequestKey: 'old-request' };
+  renderer.hostCache.set('old-tile', canvas);
+  const release = vi.fn();
+  renderer.inFlightImageLoads.set('old-tile', { paint: image, release } as any);
+  renderer.pendingTileReveals.set('old-tile', { imageBuffer: buffer, index: 0, queuedFrame: 0 });
+  renderer.loadingQueue.push({ paint: image } as any);
+
+  image.getAllPointsAt(new Float32Array([1, 100000000, 100000000, 100001024, 100001024]));
+  expect(release).toHaveBeenCalledOnce();
+  expect(renderer.hostCache.size).toBe(0);
+  expect(canvas.width).toBe(0);
+  expect(buffer.tiles).toEqual({});
+  expect(renderer.loadingQueue).toHaveLength(0);
+  expect(renderer.inFlightImageLoads.size).toBe(0);
+  expect(renderer.pendingTileReveals.size).toBe(0);
+  expect((renderer as any).imageBuffers.size).toBe(0);
+  expect(image.renderColumns).toBeLessThan(image.columns);
+  expect(image.renderRows * image.renderColumns).toBe(image.points.length / 5);
+  renderer.reset();
+});
+
+test.each(['map', 'warp'])(
+  '%s panning releases obsolete renderer buffers and unmount releases retained windows',
+  async (kind) => {
+    const { renderer } = createRenderer({ lruCache: true });
+    const layer =
+      kind === 'map'
+        ? new MapTilePyramid({
+            id: 'map',
+            bounds: { west: -74.3, south: 40.45, east: -73.6, north: 40.95 },
+            worldWidth: 2400,
+            worldHeight: 1600,
+            minZoom: 8,
+            maxZoom: 21,
+            maxTilesPerLayer: 4096,
+          })
+        : new WarpedMapResource({
+            id: 'warp',
+            imageWidth: 6000,
+            imageHeight: 4000,
+            transformer: {
+              type: 'affine',
+              toGeo: (x, y) => [mercatorXToLongitude(0.3 + x * 1e-6), mercatorYToLatitude(0.4 + y * 1e-6)],
+            },
+          });
+    layer._sortByScales();
+    const world = new World(6000, 4000);
+    const object = new WorldObject({ id: 'parent', width: 6000, height: 4000, layers: [layer] });
+    world.appendChild(object);
+    for (const x of [200, 600, 1000, 1400]) {
+      const target = new Float32Array([1, x, 700, x + 60, 740]);
+      layer.getAllPointsAt(target, undefined, 20);
+      for (const update of layer.getScheduledUpdates(target, 20)) await update();
+      for (const image of layer.allImages) if (!image.__host) renderer.createImageHost(image as TiledImage);
+      expect((renderer as any).imageBuffers.size).toBe(layer.allImages.length);
+    }
+    const current = layer.allImages[0];
+    const buffer = current.__host.canvas;
+    const canvas = { width: 256, height: 256 } as HTMLCanvasElement;
+    buffer.canvases[0] = 'retained';
+    renderer.hostCache.set('retained', canvas);
+    world.removeChild(object);
+    expect((renderer as any).imageBuffers.size).toBe(0);
+    expect(renderer.hostCache.size).toBe(0);
+    expect(renderer.invalidated).toHaveLength(0);
+    expect(canvas.width).toBe(0);
+    expect(current.__host).toBeUndefined();
+    renderer.reset();
+  }
+);

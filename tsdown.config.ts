@@ -10,6 +10,7 @@ export default defineConfig((options) => ({
     index: 'src/index.ts',
     standalone: 'src/standalone.ts',
     react: 'src/react.ts',
+    allmaps: 'src/allmaps.ts',
   },
   minify: options.watch ? false : { compress: true, mangle: false, codegen: true },
   clean: true,

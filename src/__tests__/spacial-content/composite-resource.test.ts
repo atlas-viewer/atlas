@@ -1,9 +1,10 @@
 /** @vitest-environment happy-dom */
 
-import { DnaFactory } from '@atlas-viewer/dna';
+import { dna, DnaFactory } from '@atlas-viewer/dna';
 import { vi } from 'vitest';
 import { CompositeResource } from '../../spacial-content/composite-resource';
 import { SingleImage } from '../../spacial-content/single-image';
+import { TiledImage } from '../../spacial-content/tiled-image';
 
 function createImage(id: string, displayWidth: number, displayHeight: number) {
   const image = new SingleImage();
@@ -17,6 +18,43 @@ function createImage(id: string, displayWidth: number, displayHeight: number) {
 }
 
 describe('CompositeResource', () => {
+  test.each(['canvas', 'webgl'])('%s loading layers do not displace loaded fallbacks from the layer budget', (host) => {
+    const images = [100, 50, 25, 12.5].map((width, i) => createImage(`level-${i}`, width, width));
+    const loaded = [false, true, true, true];
+    images.forEach((image, i) => { image.__host = { [host]: { isTileLoaded: () => loaded[i] } }; });
+    const composite = new CompositeResource({
+      id: 'comp', width: 100, height: 100, images,
+      renderOptions: { minSize: 0, renderLayers: 2, renderSmallestFallback: false, useDevicePixelRatio: false },
+    });
+    composite._sortByScales();
+    const selected = () => composite.getAllPointsAt(DnaFactory.singleBox(100, 100), undefined, 1).map(([image]) => image);
+    expect(selected()).toEqual([images[2], images[1], images[0]]);
+    loaded[1] = false;
+    expect(selected()).toEqual([images[3], images[2], images[1], images[0]]);
+    loaded[0] = loaded[1] = true;
+    expect(selected()).toEqual([images[1], images[0]]);
+    composite.applyProps({ layerPolicy: 'active-only' });
+    loaded[0] = false;
+    expect(selected()).toEqual([images[0]]);
+  });
+
+  test('only visible tiles count toward layer readiness, including newly exposed tiles after a pan', () => {
+    const high = new TiledImage({
+      url: '/tiles', scaleFactor: 1, points: dna([1, 0, 0, 50, 100, 1, 50, 0, 100, 100]),
+      tileWidth: 50, tileHeight: 100, width: 100, height: 100, columns: 2, rows: 1,
+    });
+    high.__host = { canvas: { isTileLoaded: (index: number) => index === 0 } };
+    const low = createImage('fallback', 25, 25);
+    low.__host = { canvas: { isTileLoaded: () => true } };
+    const composite = new CompositeResource({
+      id: 'comp', width: 100, height: 100, images: [high, low],
+      renderOptions: { minSize: 0, renderLayers: 1, renderSmallestFallback: false, useDevicePixelRatio: false },
+    });
+    composite._sortByScales();
+    expect(composite.getAllPointsAt(DnaFactory.singleBox(40, 100), undefined, 1).map(([image]) => image)).toEqual([high]);
+    expect(composite.getAllPointsAt(DnaFactory.singleBox(40, 100, 60, 0), undefined, 1).map(([image]) => image)).toEqual([low, high]);
+  });
+
   test('removeChild removes image from both allImages and render candidates', () => {
     const a = createImage('a', 100, 100);
     const b = createImage('b', 50, 50);
@@ -175,5 +213,66 @@ describe('CompositeResource', () => {
     expect(composite.getImageActivatedAt(high)).toBeUndefined();
 
     nowSpy.mockRestore();
+  });
+
+  describe('minScaleGap', () => {
+    // Levels whose scales are closer together than the gap are merged: only one is kept.
+    function createLevels(scales: number[]) {
+      return scales.map((scale) => {
+        const points = DnaFactory.singleBox(1000 / scale, 1000 / scale);
+        return new TiledImage({
+          url: `https://example.org/level-${scale}`,
+          scaleFactor: scale,
+          points,
+          displayPoints: points,
+          tileWidth: 1000 / scale,
+          tileHeight: 1000 / scale,
+          width: 1000,
+          height: 1000,
+          columns: 1,
+          rows: 1,
+        });
+      });
+    }
+
+    test('merges close scales by default (IIIF scale factors)', () => {
+      const composite = new CompositeResource({
+        id: 'default',
+        width: 1000,
+        height: 1000,
+        images: createLevels([0.1, 0.2, 0.4]),
+        renderOptions: { minSize: 0 },
+      });
+      composite._sortByScales();
+      expect(composite.images.length).toBeLessThan(3);
+    });
+
+    test('keeps fractional scales when minScaleGap is 0', () => {
+      const composite = new CompositeResource({
+        id: 'fine',
+        width: 1000,
+        height: 1000,
+        images: createLevels([0.1, 0.2, 0.4]),
+        renderOptions: { minSize: 0, minScaleGap: 0 },
+      });
+      composite._sortByScales();
+      expect(composite.images.map((image) => image.display.scale)).toEqual([0.1, 0.2, 0.4]);
+    });
+
+    test('can be changed through applyProps', () => {
+      const composite = new CompositeResource({
+        id: 'late',
+        width: 1000,
+        height: 1000,
+        images: createLevels([0.1, 0.2, 0.4]),
+        renderOptions: { minSize: 0 },
+      });
+      composite._sortByScales();
+      expect(composite.images.length).toBeLessThan(3);
+
+      composite.applyProps({ minScaleGap: 0 });
+      composite._sortByScales();
+      expect(composite.images).toHaveLength(3);
+    });
   });
 });
