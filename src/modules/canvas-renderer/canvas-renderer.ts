@@ -17,6 +17,7 @@ import { buildCssFilter } from '../shared/build-css-filter';
 import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
 import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
 import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
+import type { AtlasReadyResetReason } from '../shared/ready-events';
 
 const shadowRegex =
   /(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)(-?[0-9]+(px|em)\s+|0\s+)?(-?[0-9]+(px|em)\s+|0\s+)?(.*)/g;
@@ -331,16 +332,17 @@ export class CanvasRenderer implements Renderer {
       this.canvas.style.opacity = '1';
     }
 
-    this.hostCache = options?.lruCache
+    this.hostCache = options?.lruCache !== false
       ? new LRUCache<string, HTMLCanvasElement>({
-        maxSize: 1024 * 512 * 512, // 250MB total.
+        maxSize: 64 * 1024 * 1024, // 64 MiB of RGBA tile pixels per renderer.
         dispose: (value, key, reason) => {
           this.invalidated.push(key);
           value.width = 0;
           value.height = 0;
         },
         sizeCalculation: (value, key) => {
-          return value.width * value.height;
+          // A single untiled image can exceed the budget: retain it alone rather than reload forever.
+          return Math.min(64 * 1024 * 1024, Math.max(1, (value.width || 0) * (value.height || 0) * 4));
         },
       })
       : new Map<string, HTMLCanvasElement>();
@@ -393,7 +395,41 @@ export class CanvasRenderer implements Renderer {
     return this.firstMeaningfulPaint;
   }
 
+  preloadImages(urls: readonly string[], options?: { signal?: AbortSignal }) {
+    return this.imageRequestPool.preload(urls, options);
+  }
+
+  private imageCacheKey(paint: SingleImage | TiledImage, index: number) {
+    const p = paint.display.points;
+    return `${paint.getImageUrl(index)}::${p[index * 5 + 3] - p[index * 5 + 1]}x${p[index * 5 + 4] - p[index * 5 + 2]}`;
+  }
+
+  private restoreCachedTile(buffer: ImageBuffer, paint: SingleImage | TiledImage, index: number) {
+    const key = this.imageCacheKey(paint, index);
+    const url = paint.getImageUrl(index);
+    if (buffer.canvases[index] && (!buffer.tiles?.[index]?.url || buffer.tiles[index].url === url)) return;
+    buffer.canvases[index] = key;
+    let canvas = this.hostCache.get(key);
+    const image = !canvas && this.imageRequestPool.getCachedImage(paint.getImageUrl(index));
+    if (image) {
+      const p = paint.display.points;
+      canvas = document.createElement('canvas');
+      canvas.width = p[index * 5 + 3] - p[index * 5 + 1];
+      canvas.height = p[index * 5 + 4] - p[index * 5 + 2];
+      canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
+      this.hostCache.set(key, canvas);
+    }
+    this.setTileState(buffer, index, canvas && canvas.width && canvas.height
+      ? { state: 'decoded', loadedAt: performance.now(), skipFade: true, url }
+      : { state: 'idle', url });
+  }
+
   private viewTransformSaved = false;
+  private presentationContext?: CanvasRenderingContext2D;
+  private stagingCanvas?: HTMLCanvasElement;
+  private stagedFrom = new Map<SpacialContent, string | undefined>();
+  private stagedSceneChanged = false;
+  private waitForSceneChange = false;
 
   afterFrame(world: World): void {
     // this.lastPaintedObject = paint.__owner.value;
@@ -407,6 +443,25 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
     this.frameIsRendering = false;
+    if (this.stagingCanvas && !this.stagedSceneChanged) {
+      this.stagedSceneChanged = this.visible.some(paint =>
+        !this.stagedFrom.has(paint) || this.stagedFrom.get(paint) !== (paint as SingleImage | TiledImage).getImageUrl?.(0));
+    }
+    if (this.stagingCanvas && this.presentationContext && this.firstMeaningfulPaint && this.visible.length) {
+      const context = this.presentationContext;
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalAlpha = 1;
+      context.filter = 'none';
+      context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      context.drawImage(this.stagingCanvas, 0, 0);
+      context.restore();
+      this.ctx = context;
+      this.presentationContext = undefined;
+      this.stagingCanvas.width = this.stagingCanvas.height = 0;
+      this.stagingCanvas = undefined;
+      this.stagedFrom.clear();
+    }
     this.imagesPending =
       this.loadingQueue.length + this.tasksRunning + this.inFlightImageLoads.size + this.pendingTileReveals.size;
     this.imagesLoaded = 0;
@@ -429,10 +484,8 @@ export class CanvasRenderer implements Renderer {
     this.pruneStaleTileWork();
     this.pendingDrawCall = !!this.drawCalls.length;
     if (this.pendingDrawCall) {
-      for (let i = 0; i < this.drawCalls.length; i++) {
-        const nextCall = this.drawCalls.shift();
-        if (nextCall) nextCall();
-      }
+      const calls = this.drawCalls.splice(0);
+      for (const draw of calls) draw();
     }
     // Some off-screen work might need done, like loading new images in.
     this.doOffscreenWork();
@@ -1137,6 +1190,7 @@ export class CanvasRenderer implements Renderer {
         this.ctx.globalAlpha = ga * baseOpacity;
 
         const imageBuffer = this.ensureImageBuffer(paint);
+        this.restoreCachedTile(imageBuffer, paint, index);
         const tileState = this.getTileState(imageBuffer, index);
         tileState.lastUsedAt = performance.now();
         this.setTileState(imageBuffer, index, tileState);
@@ -1390,7 +1444,7 @@ export class CanvasRenderer implements Renderer {
     }
 
     this.pendingTileReveals.delete(tileKey);
-    const id = `${paint.id}--${paint.display.scale}-${index}`;
+    const id = this.imageCacheKey(paint, index);
     const requestKey = this.nextRequestKey(tileKey);
     imageBuffer.canvases[index] = id;
     const idx = this.invalidated.indexOf(id);
@@ -1691,11 +1745,13 @@ export class CanvasRenderer implements Renderer {
     if (
       !ready &&
       !this.firstMeaningfulPaint &&
+      !this.stagingCanvas &&
       this.visible.length > 0 &&
       this.options.readiness !== 'immediate' &&
       this.fallbackRevealTimeout === null
     ) {
-      // If it's still not ready after a short wait, reveal what we have and let tile fades begin.
+      // Initial load may reveal progressively. A resource handoff keeps the complete
+      // previous presentation until its replacement is ready, even on a slow request.
       this.fallbackRevealTimeout = setTimeout(() => {
         this.canvas.style.opacity = '1';
         this.firstMeaningfulPaint = true;
@@ -1703,7 +1759,8 @@ export class CanvasRenderer implements Renderer {
       }, MAX_WAIT_FOR_MEANINGFUL_PAINT_MS);
     }
 
-    if (!this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
+    const waitingForScene = this.stagingCanvas && this.waitForSceneChange && !this.stagedSceneChanged;
+    if (!waitingForScene && !this.firstMeaningfulPaint && ready && (this.visible.length || this.options.readiness === 'immediate')) {
       // Fade in the canvas?
       this.canvas.style.opacity = '1';
       // We've not rendered yet, can we render this  frame?
@@ -1727,10 +1784,28 @@ export class CanvasRenderer implements Renderer {
     return this.rendererPosition;
   }
 
-  resetReadyState() {
+  resetReadyState(reason?: AtlasReadyResetReason) {
     if (this.options.readiness === 'immediate') {
       return;
     }
+    // Keep the last complete presentation while a new scene schedules/decodes its tiles.
+    // Normal panning/zooming remains a direct draw; only a resource readiness reset stages frames.
+    if (!this.stagingCanvas && this.firstMeaningfulPaint && this.canvas.width && this.canvas.height) {
+      const canvas = document.createElement('canvas');
+      canvas.width = this.canvas.width;
+      canvas.height = this.canvas.height;
+      const context = canvas.getContext('2d');
+      if (context) {
+        this.presentationContext = this.ctx;
+        this.stagingCanvas = canvas;
+        this.ctx = context;
+      }
+    }
+    if (this.stagingCanvas) {
+      this.stagedFrom = new Map(this.visible.map(paint => [paint, (paint as SingleImage | TiledImage).getImageUrl?.(0)]));
+    }
+    this.waitForSceneChange = reason === 'ready-reset-key-change' || reason === 'resource-transition-key-change';
+    this.stagedSceneChanged = false;
     this.firstMeaningfulPaint = false;
     if (this.fallbackRevealTimeout) {
       clearTimeout(this.fallbackRevealTimeout);
@@ -1781,6 +1856,11 @@ export class CanvasRenderer implements Renderer {
   }
 
   reset() {
+    if (this.presentationContext) this.ctx = this.presentationContext;
+    this.presentationContext = undefined;
+    if (this.stagingCanvas) this.stagingCanvas.width = this.stagingCanvas.height = 0;
+    this.stagingCanvas = undefined;
+    this.stagedFrom.clear();
     this.resetGeneration += 1;
     this.loadingQueue = [];
     this.drawCalls = [];

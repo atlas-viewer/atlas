@@ -20,6 +20,8 @@ type AcquireResult = {
   release: (opts?: { silent?: boolean }) => void;
 };
 
+export type ImagePreloadOptions = { signal?: AbortSignal };
+
 type RequestEntry = {
   url: string;
   requestKey: string;
@@ -157,6 +159,58 @@ export class ImageRequestPool {
   private readonly cache?: Map<string, HTMLImageElement>;
   private readonly inFlight = new Map<string, RequestEntry>();
   private readonly knownConsumers = new Map<string, Set<string>>();
+  // Intent-driven preloads are separate from normal tile retention. Bound decoded source memory.
+  private readonly preloaded = new Map<string, HTMLImageElement>();
+  private preloadPixels = 0;
+  private preloadGeneration = 0;
+
+  getCachedImage(url: string): HTMLImageElement | undefined {
+    const image = this.preloaded.get(url) || this.cache?.get(url);
+    if (image && this.preloaded.has(url)) {
+      this.preloaded.delete(url);
+      this.preloaded.set(url, image);
+    }
+    return image;
+  }
+
+  async preload(urls: readonly string[], { signal }: ImagePreloadOptions = {}): Promise<void> {
+    const generation = this.preloadGeneration;
+    const queue = [...new Set(urls)].slice(0, 16);
+    const worker = async () => {
+      while (queue.length && !signal?.aborted && generation === this.preloadGeneration) {
+        const url = queue.shift()!;
+        if (this.getCachedImage(url)) continue;
+        const acquired = this.acquire(url, `preload:${nextRequestKey(url)}`);
+        const cancel = () => acquired.release();
+        signal?.addEventListener('abort', cancel, { once: true });
+        try {
+          const image = await acquired.promise;
+          if (signal?.aborted || generation !== this.preloadGeneration) continue;
+          const pixels = image.naturalWidth * image.naturalHeight;
+          if (!pixels || pixels > 8 * 1024 * 1024) continue;
+          const previous = this.preloaded.get(url);
+          if (previous) this.preloadPixels -= previous.naturalWidth * previous.naturalHeight;
+          this.preloaded.delete(url);
+          this.preloaded.set(url, image);
+          this.preloadPixels += pixels;
+          while (this.preloaded.size > 16 || this.preloadPixels > 8 * 1024 * 1024) {
+            const [key, oldest] = this.preloaded.entries().next().value!;
+            this.preloaded.delete(key);
+            this.preloadPixels -= oldest.naturalWidth * oldest.naturalHeight;
+          }
+        } catch (error) {
+          if (!signal?.aborted) throw error;
+        } finally {
+          signal?.removeEventListener('abort', cancel);
+          acquired.release();
+        }
+      }
+    };
+    // Observe every worker even if another fails; no orphaned rejections or requests.
+    const results = await Promise.allSettled([worker(), worker()]);
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+  }
 
   constructor(options: ImageRequestPoolOptions) {
     this.timeoutMs = options.timeoutMs;
@@ -166,7 +220,7 @@ export class ImageRequestPool {
   }
 
   acquire(url: string, consumerId: string): AcquireResult {
-    const cached = this.cache?.get(url);
+    const cached = this.getCachedImage(url);
     if (cached && cached.naturalWidth > 0) {
       return {
         requestKey: `cached:${url}`,
@@ -193,7 +247,9 @@ export class ImageRequestPool {
       };
 
       entry.promise = this.createRequest(entry)
-        .then((image) => {
+        .then(async (image) => {
+          // onload/HTTP cache completion does not guarantee pixels are decoded for the next paint.
+          if (typeof image.decode === 'function') await image.decode();
           entry!.settled = true;
           if (entry!.cancelled) {
             throw new ImageRequestCancelledError('Image request cancelled', entry!.silentCancellation);
@@ -287,6 +343,9 @@ export class ImageRequestPool {
   }
 
   cancelAll(opts: { silent?: boolean } = {}) {
+    this.preloadGeneration++;
+    this.preloaded.clear();
+    this.preloadPixels = 0;
     const consumers = [...this.knownConsumers.keys()];
     for (const consumerId of consumers) {
       this.releaseConsumer(consumerId, opts);

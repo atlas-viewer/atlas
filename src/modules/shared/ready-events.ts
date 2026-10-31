@@ -1,4 +1,4 @@
-export type AtlasReadyResetReason = 'initial' | 'manual' | 'ready-reset-key-change' | 'runtime-reset';
+export type AtlasReadyResetReason = 'initial' | 'manual' | 'ready-reset-key-change' | 'resource-transition-key-change' | 'runtime-reset';
 
 export type AtlasReadyRenderer = 'canvas' | 'webgl' | 'static' | 'composite' | 'unknown';
 

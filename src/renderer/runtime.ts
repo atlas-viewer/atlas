@@ -368,6 +368,10 @@ export class Runtime {
     this.resetReadyState('resource-transition-key-change');
   }
 
+  async preloadImages(urls: readonly string[], options?: { signal?: AbortSignal }) {
+    await this.renderer.preloadImages?.(urls, options);
+  }
+
   /**
    * Normalize padding input to a consistent per-side format.
    */
@@ -1230,7 +1234,7 @@ export class Runtime {
     this.readyReason = reason;
     this.readyTimestamp = undefined;
     if (this.renderer.resetReadyState) {
-      this.renderer.resetReadyState();
+      this.renderer.resetReadyState(reason);
     }
     this.pendingUpdate = true;
   }

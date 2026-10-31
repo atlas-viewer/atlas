@@ -17,6 +17,52 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+test('preloads decoded images with deduplication and bounded retention even when ordinary caching is disabled', async () => {
+  const pool = new ImageRequestPool({ timeoutMs: 1000, cache: false });
+  const image = { naturalWidth: 1024, naturalHeight: 1024, decode: vi.fn().mockResolvedValue(undefined) } as unknown as HTMLImageElement;
+  const request = vi.spyOn(pool as any, 'createRequest').mockResolvedValue(image);
+  await pool.preload(['one', 'one']);
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(image.decode).toHaveBeenCalledOnce();
+  expect(await pool.acquire('one', 'visible').promise).toBe(image);
+  await pool.preload(Array.from({ length: 16 }, (_, i) => `next-${i}`));
+  expect((pool as any).preloaded.size).toBeLessThanOrEqual(8);
+  expect(pool.getCachedImage('one')).toBeUndefined();
+  pool.cancelAll();
+  expect((pool as any).preloaded.size).toBe(0);
+});
+
+test('does not call an image ready before decode completes', async () => {
+  const pool = new ImageRequestPool({ timeoutMs: 1000 });
+  const decoded = deferred<void>();
+  const image = { naturalWidth: 100, naturalHeight: 100, decode: () => decoded.promise } as HTMLImageElement;
+  vi.spyOn(pool as any, 'createRequest').mockResolvedValue(image);
+  let ready = false;
+  const request = pool.acquire('image', 'visible');
+  const result = request.promise.then(() => { ready = true; });
+  await Promise.resolve(); await Promise.resolve();
+  expect(ready).toBe(false);
+  decoded.resolve(); await result;
+  expect(ready).toBe(true);
+  request.release();
+});
+
+test('cancelling hover intent leaves a visible consumer alive and does not retain its preload', async () => {
+  const pool = new ImageRequestPool({ timeoutMs: 1000, cache: false });
+  const loaded = deferred<HTMLImageElement>();
+  vi.spyOn(pool as any, 'createRequest').mockReturnValue(loaded.promise);
+  const controller = new AbortController();
+  const preload = pool.preload(['image'], { signal: controller.signal });
+  const visible = pool.acquire('image', 'visible');
+  controller.abort();
+  const image = { naturalWidth: 100, naturalHeight: 100 } as HTMLImageElement;
+  loaded.resolve(image);
+  expect(await visible.promise).toBe(image);
+  await preload;
+  expect(pool.getCachedImage('image')).toBeUndefined();
+  visible.release();
+});
+
 function installMockImageFactory() {
   const originalCreateElement = document.createElement.bind(document);
 
