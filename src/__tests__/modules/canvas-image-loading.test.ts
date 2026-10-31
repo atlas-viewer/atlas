@@ -5,11 +5,13 @@ import { World } from '../../world';
 import { WorldObject } from '../../world-objects/world-object';
 /** @vitest-environment happy-dom */
 
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { CanvasRenderer } from '../../modules/canvas-renderer/canvas-renderer';
 import { resolveImageLoadingConfig } from '../../modules/shared/image-loading-config';
 import { SingleImage } from '../../spacial-content/single-image';
 import { TiledImage } from '../../spacial-content/tiled-image';
+
+afterEach(() => vi.restoreAllMocks());
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -42,6 +44,7 @@ function createMockContext() {
     filter: 'none',
     save: vi.fn(),
     restore: vi.fn(),
+    setTransform: vi.fn(),
     translate: vi.fn(),
     rotate: vi.fn(),
     drawImage: vi.fn(),
@@ -115,6 +118,42 @@ function setCompositeState(
 }
 
 describe('Canvas image loading behavior', () => {
+  test('retains one oversized image without allowing the cache to accumulate more entries', () => {
+    const { renderer } = createRenderer();
+    const huge = { width: 10000, height: 10000 } as HTMLCanvasElement;
+    renderer.hostCache.set('huge', huge);
+    expect(renderer.hostCache.get('huge') === huge).toBe(true);
+    renderer.hostCache.set('next', { width: 512, height: 512 } as HTMLCanvasElement);
+    expect(renderer.hostCache.has('huge')).toBe(false);
+    expect(huge.width).toBe(0);
+  });
+  test('drains every queued tile draw in the same frame', () => {
+    const { renderer } = createRenderer({ readiness: 'immediate' });
+    const draws = Array.from({ length: 5 }, () => vi.fn());
+    renderer.drawCalls.push(...draws);
+    renderer.afterFrame({ objects: [], hasActiveZone: () => true } as any);
+    expect(draws.every(draw => draw.mock.calls.length === 1)).toBe(true);
+    expect(renderer.drawCalls).toHaveLength(0);
+  });
+
+  test('reuses a decoded tile for a new scene object without another request or reveal delay', () => {
+    const { renderer, context } = createRenderer({ readiness: 'immediate' });
+    const first = createImage('old-object');
+    const next = createImage('new-object');
+    next.uri = first.uri;
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 100;
+    renderer.hostCache.set(`${first.uri}::100x100`, tile);
+    const acquire = vi.spyOn(renderer.imageRequestPool, 'acquire');
+    renderer.prepareLayer(next, next.points);
+    renderer.paint(next, 0, 0, 0, 100, 100);
+    expect(context.drawImage).toHaveBeenCalled();
+    expect(context.drawImage.mock.calls[0][0] === tile).toBe(true);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(renderer.loadingQueue).toHaveLength(0);
+    expect(next.__host.canvas.tiles[0].skipFade).toBe(true);
+  });
+
   test('idle cancels pending loads, preserves tiles, and resumes without errors or retries', async () => {
     const onImageError = vi.fn();
     const { renderer } = createRenderer({ readiness: 'immediate', onImageError });
@@ -675,10 +714,68 @@ describe('Canvas image loading behavior', () => {
   test('resetReadyState clears first meaningful paint in non-immediate mode', () => {
     const { renderer } = createRenderer();
     renderer.firstMeaningfulPaint = true;
+    vi.spyOn(document, 'createElement').mockReturnValue({ width: 256, height: 256, getContext: () => createMockContext() } as any);
 
     renderer.resetReadyState();
 
     expect(renderer.firstMeaningfulPaint).toBe(false);
+  });
+
+  test('keeps the complete presentation while a replacement scene is not ready', () => {
+    const { renderer, context } = createRenderer();
+    const stagingContext = createMockContext();
+    const staging = { width: 256, height: 256, getContext: () => stagingContext };
+    vi.spyOn(document, 'createElement').mockReturnValue(staging as any);
+    renderer.firstMeaningfulPaint = true;
+    renderer.resetReadyState();
+    const world = { objects: [], hasActiveZone: () => true } as any;
+    renderer.beforeFrame(world, 16, new Float32Array([1, 0, 0, 256, 256]), defaultHookOptions as any);
+    renderer.afterFrame(world);
+    expect(context.fillRect).not.toHaveBeenCalled();
+    expect(context.clearRect).not.toHaveBeenCalled();
+    expect(context.drawImage).not.toHaveBeenCalled();
+    renderer.visible = [createImage('ready')];
+    renderer.firstMeaningfulPaint = true;
+    renderer.afterFrame(world);
+    expect(context.drawImage).toHaveBeenCalledOnce();
+    expect(context.drawImage.mock.calls[0][0] === staging).toBe(true);
+    expect(renderer.ctx).toBe(context);
+  });
+
+  test('does not mark an unchanged old scene ready for a new resource key', () => {
+    const { renderer } = createRenderer();
+    const staging = { width: 256, height: 256, getContext: () => createMockContext() };
+    vi.spyOn(document, 'createElement').mockReturnValue(staging as any);
+    renderer.firstMeaningfulPaint = true;
+    renderer.visible = [createImage('old-scene')];
+    renderer.resetReadyState('ready-reset-key-change');
+    renderer.pendingUpdate();
+    expect(renderer.isReady()).toBe(false);
+    const world = { objects: [], hasActiveZone: () => true } as any;
+    renderer.afterFrame(world);
+    renderer.pendingUpdate();
+    expect(renderer.isReady()).toBe(false);
+    renderer.visible = [createImage('next-scene')];
+    renderer.afterFrame(world);
+    renderer.pendingUpdate();
+    expect(renderer.isReady()).toBe(true);
+  });
+
+  test('does not time out into a partial presentation during a slow resource handoff', () => {
+    vi.useFakeTimers();
+    try {
+      const { renderer } = createRenderer();
+      vi.spyOn(document, 'createElement').mockReturnValue({ width: 256, height: 256, getContext: () => createMockContext() } as any);
+      renderer.firstMeaningfulPaint = true;
+      renderer.resetReadyState('ready-reset-key-change');
+      renderer.visible = [createImage('slow-replacement')];
+      (renderer as any).tasksRunning = 1;
+      renderer.pendingUpdate();
+      vi.advanceTimersByTime(5000);
+      expect(renderer.isReady()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

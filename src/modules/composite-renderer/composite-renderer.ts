@@ -5,6 +5,8 @@ import { Strand } from '@atlas-viewer/dna';
 import { SpacialContent } from '../../spacial-content/spacial-content';
 import { PositionPair } from '../../types';
 import { HookOptions } from 'src/standalone';
+import type { ImagePreloadOptions } from '../shared/image-request-pool';
+import type { AtlasReadyResetReason } from '../shared/ready-events';
 
 export class CompositeRenderer implements Renderer {
   renderers: Renderer[] = [];
@@ -116,12 +118,16 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
-  resetReadyState() {
+  resetReadyState(reason?: AtlasReadyResetReason) {
     for (let i = 0; i < this.length; i++) {
       if (this.renderers[i].resetReadyState) {
-        this.renderers[i].resetReadyState();
+        this.renderers[i].resetReadyState?.(reason);
       }
     }
+  }
+
+  async preloadImages(urls: readonly string[], options?: ImagePreloadOptions) {
+    await Promise.all(this.renderers.map(renderer => renderer.preloadImages?.(urls, options)));
   }
 
   resetImageFadeState() {

@@ -310,6 +310,10 @@ export class WebGLRenderer implements Renderer {
     return false;
   }
 
+  preloadImages(urls: readonly string[], options?: { signal?: AbortSignal }) {
+    return this.imageRequestPool.preload(urls, options);
+  }
+
   private viewRotation = 0;
 
   beforeFrame(world: World, delta: number, target: Strand, options: HookOptions) {
