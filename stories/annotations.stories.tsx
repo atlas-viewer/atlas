@@ -34,14 +34,14 @@ const staticTiles = [
 	//   id: 'https://gallica.bnf.fr/iiif/ark:/12148/btv1b531454753/f1',
 	// },
 	{
-		id: "https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json",
+		id: "https://iiif.princeton.edu/iiif/2/pudl0001/4609321/s42/00000001/info.json",
 		width: 5233,
 		height: 7200,
 	},
 	{
-		id: "https://iiif.ub.uni-leipzig.de/iiif/j2k/0000/0026/0000002636/00000001.jpx/info.json",
-		width: 3840,
-		height: 5760,
+		id: "https://iiif.digitalcommonwealth.org/iiif/2/commonwealth:b85162086/info.json",
+		width: 6980,
+		height: 5160,
 	},
 	{
 		id: "https://glenrobson.github.io/iiif_stuff/rounding_issue/odd/info.json",

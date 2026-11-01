@@ -10,15 +10,18 @@ export class AtlasImageServiceLoader extends ImageServiceLoader {
   }
 
   loadService(resource: Parameters<ImageServiceLoader['loadService']>[0], forceFresh = false) {
-    const id = resource.id || resource['@id'];
+    const id = resource.id;
     const key = `${id?.replace(/\/info\.json\/?$/, '')}:${forceFresh}`;
     const existing = this.pending.get(key);
     if (existing) return existing;
-    const promise = super.loadService(resource, forceFresh).catch((error) => {
-      // Upstream decrements on success only.
-      this.fetchingCount--;
-      throw error;
-    }).finally(() => this.pending.delete(key));
+    const promise = super
+      .loadService(resource, forceFresh)
+      .catch((error) => {
+        // Upstream decrements on success only.
+        this.fetchingCount--;
+        throw error;
+      })
+      .finally(() => this.pending.delete(key));
     this.pending.set(key, promise);
     return promise;
   }

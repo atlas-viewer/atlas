@@ -45,6 +45,8 @@ export type PopmotionControllerConfig = {
   enableDoubleTapZoom?: boolean;
   enableHoldToHome?: boolean;
   ignoreSingleFingerTouch?: boolean;
+  /** Keep one finger for the sketch tool; two or more fingers navigate. Defaults to none. */
+  sketchTouchNavigation?: 'two-finger' | 'none';
   enablePanOnWait?: boolean;
   requireMetaKeyForWheelZoom?: boolean;
   wheelInExploreModeOnly?: boolean;
@@ -86,6 +88,7 @@ export const defaultConfig: Required<PopmotionControllerConfig> = {
   enableDoubleTapZoom: true,
   enableHoldToHome: true,
   ignoreSingleFingerTouch: false,
+  sketchTouchNavigation: 'none',
   enablePanOnWait: false,
   requireMetaKeyForWheelZoom: false,
   wheelInExploreModeOnly: false,
@@ -120,6 +123,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         enableDoubleTapZoom,
         enableHoldToHome,
         ignoreSingleFingerTouch,
+        sketchTouchNavigation,
         enablePanOnWait,
         panOnWaitDelay,
         parentElement,
@@ -139,6 +143,10 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       };
 
       runtime.touchRotationEnabled = enableTouchRotation;
+      runtime.sketchTouchNavigation = sketchTouchNavigation;
+      let sketchGestureSequence = false;
+      const canPan = () => runtime.mode === 'explore' || (runtime.mode === 'sketch' && runtime.sketchPanOverride);
+      const canGesture = () => canPan() || (runtime.mode === 'sketch' && sketchTouchNavigation === 'two-finger');
 
       const state = {
         pointerStart: { x: 0, y: 0 },
@@ -494,7 +502,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         // bounds on its own) would unconditionally kick off a fresh,
         // click-triggered 500ms constrain-bounds snap -- visibly moving the
         // view as a side effect of a click that never dragged anything.
-        if (runtime.mode === 'explore' && !startedMomentum && releaseTravelPx() >= MIN_MOMENTUM_TRAVEL_PX) {
+        if (canPan() && !startedMomentum && releaseTravelPx() >= MIN_MOMENTUM_TRAVEL_PX) {
           runtime.world.constraintBounds();
         }
         state.isPressing = false;
@@ -513,7 +521,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
 
         stopPanMomentum();
 
-        if (runtime.mode === 'explore') {
+        if (canGesture()) {
           const pendingTransition = runtime.transitionManager.getPendingTransition();
           const sourceTarget =
             lastGestureTarget ||
@@ -583,11 +591,25 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onTouchEnd(e: TouchEvent) {
+        if (!e.touches) return;
+        if (e.touches.length === 0) sketchGestureSequence = false;
         if (!state.isPressing) return;
         const lostRotationFinger = rotationGesture && rotationGesture.ids.some(
           (id) => !Array.from(e.touches).some((touch) => touch.identifier === id)
         );
         if (intent === INTENT_GESTURE && (e.touches.length < 2 || lostRotationFinger)) {
+          // With three or more fingers, rebase onto a remaining pair without a jump.
+          if (e.touches.length >= 2) {
+            if (lastGestureTarget) runtime.target.set(lastGestureTarget);
+            clearGestureState();
+            const bounds = runtime.getRendererScreenPosition();
+            (e as any).atlasTouches = Array.from(e.touches).map(touch => ({
+              id: touch.identifier,
+              ...runtime.viewerToWorld(touch.clientX - (bounds?.x ?? 0), touch.clientY - (bounds?.y ?? 0)),
+            }));
+            onTouchStart(e as TouchEvent & { atlasTouches: Array<{ id: number; x: number; y: number }> });
+            return;
+          }
           releaseGesturePointer(true);
           return;
         }
@@ -599,6 +621,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onTouchCancel(e: TouchEvent) {
+        if (!e.touches || e.touches.length === 0) sketchGestureSequence = false;
         if (intent === INTENT_GESTURE) {
           releaseGesturePointer();
           return;
@@ -613,7 +636,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           state.isPressing = false;
           return;
         }
-        if (runtime.mode === 'explore') {
+        if (canPan()) {
           e.preventDefault();
           stopPanMomentum();
           clearPanSamples();
@@ -646,13 +669,18 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           atlasTouches: Array<{ id: number; x: number; y: number }>;
         }
       ) {
-        if (runtime.mode === 'explore') {
+        if (runtime.mode === 'sketch') {
+          if (e.touches.length >= 2 && canGesture()) sketchGestureSequence = true;
+          if (e.touches.length < 2 && (sketchGestureSequence || !runtime.sketchPanOverride)) return;
+        }
+        if (canGesture()) {
+          if (rotationGesture && rotationGesture.ids.every(id => Array.from(e.touches).some(t => t.identifier === id))) return;
           stopPanMomentum();
           clearPanSamples();
           state.hasMovedSincePress = false;
           if (e.atlasTouches.length === 1) {
             touchStartTime = performance.now();
-            if (ignoreSingleFingerTouch == false) {
+            if (runtime.mode === 'sketch' || ignoreSingleFingerTouch == false) {
               // this prevents the touch propagation to the window, and thus doesn't drag the page
               e.preventDefault();
             }
@@ -661,7 +689,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
             currentTapPoint = { x: e.atlasTouches[0].x, y: e.atlasTouches[0].y };
             recordPanSample(runtime.target[1], runtime.target[2]);
           }
-          if (e.atlasTouches.length === 2) {
+          if (e.atlasTouches.length >= 2) {
             intent = INTENT_GESTURE;
             e.preventDefault();
             const x1 = e.atlasTouches[0].x;
@@ -682,7 +710,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           runtime.transitionManager.stopTransition();
 
           state.isPressing = true;
-          if (runtime.touchRotationEnabled && e.touches.length === 2) {
+          if ((runtime.touchRotationEnabled || runtime.mode === 'sketch') && e.touches.length >= 2) {
             const [a, b] = Array.from(e.touches);
             const bounds = runtime.getRendererScreenPosition();
             if (bounds && currentDistance > 0) {
@@ -725,7 +753,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           atlasTouches: Array<{ id: number; x: number; y: number }>;
         }
       ) {
-        if (state.isPressing && rotationGesture && e.touches.length === 2) {
+        if (!canGesture() || (runtime.mode === 'sketch' && e.touches.length === 1 && (sketchGestureSequence || !runtime.sketchPanOverride))) return;
+        if (state.isPressing && rotationGesture && e.touches.length >= 2) {
           e.preventDefault();
           const gesture = rotationGesture;
           const touches = Array.from(e.touches);
@@ -736,7 +765,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           const separation = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
           if (!separation) return;
           const angle = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
-          const delta = Math.atan2(Math.sin(angle - gesture.angle), Math.cos(angle - gesture.angle));
+          const delta = Math.atan2(Math.sin(angle - gesture.angle), Math.cos(angle - gesture.angle)) *
+            (runtime.viewFlip ? -1 : 1);
           if (runtime.touchRotationEnabled) {
             if (!gesture.rotating) {
               gesture.pendingAngle += delta;
@@ -758,7 +788,8 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           const width = (gesture.target[3] - gesture.target[1]) * ratio;
           const height = (gesture.target[4] - gesture.target[2]) * ratio;
           const [dx, dy] = rotatePoint(
-            ((a.clientX + b.clientX) / 2 - bounds.x - bounds.width / 2) * ratio / gesture.scale,
+            ((a.clientX + b.clientX) / 2 - bounds.x - bounds.width / 2) * ratio / gesture.scale *
+              (runtime.viewFlip ? -1 : 1),
             ((a.clientY + b.clientY) / 2 - bounds.y - bounds.height / 2) * ratio / gesture.scale,
             0, 0, -runtime.viewRotation
           );
@@ -777,7 +808,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         let clientY = null;
         let newDistance = 0;
         let shouldRecordMomentum = false;
-        if (state.isPressing && e.touches.length === 2) {
+        if (state.isPressing && e.touches.length >= 2) {
           // We have 2?
           const x1 = e.touches[0].clientX;
           const x2 = e.touches[1].clientX;
@@ -794,7 +825,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
         setDataAttribute(intent);
 
         if (state.isPressing && e.touches.length === 1) {
-          if (enablePanOnWait) {
+          if (enablePanOnWait && runtime.mode === 'explore') {
             // if there is a delay between the touch-start and the 1st touch-move of < xms, then treat that as a PAN,
             // anything faster is a window scroll
             if (performance.now() - touchStartTime < panOnWaitDelay && intent == '') {
@@ -806,7 +837,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
           }
           setDataAttribute(intent);
           // if we are ignoring a single finger touch, or it's a window-scroll, just 'return'
-          if ((intent == '' && ignoreSingleFingerTouch == true) || intent == INTENT_SCROLL) {
+          if (runtime.mode !== 'sketch' && ((intent == '' && ignoreSingleFingerTouch == true) || intent == INTENT_SCROLL)) {
             // have CanvasPanel do nothing... scroll the page
             setDataAttribute('require-two-finger', 'notice');
             return;
@@ -841,7 +872,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
               recordPanSample(nextTarget[1], nextTarget[2]);
             }
 
-            if (e.touches.length === 2) {
+            if (e.touches.length >= 2) {
               lastGestureTarget = dna(nextTarget);
               lastGestureOrigin = { x, y };
             }
@@ -859,6 +890,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       }
 
       function onMouseMove(e: MouseEvent | PointerEvent) {
+        if (!canPan()) return;
         if (runtime.mode !== 'explore' && (holdToHomePending || holdToHomeConsumed)) {
           resetHoldToHomeState();
         }
@@ -1103,6 +1135,7 @@ export const popmotionController = (config: PopmotionControllerConfig = {}): Run
       });
 
       return () => {
+        runtime.sketchTouchNavigation = 'none';
         stopPanMomentum();
         resetHoldToHomeState();
         runtime.world.removeEventListener('mouseup', onMouseUp);

@@ -17,7 +17,7 @@ import { distance } from '../../utils';
 import type { World } from '../../world';
 import type { Paint, Paintable, WorldObject } from '../../world-objects';
 import { buildCssFilter } from '../shared/build-css-filter';
-import type { AtlasImageLoadErrorEvent } from '../shared/image-load-events';
+import type { AtlasImageLoadErrorEvent, AtlasImageLoadedEvent } from '../shared/image-load-events';
 import { getRetryDelayMs, type ImageLoadingConfig, resolveImageLoadingConfig } from '../shared/image-loading-config';
 import { ImageRequestPool, isImageRequestCancelledError } from '../shared/image-request-pool';
 import type { AtlasReadyResetReason } from '../shared/ready-events';
@@ -42,6 +42,7 @@ export type CanvasRendererOptions = {
   readiness?: 'first-meaningful-paint' | 'immediate';
   imageLoading?: Partial<ImageLoadingConfig>;
   onImageError?: (event: AtlasImageLoadErrorEvent) => void;
+  onImageLoaded?: (event: AtlasImageLoadedEvent) => void;
 };
 
 export type ImageBuffer = {
@@ -448,7 +449,10 @@ export class CanvasRenderer implements Renderer {
           this.stagedFrom.get(paint) !== (paint as SingleImage | TiledImage).getImageUrl?.(0)
       );
     }
-    if (this.stagingCanvas && this.presentationContext && this.firstMeaningfulPaint && this.visible.length) {
+    if (
+      this.stagingCanvas && this.stagingCanvas.width && this.stagingCanvas.height &&
+      this.presentationContext && this.firstMeaningfulPaint && this.visible.length
+    ) {
       const context = this.presentationContext;
       context.save();
       context.setTransform(1, 0, 0, 1, 0, 0);
@@ -629,11 +633,12 @@ export class CanvasRenderer implements Renderer {
     // this.ctx.rotate((-90 * Math.PI) / 180);
     // this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
 
-    if (options.viewRotation && options.viewCenter) {
+    if ((options.viewRotation || options.viewFlip) && options.viewCenter) {
       this.ctx.save();
       this.viewTransformSaved = true;
       this.ctx.translate(options.viewCenter.x, options.viewCenter.y);
-      this.ctx.rotate((options.viewRotation * Math.PI) / 180);
+      if (options.viewFlip) this.ctx.scale(-1, 1);
+      this.ctx.rotate(((options.viewRotation || 0) * Math.PI) / 180);
       this.ctx.translate(-options.viewCenter.x, -options.viewCenter.y);
     }
     const filter = buildCssFilter(options);
@@ -1750,6 +1755,7 @@ export class CanvasRenderer implements Renderer {
                   });
                   this.enqueueTileReveal(tileKey, imageBuffer, index);
                   this.imagesLoaded++;
+                  this.options.onImageLoaded?.({ renderer: 'canvas', imageUrl: url, contentId: paint.id, tileIndex: index, image, objectId: paint.__owner.value?.id });
                   if (CanvasRenderer.debugTileLoad) {
                     CanvasRenderer.debugTileLoad({
                       paintId: paint.id,

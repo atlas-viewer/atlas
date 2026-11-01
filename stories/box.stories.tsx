@@ -1,3 +1,5 @@
+// @ts-ignore - bundled story fixture
+import img from './assets/img.png';
 import * as React from 'react';
 import { AtlasAuto, BoxStyle } from '../src';
 import { useState } from 'react';
@@ -75,7 +77,7 @@ export const DefaultBoxes = () => {
       <AtlasAuto key={r ? 'a' : 'b'} renderPreset={['default-preset', { canvasBox: r }]}>
         <world>
           {styles.map((style, k) => (
-            <world-object x={k * 110} height={100} width={100}>
+            <world-object key={k} x={k * 110} height={100} width={100}>
               <box target={{ width: 100, height: 100 }} style={style} />
             </world-object>
           ))}
@@ -106,7 +108,7 @@ export const DefaultBoxes = () => {
         </world>
       </AtlasAuto>
       <style>{`
-        .css-class{background-image: url('http://localhost:6007/static/media/img.732d55c5.png');}
+        .css-class{background-image: url('${img}');}
         .css-class--hover{background: blue;}
       `}</style>
     </>

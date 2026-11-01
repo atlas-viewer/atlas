@@ -89,6 +89,26 @@ describe('zone wrapper reconciler behavior', () => {
     expect(runtime.world.getObjects().filter(Boolean)).toHaveLength(2);
   });
 
+  test('moves zone objects into a surrounding world and keeps omitted margins finite', async () => {
+    const runtime = createRuntime();
+    ReactAtlas.render(
+      React.createElement('world', null,
+        React.createElement('zone', { id: 'map-zone', x: 0, y: 0, width: 240, height: 100 },
+          React.createElement('world-object', { id: 'map', width: 200, height: 100 })
+        )
+      ), runtime
+    );
+    await flushRender();
+    const zone = runtime.world.getZoneById('map-zone')!;
+    expect(Array.from(zone.points)).toEqual([1, 0, 0, 240, 100]);
+    expect(runtime.world.getObjects().filter(Boolean).map(object => object!.id)).toEqual(['map']);
+    expect(zone.objects[0]).toBe(runtime.world.getObjects().filter(Boolean)[0]);
+    ReactAtlas.render(React.createElement('world'), runtime);
+    await flushRender();
+    expect(runtime.world.getObjects().filter(Boolean)).toHaveLength(0);
+    runtime.dispose();
+  });
+
   test('does not register non-direct descendants to zone', async () => {
     const runtime = createRuntime();
 

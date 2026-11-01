@@ -1,15 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserEventManager } from '../../browser-event-manager/browser-event-manager';
-import { ReactAtlas } from '../reconciler';
-import { Runtime, ViewerMode } from '../../../renderer/runtime';
-import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
-import { popmotionController } from '../../popmotion-controller/popmotion-controller';
+import React, { useEffect, useRef, useState } from 'react';
+import { Runtime, type ViewerMode } from '../../../renderer/runtime';
 import { World } from '../../../world';
+import { deferToMicrotask } from '../../../utility/defer-to-microtask';
+import { CanvasRenderer } from '../../canvas-renderer/canvas-renderer';
 import { AtlasContext } from '../components/AtlasContext';
-import { ModeContext } from './use-mode';
-import { Preset } from '../presets/_types';
-import { usePreset } from './use-preset';
+import { ImageResourceLoadingContext, type ImageResourceLoading } from '../components/ImageResourceLoadingContext';
+import type { Preset } from '../presets/_types';
+import { ReactAtlas } from '../reconciler';
 import { useIsomorphicLayoutEffect } from '../utility/react';
+import { ModeContext } from './use-mode';
 
 type AtlasProps = {
   width: number;
@@ -21,216 +20,131 @@ type AtlasProps = {
   resetWorldOnChange?: boolean;
 };
 
-export const useAtlasImage: (
-  children: any,
-  options: AtlasProps
-) => { uri: string | undefined; loading?: boolean; imageError?: string } = (
-  children,
-  { onCreated, resetWorldOnChange = true, mode = 'explore', cover, containerRef, ...restProps }
-) => {
-  const [ready, setReady] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
-  const [imageError, setError] = useState<string | undefined>(undefined);
-  // Reference to the current HTML Canvas element
-  // Set by React by passing <canvas ref={...} />
-  // Used to instantiate the controller and viewer with the correct HTML element.
-  const canvasRef = useRef<HTMLCanvasElement>();
-
-  // This is an HTML element that sits above the Canvas element that is passed to the controller.
-  // Additional non-canvas drawn elements can be placed here and positioned. CSS is applied to this
-  // element by this component to absolutely position it. The overlay is updated if the "bounds" change
-  // on the parent element and matches the size of it.
-  const overlayRef = useRef<HTMLDivElement>();
-
-  // This measures the height and width of the Atlas element.
-  // const [ref, bounds] = useMeasure({ scroll: true });
-  const bounds = useMemo(() => {
-    return {
-      width: restProps.width,
-      height: restProps.height,
-    };
-  }, [restProps.width, restProps.height]);
-
-  // This is a big messy global state of atlas that is updated outside of Reacts lifecycle.
-  const [presetName, preset, viewport, refs] = usePreset(undefined, {
-    width: restProps.width,
-    height: restProps.height,
-  });
-
-  // Create our in memory canvas.
-  useIsomorphicLayoutEffect(() => {
-    const $cvs = document.createElement('canvas');
-    $cvs.height = bounds.height;
-    $cvs.width = bounds.width;
-    canvasRef.current = $cvs;
-  }, []);
+/** Render an Atlas scene to an exportable image without mounting a visible viewer. */
+export function useAtlasImage(children: React.ReactNode, options: AtlasProps) {
+  const { width, height, mode = 'explore', cover, resetWorldOnChange = true } = options;
+  const [session, setSession] = useState<{ preset: Preset; resourceLoading: ImageResourceLoading }>();
+  const preset = session?.preset;
+  const currentPreset = useRef<Preset>();
+  const [uri, setUri] = useState<string>();
+  const [imageError, setError] = useState<string>();
+  const onCreated = useRef(options.onCreated);
+  onCreated.current = options.onCreated;
 
   useIsomorphicLayoutEffect(() => {
-    const $cvs = canvasRef.current;
-    if ($cvs) {
-      $cvs.height = bounds.height;
-      $cvs.width = bounds.width;
-    }
-  }, [bounds.width, bounds.height]);
-
-  useEffect(() => {
-    if (preset) {
-      const runtime = preset.runtime;
-      return runtime.registerHook('useAfterFrame', () => {
-        if (canvasRef.current) {
-          try {
-            setImageUrl(canvasRef.current.toDataURL());
-          } catch (e) {
-            if (e instanceof Error) {
-              setError(e.message);
-            }
-          }
+    let active = true;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const imageErrors = new Map<string | undefined, { error: unknown; contentId?: string }>();
+    const renderer = new CanvasRenderer(canvas, {
+      dpi: 1,
+      crossOrigin: true,
+      onImageError: (event) => {
+        if (active && !event.willRetry) {
+          imageErrors.set(event.imageUrl, {
+            error: event.error || 'Image failed to load',
+            contentId: event.contentId,
+          });
+          refreshResources();
         }
-      });
-    }
-    return () => {
-      // no-op
+      },
+      onImageLoaded: (event) => {
+        if (imageErrors.delete(event.imageUrl)) refreshResources();
+      },
+    });
+    const runtime = new Runtime(renderer, new World(), { width, height, x: 0, y: 0, scale: 1 });
+    const created: Preset = { name: 'default-preset', canvas, renderer, runtime, unmount: () => runtime.dispose() };
+    currentPreset.current = created;
+    const loads = new Map<object, { pending: boolean; error?: Error }>();
+    const refreshResources = () => {
+      if (!active) return;
+      const error = Array.from(loads.values()).find((load) => load.error)?.error;
+      const imageError = imageErrors.values().next().value?.error;
+      setError(error?.message ?? (imageError === undefined ? undefined : String(imageError)));
+      runtime.updateNextFrame();
     };
-  }, []);
-
-  useEffect(() => {
-    if (preset) {
-      const runtime = preset.runtime;
-      return runtime.world.addLayoutSubscriber((type) => {
-        if (type === 'ready') {
-          setReady(true);
-        }
-      });
-    }
-    return () => {
-      // no-op
-    };
-  }, []);
-
-  // This changes the mutable state object with the position (top/left/width/height) of the
-  // canvas element on the page. This is used in the editing tools such as BoxDraw for comparing
-  // positions.
-  useEffect(() => {
-    if (preset && preset.em) {
-      preset.em.updateBounds();
-    }
-  }, [bounds]);
-
-  // This changes the mode in the state object when the prop passed in changes. This will
-  // be picked up by the renderer on the next method. There is not current way to detect this change.
-  // @todo create a mode change event.
-  useEffect(() => {
-    if (preset) {
-      preset.runtime.mode = mode;
-    }
-  }, [mode]);
-
-  // When the width and height change this will resize the viewer and then reset the view to fit the element.
-  // @todo improve or make configurable.
-  // @todo resize event.
-  useEffect(() => {
-    if (preset) {
-      const rt: Runtime = preset.runtime;
-
-      rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
-      if (cover) {
-        rt.cover();
-      } else {
-        rt.goHome();
-      }
-      viewport.current.width = restProps.width;
-      viewport.current.height = restProps.height;
-      rt.updateNextFrame();
-    }
-  }, [restProps.width, restProps.height]);
-
-  // When the bounds of the container change, we need to reflect those changes in the overlay.
-  // @todo move to canvas.
-  useIsomorphicLayoutEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    overlay.style.width = `${bounds.width}px`;
-    overlay.style.height = `${bounds.height}px`;
-    overlay.style.pointerEvents = 'none';
-    overlay.style.overflow = 'hidden';
-  }, [bounds.height, bounds.width]);
-
-  // When the window resizes we need to recalculate the width.
-  // @todo possibly move to controller.
-  useIsomorphicLayoutEffect(() => {
-    const windowResizeCallback = () => {
-      if (preset && preset.runtime) {
-        const rt: Runtime = preset.runtime;
-
-        rt.resize(viewport.current.width, restProps.width, viewport.current.height, restProps.height);
-        viewport.current.width = restProps.width;
-        viewport.current.height = restProps.height;
-        rt.updateNextFrame();
-      }
-    };
-
-    window.addEventListener('resize', windowResizeCallback);
-
-    return () => window.removeEventListener('resize', windowResizeCallback);
-  }, [preset, restProps.height, restProps.width]);
-
-  const Canvas = useCallback(
-    function Canvas(props: { children: React.ReactElement }): JSX.Element {
-      const activate = () => {
-        if (preset) {
-          preset.ready = true;
-        }
-      };
-
-      useEffect(() => {
-        if (preset) {
-          const result = onCreated && onCreated(preset);
-          return void (result && result.then ? result.then(activate) : activate());
-        }
-        return () => {
-          // no-op
+    const resourceLoading: ImageResourceLoading = {
+      beginLoad() {
+        const token = {};
+        loads.set(token, { pending: true });
+        refreshResources();
+        return {
+          complete(error) {
+            if (!active || !loads.has(token)) return;
+            loads.set(token, { pending: false, error });
+            refreshResources();
+          },
+          dispose() {
+            loads.delete(token);
+            refreshResources();
+          },
         };
-      }, []);
-
-      return props.children;
-    },
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [preset]
-  );
+      },
+    };
+    const removeFrame = runtime.registerHook('useAfterFrame', () => {
+      if (!active || !renderer.isReady()) return;
+      // A removed image must not leave the replacement export in an error state.
+      let removedError = false;
+      for (const [url, failure] of imageErrors) {
+        if (failure.contentId && !renderer.visible.some((paint) => paint.id === failure.contentId)) {
+          imageErrors.delete(url);
+          removedError = true;
+        }
+      }
+      if (removedError) refreshResources();
+      if (imageErrors.size || Array.from(loads.values()).some((load) => load.pending || load.error)) return;
+      try {
+        setUri(canvas.toDataURL());
+        setError(undefined);
+      } catch (error) {
+        setError(String(error));
+      }
+    });
+    const removeLayout = runtime.world.addLayoutSubscriber((type) => {
+      if (resetWorldOnChange && type === 'recalculate-world-size') {
+        if (cover) runtime.cover();
+        else runtime.goHome();
+      }
+    });
+    const cancel = deferToMicrotask(() => {
+      setError(undefined);
+      setUri(undefined);
+      Promise.resolve()
+        .then(() => (active ? onCreated.current?.(created) : undefined))
+        .then(() => {
+          if (active) setSession({ preset: created, resourceLoading });
+        })
+        .catch((error) => {
+          if (active) setError(String(error));
+        });
+    });
+    return () => {
+      active = false;
+      if (currentPreset.current === created) currentPreset.current = undefined;
+      cancel();
+      removeFrame();
+      removeLayout();
+      ReactAtlas.unmountComponentAtNode(runtime);
+      created.unmount();
+      canvas.width = canvas.height = 0;
+    };
+  }, [width, height, cover, resetWorldOnChange]);
 
   useEffect(() => {
-    if (preset && preset.runtime) {
-      const rt = preset.runtime;
-      if (resetWorldOnChange) {
-        return rt.world.addLayoutSubscriber((type) => {
-          if (type === 'recalculate-world-size') {
-            rt.goHome({ cover });
-          }
-        });
-      }
-    }
-    return () => {
-      // no-op
-    };
-  }, [preset, cover, resetWorldOnChange]);
+    if (!session || !preset || currentPreset.current !== preset) return;
+    preset.runtime.mode = mode;
+    ReactAtlas.render(
+      <ModeContext.Provider value={mode}>
+        <AtlasContext.Provider value={preset}>
+          <ImageResourceLoadingContext.Provider value={session.resourceLoading}>
+            {children}
+          </ImageResourceLoadingContext.Provider>
+        </AtlasContext.Provider>
+      </ModeContext.Provider>,
+      preset.runtime
+    );
+  }, [children, preset, mode, session]);
 
-  useIsomorphicLayoutEffect(() => {
-    if (preset) {
-      ReactAtlas.render(
-        <Canvas>
-          <ModeContext.Provider value={mode}>
-            <AtlasContext.Provider value={preset}>{children}</AtlasContext.Provider>
-          </ModeContext.Provider>
-        </Canvas>,
-        preset.runtime
-      );
-    }
-  }, [preset, mode, children]);
-
-  return {
-    loading: !imageUrl && ready,
-    uri: imageUrl,
-    imageError,
-  };
-};
+  return { loading: !uri && !imageError, uri, imageError };
+}

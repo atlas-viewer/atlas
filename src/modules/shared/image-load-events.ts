@@ -13,3 +13,14 @@ export type AtlasImageLoadErrorEvent = {
   nextRetryAt?: number;
   error?: unknown;
 };
+
+/** Emitted once a decoded image has been committed to a renderer's tile cache. */
+export type AtlasImageLoadedEvent = {
+  renderer: AtlasImageLoadRenderer;
+  imageUrl: string;
+  contentId: string;
+  tileIndex: number;
+  image: HTMLImageElement;
+  /** Scene object owning the resource, when attached to a world. */
+  objectId?: string;
+};

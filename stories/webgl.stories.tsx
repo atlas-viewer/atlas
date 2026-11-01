@@ -1,3 +1,5 @@
+// @ts-ignore - bundled story fixture
+import img from './assets/img.png';
 /* eslint-disable prettier/prettier */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as React from 'react';
@@ -19,7 +21,7 @@ export default { title: 'WebGL renderer' };
 
 const staticTiles = [
   {
-    id: 'https://libimages1.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
+    id: 'https://iiif.princeton.edu/iiif/2/pudl0001/4609321/s42/00000001/info.json',
     width: 5233,
     height: 7200,
   },
@@ -180,7 +182,7 @@ export const Renderer: React.FC = () => {
   useLayoutEffect(() => {
     const gl = canvas.current?.getContext('webgl');
     const image =
-      'https://iiif.princeton.edu/loris/iiif/2/pudl0001%2F4609321%2Fs42%2F00000001.jp2/0,0,5240,7200/655,/0/default.jpg';
+      'https://iiif.princeton.edu/iiif/2/pudl0001/4609321/s42/00000001/full/655,/0/default.jpg';
 
     if (gl) {
       loadImage(image).then((img: any) => {
@@ -286,7 +288,7 @@ export const StaticImage: React.FC = () => {
     // Similar to creating HTML elements, we start from the inside and work our way out appending items.
     const image = new SingleImage();
     image.applyProps({
-      uri: 'http://iiif.io/api/presentation/2.1/example/fixtures/resources/page1-full.png',
+      uri: img,
       target: { width: 1200, height: 1800 },
       display: { width: 1200, height: 1800 },
     });
@@ -309,10 +311,11 @@ export const StaticImage: React.FC = () => {
     // runtime.
 
     // And start listening to browser events proxied from our div element.
-    new BrowserEventManager(viewer.current, runtime);
+    const events = new BrowserEventManager(viewer.current, runtime);
 
     // Reset the viewport to fit the bounds
     runtime.goHome();
+    return () => { events.stop(); runtime.dispose(); };
   }, []);
 
   return (
@@ -389,10 +392,11 @@ export const DefaultStaticTiles: React.FC = () => {
       // runtime.fpsLimit = 5;
 
       // And start listening to browser events proxied from our div element.
-      new BrowserEventManager(viewer.current, runtime);
+      const events = new BrowserEventManager(viewer.current, runtime);
 
       // Reset the viewport to fit the bounds
       runtime.goHome();
+      return () => { events.stop(); runtime.dispose(); };
     }
   }, [tiles]);
 
@@ -412,6 +416,7 @@ export const AutoFallbackOnImageError: React.FC = () => {
         width={800}
         height={500}
         unstable_webglRenderer
+        webglFallbackOnImageLoadError
         onWebGLFallback={(event) => {
           setFallbackReason(event.reason);
         }}

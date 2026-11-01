@@ -58,6 +58,7 @@ function createMockPreset(options: any) {
     isViewportAtHomeZoomLevel: vi.fn(() => true),
     isViewportAtHome: vi.fn(() => false),
     setViewport: vi.fn(),
+    setSketchPanOverride: vi.fn(),
     updateNextFrame: vi.fn(),
     setIdle: vi.fn(),
     setOptions: vi.fn(),
@@ -138,6 +139,35 @@ describe('Atlas lifecycle runtime behavior', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  test('Hand/Draw updates the existing sketch runtime and enforces touch-action with inline styles hidden', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    originalDefaultPreset = presets['default-preset'];
+    const created: MockPresetRecord[] = [];
+    const factory = vi.spyOn(presets, 'default-preset').mockImplementation((options: any) => {
+      const record = createMockPreset(options);
+      created.push(record);
+      return record.preset as any;
+    });
+    const render = async (hand: boolean) => {
+      await act(async () => {
+        root.render(
+          <Atlas width={300} height={500} mode="sketch" sketchPanOverride={hand} hideInlineStyle unstable_noReconciler>
+            <React.Fragment />
+          </Atlas>
+        );
+        await flush();
+      });
+    };
+    await render(false);
+    await render(true);
+    await render(false);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(created[0].runtime.setSketchPanOverride.mock.calls).toEqual([[false], [true], [false]]);
+    expect((container.querySelector('.atlas') as HTMLElement).style.touchAction).toBe('none');
   });
 
   test('callback churn and same-value navigator options do not recreate the preset', async () => {

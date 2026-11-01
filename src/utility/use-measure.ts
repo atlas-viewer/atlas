@@ -201,7 +201,13 @@ function useOnWindowResize(onWindowResize: (event: Event) => void) {
   useEffect(() => {
     const cb = onWindowResize
     window.addEventListener('resize', cb)
-    return () => void window.removeEventListener('resize', cb)
+    window.visualViewport?.addEventListener('resize', cb)
+    window.visualViewport?.addEventListener('scroll', cb)
+    return () => {
+      window.removeEventListener('resize', cb)
+      window.visualViewport?.removeEventListener('resize', cb)
+      window.visualViewport?.removeEventListener('scroll', cb)
+    }
   }, [onWindowResize])
 }
 function useOnWindowScroll(onScroll: () => void, enabled: boolean) {

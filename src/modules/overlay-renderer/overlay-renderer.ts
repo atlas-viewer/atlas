@@ -261,8 +261,8 @@ export class OverlayRenderer implements Renderer {
 
   beforeFrame(world: World, delta: number, target: Strand, options?: HookOptions): void {
     const center = options?.viewCenter;
-    this.viewTransform = options?.viewRotation && center
-      ? `translate(${center.x}px, ${center.y}px) rotate(${options.viewRotation}deg) translate(${-center.x}px, ${-center.y}px) ` : '';
+    this.viewTransform = (options?.viewRotation || options?.viewFlip) && center
+      ? `translate(${center.x}px, ${center.y}px) ${options.viewFlip ? 'scaleX(-1) ' : ''}rotate(${options.viewRotation || 0}deg) translate(${-center.x}px, ${-center.y}px) ` : '';
     this.stylesheet.clearClasses();
     this.paintTx++;
     this.zIndex = 0;

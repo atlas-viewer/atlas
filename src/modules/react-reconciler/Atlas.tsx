@@ -51,6 +51,8 @@ function getReadyRenderer(renderer: unknown): AtlasReadyRenderer {
 export type AtlasProps = {
   debug?: boolean;
   mode?: ViewerMode;
+  /** Enable the Hand tool while keeping selectors mounted in sketch mode. */
+  sketchPanOverride?: boolean;
   onCreated?: (ctx: Preset) => void | Promise<void>;
   resetWorldOnChange?: boolean;
   unstable_webglRenderer?: boolean;
@@ -138,6 +140,7 @@ export const Atlas: React.FC<
     renderPreset: _renderPreset,
     onCreated,
     mode: _mode = 'explore',
+    sketchPanOverride,
     resetWorldOnChange = true,
     // eslint-disable-next-line
     unstable_webglRenderer = false,
@@ -340,6 +343,10 @@ export const Atlas: React.FC<
   useEffect(() => {
     setMode(_mode);
   }, [_mode]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (preset && sketchPanOverride !== undefined) preset.runtime.setSketchPanOverride(sketchPanOverride);
+  }, [preset, sketchPanOverride]);
 
   useIsomorphicLayoutEffect(() => {
     setIsReady(false);
@@ -1179,6 +1186,7 @@ export const Atlas: React.FC<
         .trim()}
       style={{
         ...containerStyle,
+        ...(mode === 'sketch' ? { touchAction: 'none' } : {}),
         ...(hideInlineStyle ? {} : { width: restProps.width, height: restProps.height }),
       }}
     >

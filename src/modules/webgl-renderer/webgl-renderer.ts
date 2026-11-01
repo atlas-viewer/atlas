@@ -105,6 +105,7 @@ export class WebGLRenderer implements Renderer {
     uniform vec2 u_resolution;
     uniform vec2 u_viewCenter;
     uniform vec2 u_viewAngle;
+    uniform float u_viewFlip;
     varying vec2 v_position;
     varying vec4 v_color;
     uniform sampler2D u_texture;
@@ -118,6 +119,7 @@ export class WebGLRenderer implements Renderer {
         v_position = a_position;
         vec2 p = a_position - u_viewCenter;
         vec2 rotated = vec2(p.x * u_viewAngle.x - p.y * u_viewAngle.y, p.x * u_viewAngle.y + p.y * u_viewAngle.x);
+        rotated.x *= u_viewFlip;
         vec2 zeroToOne = (rotated + u_viewCenter) / u_resolution;
 
         // convert from 0->1 to 0->2
@@ -139,6 +141,7 @@ export class WebGLRenderer implements Renderer {
   uniforms: {
     viewCenter: WebGLUniformLocation | null;
     viewAngle: WebGLUniformLocation | null;
+    viewFlip: WebGLUniformLocation | null;
     viewClip: WebGLUniformLocation | null;
     clipMin: WebGLUniformLocation | null;
     clipMax: WebGLUniformLocation | null;
@@ -227,6 +230,7 @@ export class WebGLRenderer implements Renderer {
     this.uniforms = {
       viewCenter: this.gl.getUniformLocation(this.program, 'u_viewCenter'),
       viewAngle: this.gl.getUniformLocation(this.program, 'u_viewAngle'),
+      viewFlip: this.gl.getUniformLocation(this.program, 'u_viewFlip'),
       viewClip: this.gl.getUniformLocation(this.program, 'u_viewClip'),
       clipMin: this.gl.getUniformLocation(this.program, 'u_clipMin'),
       clipMax: this.gl.getUniformLocation(this.program, 'u_clipMax'),
@@ -315,6 +319,7 @@ export class WebGLRenderer implements Renderer {
   }
 
   private viewRotation = 0;
+  private viewFlip = false;
 
   beforeFrame(world: World, delta: number, target: Strand, options: HookOptions) {
     this.hasTilesFading = false;
@@ -327,6 +332,8 @@ export class WebGLRenderer implements Renderer {
     this.flushTileRevealBatch();
 
     this.viewRotation = options.viewRotation || 0;
+    this.viewFlip = !!options.viewFlip;
+    this.gl.uniform1f(this.uniforms.viewFlip, this.viewFlip ? -1 : 1);
     const angle = this.viewRotation * Math.PI / 180;
     this.gl.uniform2f(this.uniforms.viewAngle, Math.cos(angle), Math.sin(angle));
     this.gl.uniform2f(this.uniforms.viewCenter, options.viewCenter?.x || 0, options.viewCenter?.y || 0);
@@ -435,7 +442,7 @@ export class WebGLRenderer implements Renderer {
   prepareLayer(paint: SpacialContent, points?: Strand) {
     this.activeLayerScissorRect = undefined;
     this.gl.uniform1f(this.uniforms.viewClip, 0);
-    if (this.viewRotation && points && this.shouldClipLayerToBounds(paint)) {
+    if ((this.viewRotation || this.viewFlip) && points && this.shouldClipLayerToBounds(paint)) {
       const bounds = this.getBoundsFromPoints(points);
       if (bounds) {
         this.gl.uniform1f(this.uniforms.viewClip, 1);

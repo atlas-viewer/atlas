@@ -806,6 +806,26 @@ describe('Canvas image loading behavior', () => {
     expect(renderer.ctx).toBe(context);
   });
 
+  test('defers staged presentation while the viewer has zero dimensions during a story transition', () => {
+    const { renderer, context } = createRenderer();
+    const staging = { width: 256, height: 256, getContext: () => createMockContext() };
+    vi.spyOn(document, 'createElement').mockReturnValue(staging as any);
+    renderer.firstMeaningfulPaint = true;
+    renderer.resetReadyState();
+    renderer.canvas.width = renderer.canvas.height = 0;
+    const world = { hasActiveZone: () => true } as any;
+    renderer.beforeFrame(world, 16, new Float32Array([1, 0, 0, 256, 256]), defaultHookOptions as any);
+    renderer.visible = [createImage('transition')];
+    renderer.firstMeaningfulPaint = true;
+    renderer.afterFrame(world);
+    expect(context.drawImage).not.toHaveBeenCalled();
+    renderer.canvas.width = renderer.canvas.height = 256;
+    renderer.beforeFrame(world, 16, new Float32Array([1, 0, 0, 256, 256]), defaultHookOptions as any);
+    renderer.visible = [createImage('transition')];
+    renderer.afterFrame(world);
+    expect(context.drawImage).toHaveBeenCalledOnce();
+  });
+
   test('does not mark an unchanged old scene ready for a new resource key', () => {
     const { renderer } = createRenderer();
     const staging = { width: 256, height: 256, getContext: () => createMockContext() };
@@ -945,6 +965,43 @@ test('retired scenes stay within the bitmap budget without accumulating eviction
   expect(renderer.hostCache.size).toBe(64);
   expect(renderer.invalidated).toHaveLength(0);
   expect((renderer as any).imageBuffers.size).toBe(0);
+  renderer.reset();
+  expect(renderer.hostCache.size).toBe(0);
+});
+
+test('visible tiles survive an over-budget viewport and release excess bitmaps after panning away', () => {
+  const { renderer } = createRenderer({ readiness: 'immediate' });
+  const world = { hasActiveZone: () => true } as any;
+  const target = new Float32Array([1, 0, 0, 256, 256]);
+  const images = Array.from({ length: 20 }, (_, index) => {
+    const image = createImage(`working-set-${index}`);
+    image.display.points = new Float32Array([1, 0, 0, 1024, 1024]);
+    return image;
+  });
+  const schedule = vi.spyOn(renderer, 'schedulePaintToCanvas').mockReturnValue(false);
+  renderer.beforeFrame(world, 16, target, defaultHookOptions as any);
+  for (const image of images) renderer.paint(image, 0, 0, 0, 100, 100);
+  // Network/decode commits happen after painting has identified the full visible set.
+  for (const image of images) {
+    const buffer = image.__host.canvas;
+    renderer.hostCache.set(buffer.canvases[0], { width: 1024, height: 1024 } as HTMLCanvasElement);
+    buffer.tiles[0] = { state: 'decoded', skipFade: true };
+  }
+  renderer.afterFrame(world);
+  expect(renderer.hostCache.size).toBe(20);
+
+  schedule.mockClear();
+  renderer.beforeFrame(world, 16, target, defaultHookOptions as any);
+  for (const image of images) renderer.paint(image, 0, 0, 0, 100, 100);
+  renderer.afterFrame(world);
+  expect(schedule).not.toHaveBeenCalled();
+  expect(renderer.hostCache.size).toBe(20);
+  schedule.mockRestore();
+  expect(renderer.schedulePaintToCanvas(images[0].__host.canvas, images[0], 0, 1, true)).toBe(false);
+
+  renderer.beforeFrame(world, 16, target, defaultHookOptions as any);
+  renderer.afterFrame(world);
+  expect(renderer.hostCache.size).toBe(16);
   renderer.reset();
   expect(renderer.hostCache.size).toBe(0);
 });

@@ -1,4 +1,5 @@
-import React, { ReactNode, useEffect, useState } from 'react';
+import React, { ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import { ImageResourceLoadingContext } from './ImageResourceLoadingContext';
 import { GetTile } from '../../iiif/shared';
 import { TileSet } from './TileSet';
 import { getTileFromImageService } from '../../iiif/get-tiles';
@@ -17,14 +18,36 @@ export const ImageService: React.FC<{
   enableSizes?: boolean;
   enableThumbnail?: boolean;
   renderOptions?: CompositeResourceProps;
+  onError?: (error: Error) => void;
 }> = (props) => {
   const [tiles, setTile] = useState<GetTile | undefined>();
+  const resourceLoading = useContext(ImageResourceLoadingContext);
 
+  const onError = useRef(props.onError);
+  onError.current = props.onError;
   useEffect(() => {
-    getTileFromImageService(props.id, props.width, props.height).then((s) => {
-      setTile(s);
-    });
-  }, [props.height, props.id, props.width]);
+    let active = true;
+    const load = resourceLoading?.beginLoad();
+    setTile(undefined);
+    getTileFromImageService(props.id, props.width, props.height)
+      .then((tiles) => {
+        if (active) {
+          setTile(tiles);
+          load?.complete();
+        }
+      })
+      .catch((reason) => {
+        if (active) {
+          const error = reason instanceof Error ? reason : new Error(String(reason));
+          load?.complete(error);
+          onError.current?.(error);
+        }
+      });
+    return () => {
+      active = false;
+      load?.dispose();
+    };
+  }, [props.height, props.id, props.width, resourceLoading]);
 
   return (
     <world-object
