@@ -237,15 +237,18 @@ export class OverlayRenderer implements Renderer {
 
     for (const prev of this.previousVisible) {
       if (this.visible.indexOf(prev) === -1) {
+        // Disposal can release the host before the renderer processes this frame.
+        const element = prev.__host?.element;
         if (
           // HTML container
           this.htmlContainer &&
           // Previous ID
           prev.__id &&
           // Is it in the list.
-          this.htmlIds.indexOf(prev.__id) !== -1
+          this.htmlIds.indexOf(prev.__id) !== -1 &&
+          element?.parentNode === this.htmlContainer
         ) {
-          this.htmlContainer.removeChild(prev.__host.element);
+          this.htmlContainer.removeChild(element);
         }
       }
     }

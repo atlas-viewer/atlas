@@ -139,6 +139,8 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
   dispose(): void {
     this.__host?.canvas?.dispose?.();
     this.__host?.webgl?.dispose?.();
+    // The overlay renderer may still reference this object until its next frame.
+    this.__host?.element?.remove();
     this.__host = undefined;
     for (const child of this.layers) (child as BaseObject)?.dispose?.();
   }
