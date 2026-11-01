@@ -1,5 +1,5 @@
 import type { Strand } from '@atlas-viewer/dna';
-import LRUCache from 'lru-cache';
+import { TileCanvasCache } from './tile-canvas-cache';
 import { Box } from '../../objects/box';
 import { Geometry } from '../../objects/geometry';
 import { TextLabelObject } from '../../objects/text-label';
@@ -301,7 +301,8 @@ export class CanvasRenderer implements Renderer {
   dpi: number;
   drawCalls: Array<() => void> = [];
   lastPaintedObject?: WorldObject;
-  hostCache: LRUCache<string, HTMLCanvasElement> | Map<string, HTMLCanvasElement>;
+  hostCache: TileCanvasCache | Map<string, HTMLCanvasElement>;
+  private frameCanvasKeys = new Set<string>();
   invalidated: string[] = [];
   fallbackRevealTimeout: ReturnType<typeof setTimeout> | null = null;
   framePrefetchCount = 0;
@@ -340,20 +341,7 @@ export class CanvasRenderer implements Renderer {
       this.canvas.style.opacity = '1';
     }
 
-    this.hostCache =
-      options?.lruCache !== false
-        ? new LRUCache<string, HTMLCanvasElement>({
-            maxSize: 64 * 1024 * 1024, // 64 MiB of RGBA tile pixels per renderer.
-            dispose: (value) => {
-              value.width = 0;
-              value.height = 0;
-            },
-            sizeCalculation: (value) => {
-              // A single untiled image can exceed the budget: retain it alone rather than reload forever.
-              return Math.min(64 * 1024 * 1024, Math.max(1, (value.width || 0) * (value.height || 0) * 4));
-            },
-          })
-        : new Map<string, HTMLCanvasElement>();
+    this.hostCache = options?.lruCache !== false ? new TileCanvasCache() : new Map<string, HTMLCanvasElement>();
 
     // if (process.env.NODE_ENV !== 'production' && this.options.debug) {
     //   import('stats.js')
@@ -491,6 +479,7 @@ export class CanvasRenderer implements Renderer {
       });
       this.loadingQueueOrdered = true;
     }
+    if (this.hostCache instanceof TileCanvasCache) this.hostCache.finishFrame(this.frameCanvasKeys);
     this.scheduleSingleImageLookahead(world);
     // Set them.
     this.previousVisible = this.visible;
@@ -616,6 +605,7 @@ export class CanvasRenderer implements Renderer {
     this.frameCounter += 1;
     this.visible = [];
     this.framePrefetchCount = 0;
+    this.frameCanvasKeys.clear();
     this.hasTilesFading = false;
     this.requiredTileKeys.clear();
     this.requiredPrefetchTileKeys.clear();
@@ -1216,6 +1206,9 @@ export class CanvasRenderer implements Renderer {
         this.ctx.globalAlpha = ga * baseOpacity;
 
         const imageBuffer = this.ensureImageBuffer(paint);
+        const canvasKey = this.imageCacheKey(paint, index);
+        this.frameCanvasKeys.add(canvasKey);
+        if (this.hostCache instanceof TileCanvasCache) this.hostCache.protect(canvasKey);
         this.restoreCachedTile(imageBuffer, paint, index);
         const tileState = this.getTileState(imageBuffer, index);
         tileState.lastUsedAt = performance.now();
@@ -1590,6 +1583,14 @@ export class CanvasRenderer implements Renderer {
     prefetch = false
   ): boolean {
     if (this.idle) return false;
+    if (prefetch && this.hostCache instanceof TileCanvasCache) {
+      const points = paint.display.points;
+      const bytes = Math.max(
+        1,
+        (points[index * 5 + 3] - points[index * 5 + 1]) * (points[index * 5 + 4] - points[index * 5 + 2]) * 4
+      );
+      if (this.hostCache.calculatedSize + bytes > this.hostCache.maxSize) return false;
+    }
     const tileState = this.getTileState(imageBuffer, index);
     const now = performance.now();
     const tileKey = this.getTileKey(paint, index);
@@ -2153,6 +2154,7 @@ export class CanvasRenderer implements Renderer {
       canvas.height = 0;
     }
     this.hostCache.clear();
+    this.frameCanvasKeys.clear();
     this.invalidated = [];
     for (const buffer of this.imageBuffers) {
       buffer.canvases = [];
