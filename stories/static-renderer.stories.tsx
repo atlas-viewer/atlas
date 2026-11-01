@@ -1,3 +1,5 @@
+// @ts-ignore - bundled story fixture
+import img from './assets/img.png';
 import * as React from 'react';
 import { Runtime } from '../src/renderer/runtime';
 import '../src/modules/react-reconciler/types';
@@ -19,7 +21,7 @@ export default { title: 'Static renderer' };
 
 const staticTiles = [
   {
-    id: 'https://libimages1.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json',
+    id: 'https://iiif.princeton.edu/iiif/2/pudl0001/4609321/s42/00000001/info.json',
     width: 5233,
     height: 7200,
   },
@@ -31,15 +33,7 @@ const staticTiles = [
 ];
 
 export const DefaultStatic: React.FC = () => {
-  const index = 0;
-  const [tiles, setTile] = useState<any | undefined>();
   const viewer = useRef<any>();
-
-  useEffect(() => {
-    getTileFromImageService(staticTiles[index].id, staticTiles[index].width, staticTiles[index].height).then((s) => {
-      setTile(s);
-    });
-  }, [index]);
 
   useLayoutEffect(() => {
     const renderer = new StaticRenderer(viewer.current);
@@ -57,7 +51,7 @@ export const DefaultStatic: React.FC = () => {
     // Similar to creating HTML elements, we start from the inside and work our way out appending items.
     const image = new SingleImage();
     image.applyProps({
-      uri: 'http://iiif.io/api/presentation/2.1/example/fixtures/resources/page1-full.png',
+      uri: img,
       target: { width: 1200, height: 1800 },
       display: { width: 1200, height: 1800 },
     });
@@ -78,10 +72,11 @@ export const DefaultStatic: React.FC = () => {
     const runtime = new Runtime(renderer, world, viewport, [controller]);
 
     // And start listening to browser events proxied from our div element.
-    new BrowserEventManager(viewer.current, runtime);
+    const events = new BrowserEventManager(viewer.current, runtime);
 
     // Reset the viewport to fit the bounds
     runtime.goHome();
+    return () => { events.stop(); runtime.dispose(); renderer.container.replaceChildren(); };
   }, []);
 
   return (
@@ -160,10 +155,11 @@ export const DefaultStaticTiles: React.FC = () => {
       const runtime = new Runtime(renderer, world, viewport, [controller]);
 
       // And start listening to browser events proxied from our div element.
-      new BrowserEventManager(viewer.current, runtime);
+      const events = new BrowserEventManager(viewer.current, runtime);
 
       // Reset the viewport to fit the bounds
       runtime.goHome();
+      return () => { events.stop(); runtime.dispose(); renderer.container.replaceChildren(); };
     }
   }, [tiles]);
 
@@ -177,18 +173,18 @@ export const DefaultStaticTiles: React.FC = () => {
 
 export const StaticRenderHook = () => {
   const containerRef = useRef<any>();
-  const { loading, uri } = useAtlasImage(<ImageService {...staticTiles[0]} />, {
+  const { loading, uri, imageError } = useAtlasImage(<ImageService {...staticTiles[0]} />, {
     height: 600,
     width: 800,
     containerRef,
   });
 
-  return <div ref={containerRef}>{loading ? 'loading...' : <img alt="atlas image" src={uri} />}</div>;
+  return <div ref={containerRef}>{imageError ? <p role="alert">{imageError}</p> : loading ? 'loading...' : <img alt="atlas image" src={uri} />}</div>;
 };
 
 export const StaticRenderHookBackgroundImage = () => {
   const [ref, bounds] = useMeasure();
-  const { loading, uri } = useAtlasImage(<ImageService {...staticTiles[0]} />, {
+  const { loading, uri, imageError } = useAtlasImage(<ImageService {...staticTiles[0]} />, {
     height: bounds.height || 500,
     width: bounds.width || 1000,
     cover: true,
@@ -196,11 +192,13 @@ export const StaticRenderHookBackgroundImage = () => {
 
   return (
     <div>
+      {imageError && <p role="alert">{imageError}</p>}
       <div
         ref={ref}
         style={{
           height: 500,
-          backgroundImage: loading ? '#000' : `url(${uri})`,
+          backgroundColor: '#000',
+          backgroundImage: uri ? `url(${uri})` : undefined,
           color: '#fff',
         }}
       >

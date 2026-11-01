@@ -16,6 +16,13 @@ export class BrowserEventManager {
   eventHandlers: [string, any][] = [];
   bounds: DOMRect;
   listening: boolean;
+  private touchPointers = new Map<number, PointerEvent>();
+  private interactionTargets = new Set<BaseObject | Runtime['world']>();
+  private sketchTouchBlocked = false;
+  private pressSequence = 0;
+  private originalTouchAction: string;
+  private removeBeforeFrame: () => void;
+  private removeFrame: () => void;
   static eventPool = {
     atlas: { x: 0, y: 0 },
   };
@@ -48,6 +55,8 @@ export class BrowserEventManager {
   constructor(element: HTMLElement, runtime: Runtime, options?: Partial<BrowserEventManagerOptions>) {
     this.element = element;
     this.runtime = runtime;
+    this.originalTouchAction = element.style.touchAction;
+    this.updateTouchAction();
     this.unsubscribe = runtime.world.addLayoutSubscriber(this.layoutSubscriber.bind(this));
     this.bounds = element.getBoundingClientRect();
     this.listening = false;
@@ -57,7 +66,8 @@ export class BrowserEventManager {
     };
 
     let tAcc = 0;
-    runtime.registerHook('useFrame', (t: number) => {
+    this.removeFrame = runtime.registerHook('useFrame', (t: number) => {
+      this.updateTouchAction();
       tAcc += t;
       if (tAcc > this.options.simulationRate && this.pointerMoveEvent) {
         tAcc = 0;
@@ -65,7 +75,7 @@ export class BrowserEventManager {
       }
     });
 
-    runtime.registerHook('useBeforeFrame', () => {
+    this.removeBeforeFrame = runtime.registerHook('useBeforeFrame', () => {
       if (this.pointerMoveEvent) {
         this.onPointerMove(this.pointerMoveEvent);
       }
@@ -105,20 +115,23 @@ export class BrowserEventManager {
     // Normal events.
     this.element.addEventListener('mousedown', this.onPointerEvent);
     this.element.addEventListener('mouseup', this.onPointerEvent);
-    this.element.addEventListener('pointercancel', this.onPointerEvent);
+    this.element.addEventListener('pointercancel', this.onPointerCancel);
 
     // Edge-cases
     this.element.addEventListener('wheel', this.onWheelEvent);
     this.element.addEventListener('contextmenu', this.onContextMenu);
 
     // Touch events.
-    this.element.addEventListener('touchstart', this.onTouchEvent);
+    this.element.addEventListener('touchstart', this.onTouchEvent, { passive: false });
     this.element.addEventListener('touchcancel', this.onTouchEvent);
     this.element.addEventListener('touchend', this.onTouchEvent);
-    this.element.addEventListener('touchmove', this.onTouchEvent);
+    this.element.addEventListener('touchmove', this.onTouchEvent, { passive: false });
   }
 
   _realPointerMove = (e: PointerEvent) => {
+    if (distance(this.pointerEventState.mouseDownStart, { x: e.clientX, y: e.clientY }) > 5) {
+      this.pointerEventState.isClicking = false;
+    }
     this.pointerMoveEvent = e;
   };
 
@@ -139,6 +152,8 @@ export class BrowserEventManager {
   };
 
   onTouchEvent = (e: TouchEvent) => {
+    this.lastTouchTime = performance.now();
+    if (this.runtime.mode === 'sketch' && e.cancelable) e.preventDefault();
     const type = (supportedEventMap as any)[e.type as any];
     const atlasTouches = [];
     // const atlasTargetTouches = [];
@@ -158,18 +173,51 @@ export class BrowserEventManager {
       this.assignToEvent(e, atlasTouches[0].x, atlasTouches[0].y);
     }
 
+    (e as any).atlasTouches = atlasTouches;
+    if (type === 'onTouchCancel') {
+      this.cancelInteraction();
+      this.runtime.world.dispatchEvent(type, e);
+      this.pointerEventState.lastTouches = [];
+      this.sketchTouchBlocked = len > 0 && this.runtime.mode === 'sketch';
+      if (len === 0) this.touchPointers.clear();
+      return;
+    }
+    if (this.runtime.mode === 'sketch' &&
+      (this.runtime.sketchPanOverride || (len >= 2 && this.runtime.sketchTouchNavigation === 'two-finger'))) {
+      this.blockSketchTouch();
+    }
+    if (this.sketchTouchBlocked) {
+      // Controllers still see the raw touch lifecycle, tools only see cancellation.
+      this.runtime.world.dispatchEvent(type, e);
+      if (len === 0) {
+        this.sketchTouchBlocked = false;
+        this.touchPointers.clear();
+        this.pointerMoveEvent = undefined;
+        this.interactionTargets.clear();
+        this.pointerEventState.lastTouches = [];
+      }
+      return;
+    }
+
     if (type !== 'onTouchEnd' && type !== 'onTouchCancel') {
       this.pointerEventState.lastTouches = atlasTouches;
       (e as any).atlasTouches = atlasTouches;
-      this.runtime.world.propagateTouchEvent(type, e as any, atlasTouches);
+      const targets = this.runtime.world.propagateTouchEvent(type, e as any, atlasTouches);
+      if (type === 'onTouchStart') {
+        for (const target of targets.flat()) this.interactionTargets.add(target);
+      }
     } else {
       (e as any).atlasTouches = [];
       this.runtime.world.propagateTouchEvent(type, e as any, this.pointerEventState.lastTouches);
       this.pointerEventState.lastTouches = [];
+      if (len === 0) this.interactionTargets.clear();
     }
   };
 
   onPointerEvent = (e: PointerEvent | MouseEvent) => {
+    // Touch pointer events own tool input. Suppress compatibility mouse events,
+    // which otherwise start a second tool interaction after the touch finishes.
+    if (e.type.startsWith('mouse') && this.isCompatibilityMouseEvent(e)) return;
     if (e.button === 2) {
       return;
     }
@@ -177,25 +225,92 @@ export class BrowserEventManager {
     if (ev && this.runtime.world.activatedEvents.indexOf(ev) !== -1) {
       const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
       this.assignToEvent(e, x, y);
-      this.runtime.world.propagatePointerEvent(ev as any, e, x, y);
+      if (this.runtime.mode === 'sketch' && this.runtime.sketchPanOverride) {
+        this.runtime.world.dispatchEvent(ev, e);
+        return [];
+      }
+      return this.runtime.world.propagatePointerEvent(ev as any, e, x, y);
     }
   };
 
+  private lastTouchTime = -Infinity;
+
+  private isCompatibilityMouseEvent(e: MouseEvent) {
+    return (e as MouseEvent & { sourceCapabilities?: { firesTouchEvents: boolean } }).sourceCapabilities
+      ?.firesTouchEvents || performance.now() - this.lastTouchTime < 800;
+  }
+
+  private updateTouchAction() {
+    this.element.style.touchAction = this.runtime.mode === 'sketch' ? 'none' : this.originalTouchAction;
+  }
+
+  private blockSketchTouch() {
+    if (this.sketchTouchBlocked) return;
+    this.sketchTouchBlocked = true;
+    this.cancelInteraction();
+  }
+
+  private cancelInteraction(source?: PointerEvent) {
+    this.pressSequence++;
+    const first = source || this.touchPointers.values().next().value;
+    const cancel = new PointerEvent('pointercancel', {
+      pointerId: first?.pointerId ?? 0, pointerType: first?.pointerType ?? 'touch',
+      clientX: first?.clientX ?? this.pointerEventState.mouseDownStart.x,
+      clientY: first?.clientY ?? this.pointerEventState.mouseDownStart.y,
+    });
+    const { x, y } = this.runtime.viewerToWorld(cancel.clientX - this.bounds.left, cancel.clientY - this.bounds.top);
+    this.assignToEvent(cancel, x, y);
+    const touchCancel = new Event('touchcancel');
+    Object.assign(touchCancel, { atlas: { x, y }, atlasTouches: [], touches: [], changedTouches: [] });
+    // Use the original press recipients, even if the finger has left their bounds.
+    for (const target of this.interactionTargets) {
+      Object.assign(cancel, { atlasTarget: target, atlasWorld: this.runtime.world });
+      Object.assign(touchCancel, { atlasTarget: target, atlasWorld: this.runtime.world });
+      target.dispatchEvent('onPointerCancel', cancel);
+      if (target !== this.runtime.world) target.dispatchEvent('onTouchCancel', touchCancel);
+    }
+    this.interactionTargets.clear();
+    this.pointerMoveEvent = undefined;
+    this.pointerEventState.isClicking = false;
+    this.pointerEventState.isPressed = false;
+    this.pointerEventState.isDragging = false;
+    this.pointerEventState.itemsBeingDragged = [];
+  }
+
+  onPointerCancel = (e: PointerEvent) => {
+    this.touchPointers.delete(e.pointerId);
+    this.cancelInteraction(e);
+  };
+
   onPointerDown = (e: PointerEvent | MouseEvent) => {
+    this.updateTouchAction();
+    if ('pointerType' in e && e.pointerType === 'touch') {
+      this.lastTouchTime = performance.now();
+      this.touchPointers.set(e.pointerId, e);
+      if (this.runtime.mode === 'sketch' && (this.runtime.sketchPanOverride ||
+        (this.touchPointers.size >= 2 && this.runtime.sketchTouchNavigation === 'two-finger'))) this.blockSketchTouch();
+      if (this.sketchTouchBlocked) return;
+    }
     if (e.button === 2) {
       return;
     }
+    if (!this.pointerEventState.isPressed) this.interactionTargets.clear();
+    if (this.runtime.mode === 'sketch' && this.runtime.sketchPanOverride) {
+      this.onPointerEvent(e);
+      return;
+    }
+    const sequence = ++this.pressSequence;
     this.pointerEventState.isPressed = true;
     this.pointerEventState.isClicking = true;
     this.pointerEventState.mouseDownStart.x = e.clientX;
     this.pointerEventState.mouseDownStart.y = e.clientY;
     setTimeout(() => {
-      if (this.runtime) {
+      if (this.runtime && sequence === this.pressSequence) {
         this.pointerEventState.isClicking = false;
       }
     }, 250);
     setTimeout(() => {
-      if (this.runtime && this.pointerEventState.isPressed && !this.pointerEventState.isDragging) {
+      if (this.runtime && sequence === this.pressSequence && this.pointerEventState.isPressed && !this.pointerEventState.isDragging) {
         if (this.isHoldToHomeIntentActive()) {
           return;
         }
@@ -214,14 +329,22 @@ export class BrowserEventManager {
     }, 800);
 
     // And then handle as normal pointer event.
-    this.onPointerEvent(e);
+    const targets = this.onPointerEvent(e);
+    for (const target of targets || []) this.interactionTargets.add(target);
   };
 
   onPointerUp = (e: PointerEvent | MouseEvent) => {
+    this.pressSequence++;
+    if ('pointerType' in e && e.pointerType === 'touch') {
+      this.lastTouchTime = performance.now();
+      this.touchPointers.delete(e.pointerId);
+      if (this.sketchTouchBlocked) return;
+    }
     if (e.button === 2) {
       return;
     }
-    if (this.pointerEventState.isClicking) {
+    if (!(this.runtime.mode === 'sketch' && this.runtime.sketchPanOverride) &&
+      this.pointerEventState.isClicking && distance(this.pointerEventState.mouseDownStart, { x: e.clientX, y: e.clientY }) <= 5) {
       const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
 
       this.assignToEvent(e, x, y);
@@ -241,10 +364,16 @@ export class BrowserEventManager {
 
     // Then handle as normal pointer event.
     this.onPointerEvent(e);
+    if (!('pointerType' in e) || e.pointerType !== 'touch') this.interactionTargets.clear();
   };
 
   onPointerMove = (e: PointerEvent | MouseEvent) => {
     this.pointerMoveEvent = undefined;
+    if (this.runtime.mode === 'sketch' && this.runtime.sketchPanOverride) {
+      if (this.interactionTargets.size) this.cancelInteraction();
+      return;
+    }
+    if ('pointerType' in e && e.pointerType === 'touch' && this.sketchTouchBlocked) return;
     const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
 
     if (Number.isNaN(x) || Number.isNaN(y)) {
@@ -325,6 +454,13 @@ export class BrowserEventManager {
   }
 
   stop() {
+    this.pressSequence++;
+    this.touchPointers.clear();
+    this.interactionTargets.clear();
+    this.pointerMoveEvent = undefined;
+    this.removeFrame();
+    this.removeBeforeFrame();
+    this.element.style.touchAction = this.originalTouchAction;
     this.listening = false;
     this.element.removeEventListener('pointermove', this._realPointerMove);
     this.element.removeEventListener('pointerup', this.onPointerUp);
@@ -333,7 +469,7 @@ export class BrowserEventManager {
     // Normal events.
     this.element.removeEventListener('mousedown', this.onPointerEvent);
     this.element.removeEventListener('mouseup', this.onPointerEvent);
-    this.element.removeEventListener('pointercancel', this.onPointerEvent);
+    this.element.removeEventListener('pointercancel', this.onPointerCancel);
 
     // Edge-cases
     this.element.removeEventListener('wheel', this.onWheelEvent);

@@ -66,7 +66,7 @@ class ZoneHostInstance implements AtlasObjectModel<ZoneHostProps, any> {
       y: props.y,
       width: props.width,
       height: props.height,
-      margin: props.margin,
+      margin: props.margin ?? 0,
     });
   }
 
@@ -103,11 +103,17 @@ class ZoneHostInstance implements AtlasObjectModel<ZoneHostProps, any> {
   }
 
   attachToWorld(world: World) {
-    if (this.isRegistered && this.world !== world) {
-      this.world.removeZone(this.zone);
-      this.isRegistered = false;
+    if (this.world !== world) {
+      if (this.isRegistered) {
+        this.world.removeZone(this.zone);
+        this.isRegistered = false;
+      }
+      // Children are assembled before the surrounding <world> is attached.
+      // Move their scene membership along with the zone, not just its bounds.
+      for (const item of this.directWorldObjects) this.world.removeChild(item);
+      this.world = world;
+      for (const item of this.directWorldObjects) this.world.appendChild(item);
     }
-    this.world = world;
     if (!this.isRegistered) {
       this.world.addZone(this.zone);
       this.isRegistered = true;
@@ -115,11 +121,12 @@ class ZoneHostInstance implements AtlasObjectModel<ZoneHostProps, any> {
   }
 
   unmount() {
-    this.directWorldObjects = [];
     if (this.isRegistered) {
       this.world.removeZone(this.zone);
       this.isRegistered = false;
     }
+    for (const item of this.directWorldObjects) this.world.removeChild(item);
+    this.directWorldObjects = [];
   }
 
   private registerDirectWorldObject(item: WorldObject) {

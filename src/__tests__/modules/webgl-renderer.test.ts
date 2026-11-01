@@ -506,6 +506,21 @@ describe('WebGLRenderer fallback events', () => {
     expect(gl.uniform1f).toHaveBeenCalledWith(renderer.uniforms.viewClip, 1);
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.clipMin, 5, 10);
     expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.clipMax, 45, 50);
+
+    // Reflected layers must use the same object-space fragment clip as rotated layers.
+    // An unreflected scissor rectangle would cut tiles off on the wrong side of the screen.
+    gl.scissor.mockClear();
+    renderer.beforeFrame({} as any, 16, {} as any, {
+      ...defaultHookOptions, viewFlip: true, viewRotation: 0, viewCenter: { x: 50, y: 50 },
+    });
+    renderer.prepareLayer(image, new Float32Array([1, 5, 10, 45, 50]) as any);
+    expect(gl.uniform1f).toHaveBeenCalledWith(renderer.uniforms.viewFlip, -1);
+    expect(gl.uniform1f).toHaveBeenCalledWith(renderer.uniforms.viewClip, 1);
+    expect(gl.scissor).not.toHaveBeenCalled();
+    renderer.beforeFrame({} as any, 16, {} as any, defaultHookOptions);
+    expect(gl.uniform1f).toHaveBeenLastCalledWith(renderer.uniforms.viewClip, 0);
+    expect(gl.uniform1f).toHaveBeenCalledWith(renderer.uniforms.viewFlip, 1);
+
   });
 
   test('does not request inactive layers but still draws cached fallback textures', () => {

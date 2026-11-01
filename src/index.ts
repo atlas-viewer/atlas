@@ -28,3 +28,5 @@ export * from './utility/easing-functions';
 export * from './utility/merge-styles';
 export * from './world';
 export * from './world-objects/index';
+
+export * from './modules/iiif/image-resource';

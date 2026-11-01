@@ -41,9 +41,11 @@ export const DevTools: React.FC<DevToolsProps> = (props) => {
     portalContainerRef.current = container;
 
     return () => {
-      if (portalRoot.current?.unmount) {
-        portalRoot.current.unmount();
-      }
+      const root = portalRoot.current;
+      portalRoot.current = null;
+      // This component may be tearing down inside another renderer's commit.
+      // Unmount its DOM root after that commit has finished.
+      if (root?.unmount) setTimeout(() => root.unmount(), 0);
       container.remove();
       portalContainerRef.current = null;
     };

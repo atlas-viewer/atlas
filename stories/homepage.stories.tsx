@@ -84,7 +84,7 @@ export const AllEvents = () => {
             // onDragExit={handler('onDragExit')} // @todo Fired when a dragged element leaves a valid drop target.
             // onDragOver={handler('onDragOver')} // @todo Fired when dragging an element over a drop target. (move)
 
-            uri="http://iiif.io/api/presentation/2.1/example/fixtures/resources/page1-full.png"
+            uri={img}
             target={{ width: 1200, height: 1800 }}
             display={{ width: 1200, height: 1800 }}
           />
@@ -160,7 +160,7 @@ export const StaticRendererPreset = () => {
         width={400}
         height={400}
         key={c ? 'a' : 'b'}
-        renderPreset={['static-preset', { canvasBox: c }]}
+        renderPreset={c ? ['default-preset', { canvasBox: true }] : 'static-preset'}
         onCreated={(rt) => rt.runtime?.world.gotoRegion({ x: 0, y: 0, width: 300, height: 300, immediate: true })}
       >
         {boxes}
@@ -179,7 +179,7 @@ export const RawTexture = () => {
   const video = useRef<HTMLVideoElement>(null);
 
   const updateTexture: UpdateTextureFunction = useCallback(() => {
-    if (video.current) {
+    if (video.current && video.current.readyState >= 2) {
       return { source: video.current, hash: video.current.currentTime };
     }
     return { source: undefined, hash: -1 };
@@ -200,8 +200,12 @@ export const RawTexture = () => {
         style={{ opacity: 0 }}
         width={200}
         ref={video}
-        src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+        src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
         crossOrigin="anonymous"
+        muted
+        playsInline
+        loop
+        autoPlay
       />
       <button onClick={() => video.current?.play()}>play</button>
     </>

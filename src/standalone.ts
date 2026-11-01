@@ -16,3 +16,5 @@ export * from './spacial-content/index';
 export * from './types';
 export * from './world';
 export * from './world-objects/index';
+
+export * from './modules/iiif/image-resource';

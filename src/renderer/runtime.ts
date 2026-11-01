@@ -35,6 +35,13 @@ type UnwrapHook<T> = T extends Array<infer R> ? R : never;
 type UnwrapHookArg<T> = T extends Array<(arg: infer R) => any> ? R : never;
 
 export type ViewerMode = 'static' | 'explore' | 'sketch';
+export type ViewportChangeEvent = {
+  viewport: Projection;
+  center: { x: number; y: number };
+  /** CSS pixels per world unit. Invert this for world units per CSS pixel. */
+  scaleFactor: number;
+  rotation: number;
+};
 const MIN = Number.MIN_VALUE + 1;
 
 export type ViewerFilters = {
@@ -50,6 +57,8 @@ export type ViewerFilters = {
 
 export type HookOptions = {
   viewRotation?: number;
+  /** Mirror the camera horizontally in screen space, after rotation. */
+  viewFlip?: boolean;
   viewCenter?: { x: number; y: number };
   enableFilters?: boolean;
   filters: ViewerFilters;
@@ -140,6 +149,16 @@ export class Runtime {
     }
   }
 
+  private _viewFlip = false;
+
+  /** Horizontal camera reflection. Scene coordinates and tile selection remain unchanged. */
+  get viewFlip() { return this._viewFlip; }
+  set viewFlip(flipped: boolean) {
+    if (this._viewFlip === flipped) return;
+    this._viewFlip = flipped;
+    this.updateNextFrame();
+  }
+
   private _viewRotation = 0;
 
   /** Clockwise camera rotation in degrees. Scene geometry is unchanged. */
@@ -194,6 +213,11 @@ export class Runtime {
   lastTime: number;
   stopId?: number;
   mode: ViewerMode = 'explore';
+  /** Set by the touch controller. Opt in without changing sketch tool ownership. */
+  sketchTouchNavigation: 'none' | 'two-finger' = 'none';
+  sketchPanOverride = false;
+  private viewportSubscribers = new Set<(event: ViewportChangeEvent) => void>();
+  private lastViewportState: number[] = [];
   controllers: RuntimeController[] = [];
   controllersRunning = false;
   controllerStopFunctions: Array<() => void> = [];
@@ -704,6 +728,43 @@ export class Runtime {
     return this._viewport;
   }
 
+  /** The world coordinate under the centre of the viewer, including rotated views. */
+  getViewportCenter() {
+    return { x: (this.target[1] + this.target[3]) / 2, y: (this.target[2] + this.target[4]) / 2 };
+  }
+
+  /** Hand/Draw toolbar override; does not remount or change the active tool. */
+  setSketchPanOverride(enabled: boolean) {
+    this.sketchPanOverride = enabled;
+    this.updateNextFrame();
+  }
+
+  /** Subscribe once per changed rendered viewport, including live sketch pinches and pans. */
+  addViewportChangeListener(listener: (event: ViewportChangeEvent) => void) {
+    this.viewportSubscribers.add(listener);
+    return () => { this.viewportSubscribers.delete(listener); };
+  }
+
+  private notifyViewportChange() {
+    const scaleFactor = this.getScaleFactor();
+    const state = [this.target[1], this.target[2], this.target[3], this.target[4], scaleFactor, this.viewRotation];
+    if (state.every((value, index) => value === this.lastViewportState[index])) return;
+    this.lastViewportState = state;
+    const event: ViewportChangeEvent = {
+      viewport: { ...this.getViewport() }, center: this.getViewportCenter(), scaleFactor, rotation: this.viewRotation,
+    };
+    for (const listener of this.viewportSubscribers) listener(event);
+  }
+
+  /** Fit a world-space box with CSS-pixel padding, using the existing camera transition. */
+  zoomToRegion(box: Projection, options: {
+    padding?: number | { left?: number; right?: number; top?: number; bottom?: number };
+    transition?: NonNullable<Parameters<TransitionManager['goToRegion']>[1]>['transition'];
+  } = {}) {
+    const target = this.getHomeTarget({ position: DnaFactory.projection(box), paddingPx: options.padding ?? 0 });
+    this.transitionManager.goToRegion(target, { transition: options.transition });
+  }
+
   /**
    * Set Viewport
    *
@@ -882,6 +943,7 @@ export class Runtime {
     return { minX, maxX, minY, maxY } as const;
   }
 
+  /** CSS pixels per world unit (or device pixels when dpi=true). Use 1 / scale for editor hit radii. */
   getScaleFactor(dpi = false) {
     const scale = this.renderer.getScale(this.target[3] - this.target[1], this.target[4] - this.target[2], dpi);
     if (scale === 0) {
@@ -1099,7 +1161,7 @@ export class Runtime {
    */
   viewerToWorld(x: number, y: number) {
     const scaleFactor = this.getScaleFactor();
-    // is this right?
+    if (this.viewFlip) x = this.width * scaleFactor - x;
     const [xo, yo] = rotatePoint(this.target[1] + x / scaleFactor, this.target[2] + y / scaleFactor,
       (this.target[1] + this.target[3]) / 2, (this.target[2] + this.target[4]) / 2, -this.viewRotation);
 
@@ -1130,6 +1192,12 @@ export class Runtime {
       strand[2] = Math.min(...corners.map(p => p[1]));
       strand[3] = Math.max(...corners.map(p => p[0]));
       strand[4] = Math.max(...corners.map(p => p[1]));
+    }
+    if (this.viewFlip) {
+      const sum = this.target[1] + this.target[3];
+      const left = strand[1];
+      strand[1] = sum - strand[3];
+      strand[3] = sum - left;
     }
     mutate(strand, compose(scale(this.getScaleFactor()), translate(-this.target[1], -this.target[2])));
 
@@ -1213,6 +1281,7 @@ export class Runtime {
     this.unsubscribeWorld();
     for (const hooks of Object.values(this.hooks)) hooks.length = 0;
     this.debugSubscribers.clear();
+    this.viewportSubscribers.clear();
   }
 
   /** Pause rendering and image requests while retaining the current view. */
@@ -1451,6 +1520,7 @@ export class Runtime {
     this.hook('useBeforeFrame', delta);
     // Before everything kicks off, add a hook.
     this.hookOptions.viewRotation = this.viewRotation;
+    this.hookOptions.viewFlip = this.viewFlip;
     this.hookOptions.viewCenter = { x: this.width * this.getScaleFactor() / 2, y: this.height * this.getScaleFactor() / 2 };
     this.renderer.beforeFrame(this.world, delta, this.target, this.hookOptions);
     // Calculate a scale factor by passing in the height and width of the target.
@@ -1545,6 +1615,7 @@ export class Runtime {
     this.renderer.afterFrame(this.world, delta, this.target, this.hookOptions);
     // Mark this frame as consumed before running after-frame hooks so hooks can request the next frame.
     this.pendingUpdate = false;
+    this.notifyViewportChange();
     this.hook('useAfterFrame', delta);
     // Finally at the end, we set up the frame we just rendered.
     this.lastTarget[0] = this.target[0];

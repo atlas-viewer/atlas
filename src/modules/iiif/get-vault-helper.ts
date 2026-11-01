@@ -1,4 +1,4 @@
-import { ImageServiceLoader } from '@atlas-viewer/iiif-image-api';
+import { AtlasImageServiceLoader } from './image-service-loader';
 import { createThumbnailHelper } from '@iiif/helpers/thumbnail';
 import type { Vault } from '@iiif/helpers/vault';
 
@@ -34,14 +34,14 @@ function getGlobalVault() {
 
 const moduleState: {
   vault: Vault;
-  loader: ImageServiceLoader;
+  loader: AtlasImageServiceLoader;
   helper: any;
 } = {} as any;
 
 export function getVaultHelper() {
   if (!moduleState.helper) {
     moduleState.vault = getGlobalVault();
-    moduleState.loader = new ImageServiceLoader();
+    moduleState.loader = new AtlasImageServiceLoader();
     moduleState.helper = createThumbnailHelper(moduleState.vault as any, { imageServiceLoader: moduleState.loader });
   }
   return moduleState;

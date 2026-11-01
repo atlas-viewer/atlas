@@ -23,18 +23,18 @@ export const ResizeAll: React.FC = () => {
           --atlas-container-flex: 1 1 0px;
         }
       `}</style>
-      <div style={{ display: 'flex', height: '100vh' }}>
-        <div style={{ width: widths[widthIdx] / 2 }}>
+      <div style={{ display: 'flex', height: '100vh', width: 'calc(100vw - 32px)' }}>
+        <div style={{ width: widths[widthIdx] / 2, maxWidth: '20%', flexShrink: 0 }}>
           Left bar
           <button onClick={() => setWidth((n) => (n + 1) % widths.length)}>resize {widths[widthIdx]}px</button>
         </div>
         <div style={{ display: 'flex', flex: '1 1 0px', minWidth: 0 }}>
           <div className="container">
-            <AtlasAuto unstable_webglRenderer containerStyle={{ height: heights[widthIdx] }}>
+            <AtlasAuto unstable_webglRenderer height={heights[widthIdx]} containerProps={{ style: { minWidth: 0, overflow: 'hidden' } }}>
               <world width={5233} height={7200}>
                 <worldObject id="1" height={7200} width={5233}>
                   <ImageService
-                    id="https://iiif.princeton.edu/loris/pudl0001%2F4609321%2Fs42%2F00000001.jp2/info.json"
+                    id="https://iiif.princeton.edu/iiif/2/pudl0001/4609321/s42/00000001/info.json"
                     width={5233}
                     height={7200}
                   />
@@ -42,7 +42,7 @@ export const ResizeAll: React.FC = () => {
               </world>
             </AtlasAuto>
           </div>
-          <div style={{ width: widths[widthIdx] }}>Sidebar</div>
+          <div style={{ width: widths[widthIdx], maxWidth: '30%', flexShrink: 0 }}>Sidebar</div>
         </div>
       </div>
     </>
