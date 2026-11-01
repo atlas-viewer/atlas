@@ -2,78 +2,94 @@ name: Release NPM package
 
 on:
   push:
-    tags: ["v*"]
+    tags: ['v*']
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == github.event.repository.default_branch &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'release/next')
     runs-on: ubuntu-latest
     name: Node build
     steps:
-      - uses: actions/checkout@v2
-      - name: Setup node
-        uses: actions/setup-node@v2
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          node-version: "24.x"
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      - name: Setup node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.x'
 
-      - uses: pnpm/action-setup@v2
-        name: Install pnpm
+      - uses: pnpm/action-setup@v3
         with:
           version: 11
-          run_install: false
+          run_install: |
+            - recursive: true
+              args: [--frozen-lockfile]
 
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - uses: actions/cache@v3
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-22-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-22-pnpm-store-
-
-      - run: pnpm i --frozen-lockfile
-      - run: pnpm run build
-      - run: pnpm run test
+      - run: pnpm build
+      - run: pnpm exec vitest run
+      - run: pnpm run lint
 
   release:
     needs: [build]
     runs-on: ubuntu-latest
     name: Release
+    permissions:
+      contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v2
-      - name: Setup node
-        uses: actions/setup-node@v2
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          node-version: "24.x"
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      - name: Setup node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.x'
 
-      - name: Set tag
-        id: tagName
-        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
-
-      - uses: pnpm/action-setup@v2
-        name: Install pnpm
+      - uses: pnpm/action-setup@v3
         with:
           version: 11
-          run_install: false
+          run_install: |
+            - recursive: true
+              args: [--frozen-lockfile]
 
-      - name: Get pnpm store directory
-        shell: bash
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11
+
+      - name: Publish to npm
         run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Git tag must match package.json version (v$version)"
+            exit 1
+          fi
+          if [[ "$version" == *-* ]]; then
+            npm publish --tag next
+          else
+            npm publish --tag latest
+          fi
 
-      - uses: actions/cache@v3
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-22-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-22-pnpm-store-
-
-      - run: pnpm i --frozen-lockfile
-
-      - uses: JS-DevTools/npm-publish@v1
-        with:
-          token: ${{ secrets.NPM_TOKEN }}
+      - name: Create GitHub release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          args=()
+          if [[ "$version" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "v$version" --target "$(git rev-parse HEAD)" \
+            --title "v$version" --generate-notes "${args[@]}"
