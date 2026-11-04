@@ -126,7 +126,9 @@ export class HomeNavigatorRenderer extends DebugRenderer {
     this.selectionTarget[2] = region.y + (region.height - selectionHeight) / 2;
     this.selectionTarget[3] = this.selectionTarget[1] + selectionWidth;
     this.selectionTarget[4] = this.selectionTarget[2] + selectionHeight;
-    const layers = world.getPointsAt(this.worldTarget, this.aggregate, scale, this.selectionTarget);
+    const layers = world.getPointsAt(this.worldTarget, this.aggregate, scale, this.selectionTarget, {
+      includeAnnotations: !!this.options.showAnnotations,
+    });
     if (this.viewRotation) {
       ctx.save();
       ctx.translate(width / 2, height / 2);

@@ -1,4 +1,4 @@
-import { Paint, Paintable } from './paint';
+import { Paint, Paintable, PaintSelectionOptions } from './paint';
 import { AbstractObject } from './abstract-object';
 import {
   Strand,
@@ -13,6 +13,7 @@ import {
 import { BaseObject } from '../objects/base-object';
 import { SpacialContent } from '../spacial-content';
 import { Geometry } from '../objects/geometry';
+import { BoxSelectionIndex } from './box-selection-index';
 
 function rotate(cx: number, cy: number, x: number, y: number, angle: number) {
   const radians = (Math.PI / 180) * angle,
@@ -149,12 +150,30 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   intersectionBuffer = dna(5);
   selectionBoundsBuffer = dna(5);
   unionTargetBuffer = dna(5);
+  hitTargetBuffer = dna(5);
   aggregateBuffer = dna(9);
   invertedBuffer = dna(9);
   rotation = 0;
   filteredPointsBuffer: Strand;
   _updatedList: any[] = [];
   geometry?: any;
+  private boxSelection?: BoxSelectionIndex;
+  private selectionLayers?: Paintable[];
+  private selectionLayerCount = -1;
+
+  /** Eagerly invalidate a child's layout/paint-footprint cache. Mutable point edits are also detected at query time. */
+  invalidateLayerSelection() {
+    this.boxSelection = undefined;
+  }
+
+  private getBoxSelection() {
+    if (!this.boxSelection || this.selectionLayers !== this.layers || this.selectionLayerCount !== this.layers.length) {
+      this.boxSelection = new BoxSelectionIndex(this.layers);
+      this.selectionLayers = this.layers;
+      this.selectionLayerCount = this.layers.length;
+    }
+    return this.boxSelection;
+  }
 
   constructor(props?: AbstractObject, position?: { x: number; y: number }) {
     super();
@@ -230,6 +249,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
   removeChild(item: Paintable) {
     if (this.layers.includes(item)) item.dispose?.();
     this.layers = this.layers.filter((layer) => layer !== item);
+    this.invalidateLayerSelection();
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
 
@@ -293,10 +313,17 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       return [];
     }
 
-    const len = this.layers.length;
+    const local = this.hitTargetBuffer;
+    local[0] = target[0];
+    local[1] = target[1] - this.x;
+    local[2] = target[2] - this.y;
+    local[3] = target[3] - this.x;
+    local[4] = target[4] - this.y;
+    const layers = this.getBoxSelection().query(local, 1, false);
+    const len = layers.length;
     const objects: Paintable[] = [];
     for (let index = 0; index < len; index++) {
-      const layer = this.layers[index] as SpacialContent | WorldObject;
+      const layer = layers[index] as SpacialContent | WorldObject;
 
       if (all && (layer as Geometry).isShape) {
         const t = transform(layer.points, translate(this.x, this.y));
@@ -360,7 +387,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     if (this.rotation) {
       return this.rotation;
     }
-    for (const layer of this.layers) {
+    for (const layer of this.getBoxSelection().nonBoxes) {
       if (!layer) {
         continue;
       }
@@ -384,9 +411,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     bounds[3] = this.points[3];
     bounds[4] = this.points[4];
 
-    const len = this.layers.length;
+    const children = this.getBoxSelection().nonBoxes;
+    const len = children.length;
     for (let i = 0; i < len; i++) {
-      const layer = this.layers[i] as any;
+      const layer = children[i] as any;
       if (!layer || typeof layer.selectionBounds !== 'function') {
         continue;
       }
@@ -437,9 +465,10 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
 
     let rotation = this.rotation;
 
-    const len = this.layers.length;
+    const children = this.getBoxSelection().nonBoxes;
+    const len = children.length;
     for (let i = 0; i < len; i++) {
-      const layer = this.layers[i] as any;
+      const layer = children[i] as any;
       if (!layer) {
         continue;
       }
@@ -495,7 +524,7 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     return target;
   }
 
-  getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
+  getAllPointsAt(target: Strand, aggregate: Strand, scaleFactor: number, options?: PaintSelectionOptions): Paint[] {
     const transformer = compose(translate(this.x, this.y), scale(this.scale), this.aggregateBuffer);
 
     const { rotation, bounds: ownBounds } = this.selectionRotationAndBounds();
@@ -579,14 +608,29 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
       return [];
     }
 
-    const len = this.layers.length;
     const arr: Paint[] = [];
     const t = transform(inter, compose(scale(1 / this.scale), translate(-this.x, -this.y), this.invertedBuffer));
     const agg = aggregate ? compose(aggregate, transformer, this.aggregateBuffer) : transformer;
     const s = scaleFactor * this.scale;
+    const selection = this.getBoxSelection();
+    // A node-local rotation can rotate each leaf about a different pivot. Keep
+    // the conservative existing selection path for that case. Camera rotation
+    // already supplies a rotation-aware selection target and can still use the index.
+    const layers =
+      options?.includeAnnotations === false
+        ? selection.nonAnnotations
+        : rotation
+          ? this.layers
+          : selection.query(t, s);
+    const len = layers.length;
 
     for (let i = 0; i < len; i++) {
-      arr.push(...this.layers[i].getAllPointsAt(t, agg, s));
+      const layer = layers[i];
+      const paints =
+        layer instanceof WorldObject
+          ? layer.getAllPointsAt(t, agg, s, options)
+          : layer.getAllPointsAt(t, agg, s);
+      arr.push(...paints);
     }
 
     return arr;
@@ -625,16 +669,18 @@ export class WorldObject extends BaseObject<WorldObjectProps, Paintable> {
     }
 
     this.layers = this.layers.concat(paintablesToAdd);
+    this.invalidateLayerSelection();
 
     this.filteredPointsBuffer = dna(this.layers.length * 5);
   }
 
   getScheduledUpdates(target: Strand, scaleFactor: number): Array<() => void | Promise<void>> {
-    const len = this.layers.length;
+    const layers = this.getBoxSelection().nonBoxes;
+    const len = layers.length;
     this._updatedList = [];
     const s = scaleFactor * this.scale;
     for (let i = 0; i < len; i++) {
-      const updates = this.layers[i].getScheduledUpdates(target, s);
+      const updates = layers[i].getScheduledUpdates(target, s);
       if (updates) {
         this._updatedList.push(...updates);
       }

@@ -160,6 +160,7 @@ export const useResizeWorldItem = (
         box.points[2] = Math.min(dY1, dY2);
         box.points[3] = Math.max(dX1, dX2);
         box.points[4] = Math.max(dY1, dY2);
+        box.__owner.value?.invalidateLayerSelection();
 
         runtime.updateNextFrame();
       }

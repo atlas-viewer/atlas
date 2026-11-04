@@ -1079,6 +1079,7 @@ export class CanvasRenderer implements Renderer {
       if (!owner || owner.type !== 'world-object' || owner.points[0] === 0) {
         continue;
       }
+      if (visibleOwners.has(owner as WorldObject)) continue;
       visibleOwners.add(owner as WorldObject);
       viewportTop = Math.min(viewportTop, owner.points[2]);
       viewportBottom = Math.max(viewportBottom, owner.points[4]);
@@ -1354,13 +1355,15 @@ export class CanvasRenderer implements Renderer {
     if ((isBox || isGeometry) && !paint.props.className && !paint.props.html && !paint.props.href) {
       this.visible.push(paint);
       if (paint.props.style) {
-        const style = Object.assign(
-          //
-          {},
-          paint.props.style || {},
-          paint.hovering ? paint.props.hoverStyles : {},
-          paint.pressing ? paint.props.pressStyles : {}
-        );
+        const style =
+          paint.hovering || paint.pressing
+            ? Object.assign(
+                {},
+                paint.props.style,
+                paint.hovering ? paint.props.hoverStyles : {},
+                paint.pressing ? paint.props.pressStyles : {}
+              )
+            : paint.props.style;
 
         const scale = paint.props.relativeStyle ? 1 : width / paint.width;
         const styleOpacity = typeof style.opacity !== 'undefined' ? style.opacity : 1;
