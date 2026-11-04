@@ -17,7 +17,7 @@ import { Geometry } from './objects/geometry';
 import type { SpacialContent } from './spacial-content/spacial-content';
 import type { Viewer, ViewingDirection } from './types';
 import type { AbstractObject } from './world-objects/abstract-object';
-import type { Paint, Paintable } from './world-objects/paint';
+import type { Paint, Paintable, PaintSelectionOptions } from './world-objects/paint';
 import { WorldObject } from './world-objects/world-object';
 import type { ZoneInterface } from './world-objects/zone';
 
@@ -589,7 +589,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return objects;
   }
 
-  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1, selectionTarget: Strand = target): Paint[] {
+  getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1, selectionTarget: Strand = target, options?: PaintSelectionOptions): Paint[] {
     const zone = this.getActiveZone();
     const outsideVisibility = zone ? this.getZoneOutsideVisibility(zone) : 0;
     const objects = this.getObjectsAt(selectionTarget, false, true);
@@ -601,7 +601,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     for (let index = 0; index < len; index++) {
       if (objects[index]) {
         const worldObject = objects[index][0];
-        const paints = worldObject.getAllPointsAt(selectionTarget, transformer, scaleFactor);
+        const paints = worldObject.getAllPointsAt(selectionTarget, transformer, scaleFactor, options);
         const inZone = !zone || zone.objects.indexOf(worldObject) !== -1;
         const zoneVisibilityAlpha = inZone ? 1 : outsideVisibility;
         for (let i = 0; i < paints.length; i++) {

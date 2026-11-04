@@ -120,15 +120,18 @@ export abstract class BaseObject<Props = any, SupportedChildElements = never>
 
   translate(x: number, y: number) {
     mutate(this.points, translate(x, y));
+    this.__owner.value?.invalidateLayerSelection();
   }
 
   atScale(factor: number) {
     mutate(this.points, scaleAtOrigin(factor, this.x, this.y));
     this.scale *= factor;
+    this.__owner.value?.invalidateLayerSelection();
   }
 
   transform(op: Strand): void {
     mutate(this.points, op);
+    this.__owner.value?.invalidateLayerSelection();
   }
 
   applyProps(props: Props): void {

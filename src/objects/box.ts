@@ -169,6 +169,8 @@ export class Box extends BaseObject<BoxProps> implements SpacialContent {
   };
 
   applyProps(props: Partial<BoxProps> = {}) {
+    // Bounds and paint footprint can both affect indexed selection (including CSS/HTML fallback).
+    this.__owner.value?.invalidateLayerSelection();
     let didUpdate = false;
 
     if (props.interactive !== this.props.interactive) {
