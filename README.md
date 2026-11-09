@@ -621,6 +621,8 @@ Common `<Atlas>` props beyond dimensions:
 | `renderPreset`                                                                                | Use a rendering preset, e.g. `['default-preset', { interactive: false }]` or `'static-preset'`.                                                          |
 | `unstable_webglRenderer`, `onWebGLFallback`                                                   | Experimental WebGL path and fallback notification. Canvas 2D remains the default.                                                                        |
 
+In `sketch` mode, hold Space to pan the focused viewer. Click the drawing surface or focus its canvas first. Text editors and controls retain their Space key behavior. Releasing Space, moving focus out of the viewer or into a control, or leaving the browser window restores sketch mode.
+
 `onReady` receives `{ runtimeId, cycle, reason, renderer, timestamp }`. `onCreated` receives a preset containing `runtime`, `renderer`, and available DOM elements and controllers. The full prop definitions are in [`Atlas.tsx`](src/modules/react-reconciler/Atlas.tsx).
 
 | Hook                                                                            | Returns / does                                                |
