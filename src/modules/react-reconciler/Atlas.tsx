@@ -26,6 +26,7 @@ import { usePreset } from './hooks/use-preset';
 import type { PresetNames, Presets } from './presets';
 import type { Preset } from './presets/_types';
 import { useIsomorphicLayoutEffect } from './utility/react';
+import { installSpacePanShortcut } from './utility/space-pan-shortcut';
 
 function getReadyRenderer(renderer: unknown): AtlasReadyRenderer {
   const maybeRenderer = renderer as {
@@ -803,37 +804,13 @@ export const Atlas: React.FC<
     };
   }, [preset, resetWorldOnChange, interactionMode]);
 
-  // @todo move to controller.
   useEffect(() => {
-    const keyupSpace = () => {
-      if (preset) {
-        setMode('sketch');
-        setContainerClassName('mode-sketch');
-      }
-      window.removeEventListener('keyup', keyupSpace);
-    };
-
-    const keydownSpace = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && preset && preset.runtime.mode === 'sketch') {
-        const tagName = (e.target as any)?.tagName?.toLowerCase();
-        if (tagName === 'input' || tagName === 'textarea') return;
-        // Check if content-editable
-        if ((e.target as any)?.isContentEditable) return;
-
-        e.preventDefault();
-        setMode('explore');
-        setContainerClassName('mode-explore');
-        window.addEventListener('keyup', keyupSpace);
-      }
-    };
-
-    window.addEventListener('keydown', keydownSpace);
-
-    return () => {
-      // no-op
-      window.removeEventListener('keydown', keydownSpace);
-      window.removeEventListener('keyup', keyupSpace);
-    };
+    const root = outerContainerRef.current;
+    if (!root || !preset) return;
+    return installSpacePanShortcut(root, preset.runtime, (nextMode) => {
+      setMode(nextMode);
+      setContainerClassName(`mode-${nextMode}`);
+    });
   }, [preset]);
 
   const markNavigatorActive = useCallback(() => {
