@@ -133,13 +133,15 @@ export function createComparisonDivider(comparison: ComparisonController, option
   };
   const up = (event: PointerEvent) => {
     if (event.pointerId === drag?.pointerId) {
-      event.stopPropagation();
+      // A quick release can arrive without a final pointermove at these coordinates.
+      move(event);
       finish(false);
     }
   };
   const cancel = (event: PointerEvent) => {
     if (event.pointerId === drag?.pointerId) finish(true);
   };
+  const blur = () => finish(true);
   const keydown = (event: KeyboardEvent) => {
     if (!comparison.getState().enabled) return;
     const split = comparison.getState().split;
@@ -168,6 +170,7 @@ export function createComparisonDivider(comparison: ComparisonController, option
   const resize = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : undefined;
   resize?.observe(container);
   container.ownerDocument.defaultView?.addEventListener('resize', update);
+  container.ownerDocument.defaultView?.addEventListener('blur', blur);
   const destroy = () => {
     if (destroyed) return;
     destroyed = true;
@@ -176,6 +179,7 @@ export function createComparisonDivider(comparison: ComparisonController, option
     resize?.disconnect();
     unregister();
     container.ownerDocument.defaultView?.removeEventListener('resize', update);
+    container.ownerDocument.defaultView?.removeEventListener('blur', blur);
     element.removeEventListener('pointerdown', down);
     element.removeEventListener('pointermove', move);
     element.removeEventListener('pointerup', up);

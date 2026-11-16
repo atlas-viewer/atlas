@@ -165,6 +165,60 @@ describe('comparison scene and input', () => {
 });
 
 describe('comparison DOM helper', () => {
+  test.each([0, 35, 90, 215])('uses the release position without a final move at %s degrees', (angle) => {
+    const { runtime, first, second } = setup();
+    const comparison = createComparison(runtime, {
+      first: { objects: [first] },
+      second: { objects: [second] },
+      defaultSplit: { angle, position: 0.5 },
+    });
+    const container = document.createElement('div');
+    container.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 100 } as DOMRect);
+    const divider = createComparisonDivider(comparison, { container, label: 'Compare' });
+    divider.element.setPointerCapture = vi.fn();
+    const commits = vi.fn();
+    divider.element.addEventListener('comparisoncommit', commits);
+    const pointer = (type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerId: 7, pointerType: 'mouse', button: 0, clientX: x, clientY: y });
+      divider.element.dispatchEvent(event);
+    };
+    const { normal, lo, hi } = resolveComparisonLine({ angle, position: 0.5 }, 200, 100);
+    const distance = 0.4 * (hi - lo);
+    pointer('pointerdown', 110, 70);
+    pointer('pointerup', 110 + normal.x * distance, 70 + normal.y * distance);
+    expect(comparison.getState().split.position).toBeCloseTo(0.9);
+    expect(commits.mock.calls[0][0].detail.split.position).toBeCloseTo(0.9);
+    runtime.dispose();
+  });
+  test('window blur cancels capture and leaves the next drag usable', () => {
+    const { runtime, first, second } = setup();
+    const comparison = createComparison(runtime, { first: { objects: [first] }, second: { objects: [second] } });
+    const container = document.createElement('div');
+    container.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 100 } as DOMRect);
+    const divider = createComparisonDivider(comparison, { container, label: 'Compare' });
+    divider.element.setPointerCapture = vi.fn();
+    const commits = vi.fn();
+    divider.element.addEventListener('comparisoncommit', commits);
+    const pointer = (type: string, x: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerId: 7, pointerType: 'mouse', button: 0, clientX: x, clientY: 70 });
+      divider.element.dispatchEvent(event);
+    };
+    pointer('pointerdown', 110);
+    pointer('pointermove', 150);
+    expect(comparison.getState().split.position).toBeCloseTo(0.7);
+    window.dispatchEvent(new Event('blur'));
+    expect(comparison.getState().split.position).toBe(0.5);
+    expect(commits).not.toHaveBeenCalled();
+    pointer('pointerdown', 110);
+    pointer('pointermove', 170);
+    pointer('pointerup', 170);
+    expect(comparison.getState().split.position).toBeCloseTo(0.8);
+    expect(commits).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
   test('custom handles restore their original attributes, and disabled helpers ignore keys', () => {
     const { runtime, first, second } = setup();
     const comparison = createComparison(runtime, { first: { objects: [first] }, second: { objects: [second] } });
