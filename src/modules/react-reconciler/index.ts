@@ -1,3 +1,6 @@
+export * from './components/Comparison';
+export * from './components/ComparisonDivider';
+export * from './hooks/use-comparison';
 export * from '../shared/image-load-events';
 export * from '../shared/image-loading-config';
 export * from '../shared/ready-events';

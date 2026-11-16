@@ -639,6 +639,10 @@ In `sketch` mode, hold Space to pan the focused viewer. Click the drawing surfac
 
 The `/react` entry is for applications integrating the reconciler themselves: create a preset, render with `ReactAtlas.render(scene, preset.runtime)`, and call `preset.unmount()` on cleanup. Wrap the scene in `AtlasContext.Provider` with that preset if it uses Atlas hooks. The simpler `atlas()` path does not invoke `ReactAtlas` at all.
 
+### Viewport comparison
+
+Compare aligned scene content with an arbitrary-angle, viewport-relative divider. The core API, React `<Comparison>` declaration, optional DOM `<ComparisonDivider>`, and styling/interaction helpers are described in [the comparison guide](docs/comparison.md). Try the Comparison stories for controlled, uncontrolled, tiled-zone, and standalone examples.
+
 ### Renderers and other building blocks
 
 `new Runtime(renderer, world, viewport, controllers?, options?)` connects a scene, a renderer, and optional input controllers. Its initial viewport also includes `scale: 1`; unlike the helper, it starts its animation loop immediately without managing DOM sizing or event-manager cleanup.

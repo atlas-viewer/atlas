@@ -1,3 +1,7 @@
+import { ViewportClipHosts } from '../comparison/clip-hosts';
+import type { HookOptions } from '../../renderer/runtime';
+import type { LayerContext } from '../comparison/geometry';
+import type { PaintSelectionOptions } from '../../world-objects/paint';
 import { Renderer } from '../../renderer/renderer';
 import { World } from '../../world';
 import { Paint } from '../../world-objects/paint';
@@ -21,6 +25,7 @@ type StaticRendererOptions = {
 const MIN = 1 + Number.MIN_VALUE;
 
 export class StaticRenderer implements Renderer {
+  readonly supportsViewportClip = true;
   container: HTMLElement;
   width: number;
   height: number;
@@ -30,12 +35,16 @@ export class StaticRenderer implements Renderer {
   zIndex = 0;
   lastKnownScale = 1;
   rendererPosition: DOMRect;
+  private clipHosts: ViewportClipHosts;
+  private layerContext?: LayerContext;
+  private viewTransform = '';
   private idle = false;
   private loadingImages = new Set<HTMLImageElement>();
   private pausedImages = new Map<HTMLImageElement, string>();
 
   constructor(container: HTMLElement, options?: Partial<StaticRendererOptions>) {
     this.container = container;
+    this.clipHosts = new ViewportClipHosts(container);
     this.rendererPosition = container.getBoundingClientRect();
     const { width, height } = this.rendererPosition;
     this.width = width;
@@ -80,13 +89,13 @@ export class StaticRenderer implements Renderer {
 
     for (const item of this.previouslyVisible) {
       if (this.currentlyVisible.indexOf(item) === -1) {
-        this.container.removeChild(item);
+        this.clipHosts.remove(item);
       }
     }
 
     for (const item of this.currentlyVisible) {
       if (this.previouslyVisible.indexOf(item) === -1) {
-        this.container.appendChild(item);
+        this.container.appendChild(this.clipHosts.root(item));
       }
     }
 
@@ -97,13 +106,15 @@ export class StaticRenderer implements Renderer {
 
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void {}
 
-  beforeFrame(world: World, delta: number, target: Strand): void {
+  beforeFrame(world: World, delta: number, target: Strand, options?: HookOptions): void {
+    const center = options?.viewCenter;
+    this.viewTransform = center ? `translate(${center.x}px,${center.y}px) ${options?.viewFlip ? 'scaleX(-1)' : ''} rotate(${options?.viewRotation || 0}deg) translate(${-center.x}px,${-center.y}px) ` : '';
     this.stylesheet.clearClasses();
     this.zIndex = 0;
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand, options?: PaintSelectionOptions): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget, options);
   }
 
   getScale(width: number, height: number): number {
@@ -186,7 +197,9 @@ export class StaticRenderer implements Renderer {
         element.style.width = `${width + MIN}px`;
         element.style.height = `${height + MIN}px`;
       }
-      element.style.transform = `translate(${x}px, ${y}px)`;
+      element.style.transformOrigin = '0 0';
+      element.style.transform = `${this.viewTransform}translate(${x}px, ${y}px)`;
+      this.clipHosts.update(element, this.layerContext?.viewportClip);
     }
     if (paint instanceof TiledImage) {
       if (!paint.__host) {
@@ -216,7 +229,9 @@ export class StaticRenderer implements Renderer {
         element.style.width = `${width + MIN}px`;
         element.style.height = `${height + MIN}px`;
       }
-      element.style.transform = `translate(${x}px, ${y}px)`;
+      element.style.transformOrigin = '0 0';
+      element.style.transform = `${this.viewTransform}translate(${x}px, ${y}px)`;
+      this.clipHosts.update(element, this.layerContext?.viewportClip);
     }
   }
 
@@ -244,9 +259,10 @@ export class StaticRenderer implements Renderer {
     }
   }
 
-  prepareLayer(paint: SpacialContent): void {}
+  prepareLayer(paint: SpacialContent, _points?: Strand, context?: LayerContext): void { this.layerContext = context; }
   finishLayer(paint: SpacialContent): void {}
   reset() {
+    this.clipHosts.reset();
     this.setIdle(true);
     for (const image of this.loadingImages) image.onload = image.onerror = null;
     this.loadingImages.clear();

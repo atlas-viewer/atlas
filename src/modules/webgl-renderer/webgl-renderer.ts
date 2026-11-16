@@ -1,3 +1,5 @@
+import type { LayerContext } from '../comparison/geometry';
+import type { PaintSelectionOptions } from '../../world-objects/paint';
 import type { Strand } from '@atlas-viewer/dna';
 import type { Box } from '../../objects/box';
 import type { Renderer } from '../../renderer/renderer';
@@ -69,6 +71,7 @@ type ScissorRect = {
 };
 
 export class WebGLRenderer implements Renderer {
+  readonly supportsViewportClip = true;
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
   options: WebGLRendererOptions;
@@ -87,6 +90,8 @@ export class WebGLRenderer implements Renderer {
     uniform sampler2D u_image;
     uniform float u_alpha;
     uniform float u_viewClip;
+    uniform vec4 u_comparison;
+    uniform vec2 u_comparisonViewport;
     uniform vec2 u_clipMin;
     uniform vec2 u_clipMax;
     varying vec2 v_position;
@@ -94,6 +99,10 @@ export class WebGLRenderer implements Renderer {
 
     void main() {
         if (u_viewClip > 0.5 && (any(lessThan(v_position, u_clipMin)) || any(greaterThan(v_position, u_clipMax)))) discard;
+        vec2 screen = vec2(gl_FragCoord.x, u_comparisonViewport.y - gl_FragCoord.y) / u_comparisonViewport.x;
+        float comparisonDistance = dot(screen, u_comparison.xy) - u_comparison.z;
+        if (u_comparison.w > 0.5 && comparisonDistance >= 0.0) discard;
+        if (u_comparison.w < -0.5 && comparisonDistance < 0.0) discard;
         vec4 color = texture2D(u_image, v_texCoord);
         gl_FragColor = vec4(color.rgb, color.a * u_alpha);
     }
@@ -139,6 +148,8 @@ export class WebGLRenderer implements Renderer {
     texCoord: number;
   };
   uniforms: {
+    comparison: WebGLUniformLocation | null;
+    comparisonViewport: WebGLUniformLocation | null;
     viewCenter: WebGLUniformLocation | null;
     viewAngle: WebGLUniformLocation | null;
     viewFlip: WebGLUniformLocation | null;
@@ -228,6 +239,8 @@ export class WebGLRenderer implements Renderer {
       texCoord: this.gl.getAttribLocation(this.program, 'a_texCoord'),
     };
     this.uniforms = {
+      comparison: this.gl.getUniformLocation(this.program, 'u_comparison'),
+      comparisonViewport: this.gl.getUniformLocation(this.program, 'u_comparisonViewport'),
       viewCenter: this.gl.getUniformLocation(this.program, 'u_viewCenter'),
       viewAngle: this.gl.getUniformLocation(this.program, 'u_viewAngle'),
       viewFlip: this.gl.getUniformLocation(this.program, 'u_viewFlip'),
@@ -439,7 +452,10 @@ export class WebGLRenderer implements Renderer {
     };
   }
 
-  prepareLayer(paint: SpacialContent, points?: Strand) {
+  prepareLayer(paint: SpacialContent, points?: Strand, context?: LayerContext) {
+    const clip = context?.viewportClip;
+    this.gl.uniform4f(this.uniforms.comparison, clip?.normal.x || 0, clip?.normal.y || 0, clip?.distance || 0, clip ? (clip.side === 'first' ? 1 : -1) : 0);
+    this.gl.uniform2f(this.uniforms.comparisonViewport, this.dpi, this.canvas.height);
     this.activeLayerScissorRect = undefined;
     this.gl.uniform1f(this.uniforms.viewClip, 0);
     if ((this.viewRotation || this.viewFlip) && points && this.shouldClipLayerToBounds(paint)) {
@@ -1237,8 +1253,8 @@ export class WebGLRenderer implements Renderer {
     );
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand, options?: PaintSelectionOptions): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget, options);
   }
 
   afterFrame() {

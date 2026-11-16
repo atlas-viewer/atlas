@@ -1,3 +1,6 @@
+import { ViewportClipHosts } from '../comparison/clip-hosts';
+import type { LayerContext } from '../comparison/geometry';
+import type { PaintSelectionOptions } from '../../world-objects/paint';
 import type { Strand } from '@atlas-viewer/dna';
 import { Box } from '../../objects/box';
 import { Text } from '../../objects/text';
@@ -19,6 +22,9 @@ export type OverlayRendererOptions = {
 };
 
 export class OverlayRenderer implements Renderer {
+  readonly supportsViewportClip = true;
+  private clipHosts: ViewportClipHosts;
+  private layerContext?: LayerContext;
   htmlContainer: HTMLDivElement;
   visible: Array<Text | Box | SpacialContent> = [];
   previousVisible: Array<Text | Box | SpacialContent> = [];
@@ -37,6 +43,7 @@ export class OverlayRenderer implements Renderer {
 
   constructor(htmlContainer: HTMLDivElement, options?: Partial<OverlayRendererOptions>) {
     this.htmlContainer = htmlContainer;
+    this.clipHosts = new ViewportClipHosts(htmlContainer);
     this.htmlContainer.innerHTML = '';
     this.rendererPosition = this.htmlContainer.getBoundingClientRect();
     this.options = {
@@ -239,6 +246,7 @@ export class OverlayRenderer implements Renderer {
       if (this.visible.indexOf(prev) === -1) {
         // Disposal can release the host before the renderer processes this frame.
         const element = prev.__host?.element;
+        const root = element && this.clipHosts.root(element);
         if (
           // HTML container
           this.htmlContainer &&
@@ -246,9 +254,9 @@ export class OverlayRenderer implements Renderer {
           prev.__id &&
           // Is it in the list.
           this.htmlIds.indexOf(prev.__id) !== -1 &&
-          element?.parentNode === this.htmlContainer
+          root?.parentNode === this.htmlContainer
         ) {
-          this.htmlContainer.removeChild(element);
+          this.clipHosts.remove(element);
         }
       }
     }
@@ -272,8 +280,8 @@ export class OverlayRenderer implements Renderer {
     this.visible = [];
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand, options?: PaintSelectionOptions): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget, options);
   }
 
   getScale(width: number, height: number): number {
@@ -322,8 +330,9 @@ export class OverlayRenderer implements Renderer {
         }
 
         if (this.previousVisible.indexOf(paint) === -1) {
-          this.htmlContainer.appendChild(element);
+          this.htmlContainer.appendChild(this.clipHosts.root(element));
         }
+        this.clipHosts.update(element, this.layerContext?.viewportClip);
         if (this.htmlIds.indexOf(paint.__id) === -1) {
           this.htmlIds.push(paint.__id);
         }
@@ -335,7 +344,8 @@ export class OverlayRenderer implements Renderer {
     return false;
   }
 
-  prepareLayer(paint: SpacialContent): void {
+  prepareLayer(paint: SpacialContent, _points?: Strand, context?: LayerContext): void {
+    this.layerContext = context;
     if (!paint.__host) {
       if (paint instanceof Text || paint instanceof Box) {
         this.createHtmlHost(paint);
@@ -357,5 +367,5 @@ export class OverlayRenderer implements Renderer {
 
   finishLayer() {}
 
-  reset() {}
+  reset() { this.clipHosts.reset(); }
 }

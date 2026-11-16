@@ -1,3 +1,5 @@
+import type { LayerContext } from '../comparison/geometry';
+import type { PaintSelectionOptions } from '../../world-objects/paint';
 import type { Strand } from '@atlas-viewer/dna';
 import { TileCanvasCache } from './tile-canvas-cache';
 import { Box } from '../../objects/box';
@@ -201,6 +203,7 @@ export function needsSmoothing(
 }
 
 export class CanvasRenderer implements Renderer {
+  readonly supportsViewportClip = true;
   /**
    * Optional debug hook, set by tests/tooling, fired whenever a loaded tile
    * image is drawn into its target canvas (schedulePaintToCanvas). Exists
@@ -1838,7 +1841,8 @@ export class CanvasRenderer implements Renderer {
     // No-op
   }
 
-  prepareLayer(paint: SpacialContent, points: Strand): void {
+  private hasViewportClip = false;
+  prepareLayer(paint: SpacialContent, points: Strand, context?: LayerContext): void {
     this.hasActiveLayerClip = false;
     const compositeOpacity =
       isWarpedImage(paint) && paint.compositeOpacity && paint.style.opacity > 0 && paint.style.opacity < 1;
@@ -1872,6 +1876,21 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
+    const clip = context?.viewportClip;
+    this.hasViewportClip = !!clip;
+    if (clip) {
+      this.ctx.save();
+      const transform = this.ctx.getTransform();
+      this.ctx.setTransform(this.dpi, 0, 0, this.dpi, 0, 0);
+      this.ctx.beginPath();
+      for (let i = 0; i < clip.polygon.length; i++) {
+        const p = clip.polygon[i];
+        if (i === 0) this.ctx.moveTo(p.x, p.y); else this.ctx.lineTo(p.x, p.y);
+      }
+      this.ctx.closePath();
+      this.ctx.clip();
+      this.ctx.setTransform(transform);
+    }
     if (this.shouldClipLayerToBounds(paint)) {
       const bounds = this.getBoundsFromPoints(points);
       if (bounds) {
@@ -1896,6 +1915,7 @@ export class CanvasRenderer implements Renderer {
       this.ctx.restore();
       this.hasActiveLayerClip = false;
     }
+    if (this.hasViewportClip) { this.ctx.restore(); this.hasViewportClip = false; }
     if (this.warpCompositeContext) {
       this.ctx = this.warpCompositeContext;
       this.warpCompositeContext = undefined;
@@ -1974,8 +1994,8 @@ export class CanvasRenderer implements Renderer {
     this.imageBuffers.add(paint.__host.canvas);
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
-    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand, options?: PaintSelectionOptions): Paint[] {
+    return world.getPointsAt(target, aggregate, scaleFactor, selectionTarget, options);
   }
 
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null {

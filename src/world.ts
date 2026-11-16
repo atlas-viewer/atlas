@@ -1,3 +1,4 @@
+import type { ComparisonController } from './modules/comparison/comparison';
 import {
   compose,
   DnaFactory,
@@ -104,14 +105,14 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     }
   }
 
-  propagateTouchEvent(eventName: string, e: TouchEvent, touchTargets: Array<{ x: number; y: number }>) {
+  propagateTouchEvent(eventName: string, e: TouchEvent, touchTargets: Array<{ x: number; y: number }>, comparison?: ComparisonController) {
     // if (this.activatedEvents.indexOf(eventName) === -1) return [];
 
     const targets = [];
     for (const touch of touchTargets) {
-      if (touch.x && touch.y) {
+      if (Number.isFinite(touch.x) && Number.isFinite(touch.y)) {
         const point = DnaFactory.singleBox(1, 1, touch.x, touch.y);
-        targets.push(this.getObjectsAt(point, true).reverse());
+        targets.push(this.getObjectsAt(point, true, false, comparison).reverse());
       }
     }
 
@@ -135,12 +136,12 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     e: any,
     x: number,
     y: number,
-    opts: { bubbles?: boolean; cancelable?: boolean } = {}
+    opts: { bubbles?: boolean; cancelable?: boolean; comparison?: ComparisonController } = {}
   ) {
     // @todo re-add activated events, but smarter.
     // if (this.activatedEvents.indexOf(eventName) === -1) return [];
     const point = DnaFactory.singleBox(1, 1, x, y);
-    const worldObjects = this.getObjectsAt(point, true).reverse();
+    const worldObjects = this.getObjectsAt(point, true, false, opts.comparison).reverse();
 
     // Here there is more we can handle.
     // - When a move move event is detected:
@@ -557,7 +558,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
     return 1 - progress * (1 - dimmedOpacity);
   }
 
-  getObjectsAt(target: Strand, all = false, includeZoneFade = false): Array<[WorldObject, Paintable[]]> {
+  getObjectsAt(target: Strand, all = false, includeZoneFade = false, comparison?: ComparisonController): Array<[WorldObject, Paintable[]]> {
     const zone = this.getActiveZone();
     const includeOutsideObjects = zone && includeZoneFade ? this.getZoneOutsideVisibility(zone) > 0 : false;
     const filteredPoints = hidePointsOutsideRegion(this.points, target, this.filteredPointsBuffer);
@@ -570,16 +571,18 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       const index = this.renderOrder[_index];
       if (filteredPoints[index * 5] !== 0) {
         const object = this.objects[index];
-        const inZone = !zone || zone.objects.indexOf(object) !== -1;
-        if (!object || (!inZone && !includeOutsideObjects)) {
+        if (!object) continue;
+        const inZone = !zone || zone.objects.indexOf(object) !== -1 || !!comparison?.includes(object, this);
+        if (!inZone && !includeOutsideObjects) {
           continue;
         }
+        if (all && comparison && !comparison.accepts(object, this, target[1], target[2])) continue;
         if (object.type !== 'world-object') {
           objects.push([object, [object]] as any);
           continue;
         }
         if (all) {
-          objects.push([object, object.getObjectsAt(target, all)]);
+          objects.push([object, object.getObjectsAt(target, all).filter(paint => !comparison || comparison.accepts(paint.__owner.value || object, this, target[1], target[2]))]);
         } else {
           objects.push([object, this.emptyPaintables]);
         }
@@ -592,7 +595,7 @@ export class World extends BaseObject<WorldProps, WorldObject> {
   getPointsAt(target: Strand, aggregate?: Strand, scaleFactor = 1, selectionTarget: Strand = target, options?: PaintSelectionOptions): Paint[] {
     const zone = this.getActiveZone();
     const outsideVisibility = zone ? this.getZoneOutsideVisibility(zone) : 0;
-    const objects = this.getObjectsAt(selectionTarget, false, true);
+    const objects = this.getObjectsAt(selectionTarget, false, true, options?.comparison?.controller);
     const translation = compose(scale(scaleFactor), translate(-target[1], -target[2]), this.translationBuffer);
     const transformer = aggregate ? compose(aggregate, translation, this.aggregateBuffer) : translation;
     const len = objects.length;
@@ -602,12 +605,15 @@ export class World extends BaseObject<WorldProps, WorldObject> {
       if (objects[index]) {
         const worldObject = objects[index][0];
         const paints = worldObject.getAllPointsAt(selectionTarget, transformer, scaleFactor, options);
-        const inZone = !zone || zone.objects.indexOf(worldObject) !== -1;
+        const inZone = !zone || zone.objects.indexOf(worldObject) !== -1 || !!options?.comparison?.controller.includes(worldObject, this);
         const zoneVisibilityAlpha = inZone ? 1 : outsideVisibility;
         for (let i = 0; i < paints.length; i++) {
           (paints[i][0] as any).__zoneVisibilityAlpha = zoneVisibilityAlpha;
         }
-        layers.push(...paints);
+        if (options?.comparison) {
+          const { controller, width, height } = options.comparison;
+          layers.push(...paints.map(paint => [paint[0], paint[1], paint[2], controller.layerContext(paint[0].__owner.value || worldObject, this, width, height)] as Paint));
+        } else layers.push(...paints);
       }
     }
     if (zone && this.isZoneOutsideVisibilityFading(zone)) {

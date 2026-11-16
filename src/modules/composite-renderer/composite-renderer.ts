@@ -1,3 +1,5 @@
+import type { LayerContext } from '../comparison/geometry';
+import type { PaintSelectionOptions } from '../../world-objects/paint';
 import { Renderer } from '../../renderer/renderer';
 import { Paint } from '../../world-objects/paint';
 import { World } from '../../world';
@@ -9,6 +11,7 @@ import type { ImagePreloadOptions } from '../shared/image-request-pool';
 import type { AtlasReadyResetReason } from '../shared/ready-events';
 
 export class CompositeRenderer implements Renderer {
+  get supportsViewportClip() { return this.renderers.every(renderer => !!renderer.supportsViewportClip); }
   renderers: Renderer[] = [];
   length: number;
 
@@ -48,8 +51,8 @@ export class CompositeRenderer implements Renderer {
     }
   }
 
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[] {
-    return this.renderers[0].getPointsAt(world, target, aggregate, scaleFactor, selectionTarget);
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand, options?: PaintSelectionOptions): Paint[] {
+    return this.renderers[0].getPointsAt(world, target, aggregate, scaleFactor, selectionTarget, options);
   }
 
   getScale(width: number, height: number): number {
@@ -88,9 +91,9 @@ export class CompositeRenderer implements Renderer {
     return false;
   }
 
-  prepareLayer(paint: SpacialContent, point: Strand): void {
+  prepareLayer(paint: SpacialContent, point: Strand, context?: LayerContext): void {
     for (let i = 0; i < this.length; i++) {
-      this.renderers[i].prepareLayer(paint, point);
+      this.renderers[i].prepareLayer(paint, point, context);
     }
   }
 

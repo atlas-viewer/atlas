@@ -1,3 +1,4 @@
+import type { ComparisonController } from '../modules/comparison/comparison';
 import {
   compose,
   DnaFactory,
@@ -1272,9 +1273,23 @@ export class Runtime {
   }
 
   /** Permanently release this runtime. Use stop() for a temporary pause. */
+  comparison?: ComparisonController;
+  private comparisonSubscribers = new Set<() => void>();
+  setComparison(comparison: ComparisonController | undefined) {
+    this.comparison = comparison;
+    for (const listener of this.comparisonSubscribers) listener();
+    this.updateNextFrame();
+  }
+  subscribeComparison(listener: () => void) {
+    this.comparisonSubscribers.add(listener);
+    return () => { this.comparisonSubscribers.delete(listener); };
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.comparison?.destroy();
+    this.comparisonSubscribers.clear();
     this.stopControllers();
     this.stop();
     this.reset();
@@ -1526,7 +1541,10 @@ export class Runtime {
     // Calculate a scale factor by passing in the height and width of the target.
     const scaleFactor = this.getScaleFactor();
     // Get the points to render based on this scale factor and the current x,y,w,h in the target buffer.
-    const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor, this.getVisibleWorldBounds());
+    const comparisonBounds = this.renderer.getRendererScreenPosition();
+    const comparison = this.comparison?.getState().enabled && comparisonBounds?.width && comparisonBounds?.height
+      ? { controller: this.comparison, width: comparisonBounds.width, height: comparisonBounds.height } : undefined;
+    const points = this.renderer.getPointsAt(this.world, this.target, this.aggregate, scaleFactor, this.getVisibleWorldBounds(), { comparison });
     const pointsLen = points.length;
 
     for (let p = 0; p < pointsLen; p++) {
@@ -1553,7 +1571,8 @@ export class Runtime {
         paint,
         paint.__parent && transformation
           ? transform(paint.__parent.crop || paint.__parent.points, transformation)
-          : position
+          : position,
+        points[p][3]
       );
 
       // For loop helps keep this fast, looping through all of the tiles that make up an image.

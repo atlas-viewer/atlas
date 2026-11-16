@@ -1,3 +1,8 @@
+export * from './modules/react-reconciler/components/Comparison';
+export * from './modules/react-reconciler/components/ComparisonDivider';
+export * from './modules/react-reconciler/hooks/use-comparison';
+export type { ComparisonController, ComparisonOptions, ComparisonState, ComparisonTarget } from './modules/comparison/comparison';
+export type { ComparisonSplit } from './modules/comparison/geometry';
 // Scene rendering with React, without React DOM. The host owns the DOM shell.
 export * from './standalone';
 export * from './events';
