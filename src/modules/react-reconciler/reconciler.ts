@@ -1,3 +1,4 @@
+import { ComparisonHostInstance } from './comparison-host';
 import React, { version } from 'react';
 import type { OpaqueHandle } from 'react-reconciler';
 import Reconciler_ from 'react-reconciler';
@@ -143,6 +144,10 @@ class ZoneHostInstance implements AtlasObjectModel<ZoneHostProps, any> {
 }
 
 function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
+  if (child instanceof ComparisonHostInstance) {
+    if (!(parent instanceof World)) throw new Error('Comparison must be a direct child of world/root');
+    return;
+  }
   if (parent instanceof World && child instanceof ZoneHostInstance) {
     child.attachToWorld(parent);
     return;
@@ -157,6 +162,7 @@ function appendChild(parent: AtlasObjectModel<any, any>, child: any) {
 }
 
 function removeChild(parent: AtlasObjectModel<any, any>, child: any) {
+  if (child instanceof ComparisonHostInstance) { child.unmount(); return; }
   if (parent instanceof World && child instanceof ZoneHostInstance) {
     child.unmount();
     return;
@@ -171,6 +177,8 @@ function removeChild(parent: AtlasObjectModel<any, any>, child: any) {
 }
 
 function removeChildFromContainer(parent: Runtime, child: any) {
+  if (child instanceof World) parent.comparison?.destroy();
+  if (child instanceof ComparisonHostInstance) { child.unmount(); return; }
   if (child instanceof ZoneHostInstance) {
     child.unmount();
     return;
@@ -182,6 +190,7 @@ function insertInContainerBefore(
   child: AtlasObjectModel<any, any>,
   beforeChild: AtlasObjectModel<any, any>
 ) {
+  if (child instanceof ComparisonHostInstance) return;
   if (child instanceof ZoneHostInstance) {
     child.attachToWorld(container.world);
     return;
@@ -190,6 +199,10 @@ function insertInContainerBefore(
 }
 
 function insertBefore(parent: Runtime | AtlasObjectModel<any, any>, child: any, before: any) {
+  if (child instanceof ComparisonHostInstance) {
+    if (!(parent instanceof Runtime) && !(parent instanceof World)) throw new Error('Comparison must be a direct child of world/root');
+    return;
+  }
   if (parent && parent instanceof Runtime) {
     parent = parent.world;
   }
@@ -262,7 +275,7 @@ function createInstance(
     runtime = fn(internalInstanceHandle);
   }
 
-  let instance: BaseObject<any, any> | ZoneHostInstance;
+  let instance: BaseObject<any, any> | ZoneHostInstance | ComparisonHostInstance;
   let world: World = runtime.world;
   switch (type) {
     case 'world':
@@ -289,6 +302,9 @@ function createInstance(
     case 'worldObject':
     case 'world-object':
       instance = new WorldObject();
+      break;
+    case 'comparison':
+      instance = new ComparisonHostInstance(runtime, props);
       break;
     case 'zone':
       instance = new ZoneHostInstance(world);
@@ -371,6 +387,8 @@ function createInstance(
 function appendChildToContainer(runtime: Runtime, world: any) {
   if (world instanceof World) {
     runtime.world = world;
+  } else if (world instanceof ComparisonHostInstance) {
+    // Comparison attaches in commitMount, after the full scene is committed.
   } else if (world instanceof ZoneHostInstance) {
     world.attachToWorld(runtime.world);
   } else if (world instanceof WorldObject) {
@@ -445,7 +463,10 @@ const reconciler = Reconciler
       finalizeInitialChildren(instance: any) {
         // https://github.com/facebook/react/issues/20271
         // Returning true will trigger commitMount
-        return instance?.__handlers;
+        return instance instanceof ComparisonHostInstance || instance?.__handlers;
+      },
+      commitMount(instance: any) {
+        if (instance instanceof ComparisonHostInstance) instance.attach();
       },
       getChildHostContext() {
         return emptyObject;
@@ -460,20 +481,22 @@ const reconciler = Reconciler
       preparePortalMount() {
         // no-op
       },
-      hideInstance(instance: BaseObject) {
+      hideInstance(instance: BaseObject | ComparisonHostInstance) {
+        if (instance instanceof ComparisonHostInstance) { instance.hide(true); return; }
         if (instance && instance.points) {
           instance.points[0] = 0;
         }
         // @todo these are called when a component is suspended
       },
-      unhideInstance(instance: BaseObject, props: any) {
+      unhideInstance(instance: BaseObject | ComparisonHostInstance, props: any) {
+        if (instance instanceof ComparisonHostInstance) { instance.hide(false); return; }
         if (instance && instance.points) {
           instance.points[0] = 1;
         }
         // @todo these are called when a component is suspended
       },
-      getPublicInstance(instance: BaseObject) {
-        return instance;
+      getPublicInstance(instance: BaseObject | ComparisonHostInstance) {
+        return instance instanceof ComparisonHostInstance ? instance.controller : instance;
       },
       hideTextInstance() {
         throw new Error(
@@ -493,7 +516,8 @@ const reconciler = Reconciler
       shouldSetTextContent() {
         return false;
       },
-      clearContainer() {
+      clearContainer(runtime: Runtime) {
+        runtime.comparison?.destroy();
         return false;
       },
 

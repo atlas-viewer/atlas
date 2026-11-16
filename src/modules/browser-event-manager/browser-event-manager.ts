@@ -147,7 +147,7 @@ export class BrowserEventManager {
     if (this.runtime.world.activatedEvents.indexOf(ev) !== -1) {
       const { x, y } = this.runtime.viewerToWorld(e.clientX - this.bounds.left, e.clientY - this.bounds.top);
       this.assignToEvent(e, x, y);
-      this.runtime.world.propagatePointerEvent(ev as any, e, x, y);
+      this.runtime.world.propagatePointerEvent(ev as any, e, x, y, { comparison: this.runtime.comparison });
     }
   };
 
@@ -202,13 +202,13 @@ export class BrowserEventManager {
     if (type !== 'onTouchEnd' && type !== 'onTouchCancel') {
       this.pointerEventState.lastTouches = atlasTouches;
       (e as any).atlasTouches = atlasTouches;
-      const targets = this.runtime.world.propagateTouchEvent(type, e as any, atlasTouches);
+      const targets = this.runtime.world.propagateTouchEvent(type, e as any, atlasTouches, this.runtime.comparison);
       if (type === 'onTouchStart') {
         for (const target of targets.flat()) this.interactionTargets.add(target);
       }
     } else {
       (e as any).atlasTouches = [];
-      this.runtime.world.propagateTouchEvent(type, e as any, this.pointerEventState.lastTouches);
+      this.runtime.world.propagateTouchEvent(type, e as any, this.pointerEventState.lastTouches, this.runtime.comparison);
       this.pointerEventState.lastTouches = [];
       if (len === 0) this.interactionTargets.clear();
     }
@@ -229,7 +229,7 @@ export class BrowserEventManager {
         this.runtime.world.dispatchEvent(ev, e);
         return [];
       }
-      return this.runtime.world.propagatePointerEvent(ev as any, e, x, y);
+      return this.runtime.world.propagatePointerEvent(ev as any, e, x, y, { comparison: this.runtime.comparison });
     }
   };
 
@@ -323,7 +323,8 @@ export class BrowserEventManager {
           'onDragStart',
           e,
           dragStart.x,
-          dragStart.y
+          dragStart.y,
+        { comparison: this.runtime.comparison }
         );
       }
     }, 800);
@@ -349,7 +350,7 @@ export class BrowserEventManager {
 
       this.assignToEvent(e, x, y);
 
-      this.runtime.world.propagatePointerEvent('onClick', e, x, y);
+      this.runtime.world.propagatePointerEvent('onClick', e, x, y, { comparison: this.runtime.comparison });
     }
 
     if (this.pointerEventState.isDragging) {
@@ -383,8 +384,8 @@ export class BrowserEventManager {
     this.assignToEvent(e, x, y);
 
     // We have to propagate both, but only get a new list from one.
-    this.runtime.world.propagatePointerEvent('onPointerMove', e, x, y);
-    const newList = this.runtime.world.propagatePointerEvent('onMouseMove', e, x, y);
+    this.runtime.world.propagatePointerEvent('onPointerMove', e, x, y, { comparison: this.runtime.comparison });
+    const newList = this.runtime.world.propagatePointerEvent('onMouseMove', e, x, y, { comparison: this.runtime.comparison });
 
     // This is where we handle mouse enter and mouse leave events. This could be
     // stored and handled inside of the world.
@@ -440,7 +441,8 @@ export class BrowserEventManager {
         'onDragStart',
         { ...e, atlas: { x: dragStart.x, y: dragStart.y } },
         dragStart.x,
-        dragStart.y
+        dragStart.y,
+        { comparison: this.runtime.comparison }
       );
     }
     this.pointerEventState.mousedOver = newItems;

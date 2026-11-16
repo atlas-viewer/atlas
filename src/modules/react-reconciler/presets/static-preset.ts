@@ -71,6 +71,7 @@ export function staticPreset({
     container: containerElement,
     overlay: overlayElement,
     unmount() {
+      runtime.comparison?.destroy();
       unmountComponentAtNode(runtime);
       runtime.stopControllers();
       runtime.stop();

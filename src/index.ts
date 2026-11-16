@@ -1,3 +1,4 @@
+export * from './modules/comparison';
 export * from './atlas';
 export * from './events';
 export * from './modules/browser-event-manager/browser-event-manager';

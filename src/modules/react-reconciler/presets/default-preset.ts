@@ -171,6 +171,7 @@ export function defaultPreset({
     parityCanvas: parityCanvasRenderer ? parityCanvasElement : undefined,
     navigator: navigatorElement,
     unmount() {
+      runtime.comparison?.destroy();
       unmountComponentAtNode(runtime);
       runtime.stopControllers();
       runtime.stop();

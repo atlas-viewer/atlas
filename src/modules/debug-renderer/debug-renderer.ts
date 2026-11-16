@@ -6,6 +6,7 @@ import { PositionPair } from '../../types';
 import { dna, DnaFactory, scale, Strand } from '@atlas-viewer/dna';
 
 export class DebugRenderer implements Renderer {
+  readonly supportsViewportClip: boolean = false;
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
   heightRatio = 1;

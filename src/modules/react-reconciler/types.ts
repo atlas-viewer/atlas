@@ -1,3 +1,4 @@
+import type { ComparisonOptions } from '../comparison/comparison';
 import type React from 'react';
 import type { EventListenerProps } from '../../clean-objects/traits/evented';
 import type { BoxStyle } from '../../objects/box';
@@ -28,6 +29,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
+      comparison: BaseElement & ComparisonOptions;
       world: BaseElement & {
         width?: number;
         height?: number;

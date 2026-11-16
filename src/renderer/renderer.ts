@@ -1,3 +1,5 @@
+import type { LayerContext } from '../modules/comparison/geometry';
+import type { PaintSelectionOptions } from '../world-objects/paint';
 import { SpacialContent } from '../spacial-content';
 import { World } from '../world';
 import { Paint } from '../world-objects';
@@ -8,15 +10,16 @@ import type { ImagePreloadOptions } from '../modules/shared/image-request-pool';
 import type { AtlasReadyResetReason } from '../modules/shared/ready-events';
 
 export interface Renderer {
+  readonly supportsViewportClip?: boolean;
   beforeFrame(world: World, delta: number, target: Strand, options: HookOptions): void;
   paint(paint: SpacialContent, index: number, x: number, y: number, width: number, height: number): void;
   afterFrame(world: World, delta: number, target: Strand, options: HookOptions): void;
   getScale(width: number, height: number, dpi?: boolean): number;
-  prepareLayer(paint: SpacialContent, point: Strand): void;
+  prepareLayer(paint: SpacialContent, point: Strand, context?: LayerContext): void;
   finishLayer(paint: SpacialContent, point: Strand): void;
   afterPaintLayer(paint: SpacialContent, transform?: Strand): void;
   pendingUpdate(): boolean;
-  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand): Paint[];
+  getPointsAt(world: World, target: Strand, aggregate: Strand, scaleFactor: number, selectionTarget?: Strand, options?: PaintSelectionOptions): Paint[];
   getViewportBounds(world: World, target: Strand, padding: number): PositionPair | null;
   isReady(): boolean;
   resize(): void;

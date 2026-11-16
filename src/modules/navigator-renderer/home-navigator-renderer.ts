@@ -24,6 +24,7 @@ export type HomeNavigatorOptions = {
 
 /** A fixed-aspect view of the home viewport, independent of the main canvas tile queue. */
 export class HomeNavigatorRenderer extends DebugRenderer {
+  readonly supportsViewportClip = true; // Independent overview intentionally ignores the main viewport clip.
   private region?: NavigatorWorldRegion;
   private readonly images = new Map<string, HTMLImageElement>();
   private readonly loadedAt = new Map<string, number>();

@@ -1,3 +1,4 @@
+import { resolveComparisonClip } from '../../modules/comparison/geometry';
 /** @vitest-environment happy-dom */
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -85,6 +86,7 @@ function createMockGL(canvas: HTMLCanvasElement) {
     enableVertexAttribArray: vi.fn(),
     vertexAttribPointer: vi.fn(),
     uniform2f: vi.fn(),
+    uniform4f: vi.fn(),
     uniform1f: vi.fn(),
     createTexture: vi.fn(() => ({})),
     deleteTexture: vi.fn(),
@@ -128,6 +130,19 @@ async function flushMicrotasks(count = 6) {
 }
 
 describe('WebGLRenderer fallback events', () => {
+  test('uses a viewport half-plane independently of rotated crop clipping and clears it for shared content', () => {
+    const canvas = createMockCanvas();
+    const gl = createMockGL(canvas); canvas.getContext = vi.fn(() => gl);
+    const renderer = new WebGLRenderer(canvas, { dpi: 2 });
+    const clip = resolveComparisonClip({ angle: 35, position: 0.6 }, 200, 100, 'second');
+    renderer.prepareLayer({ __owner: { value: undefined } } as any, undefined, { viewportClip: clip });
+    expect(gl.uniform4f).toHaveBeenLastCalledWith(renderer.uniforms.comparison, clip.normal.x, clip.normal.y, clip.distance, -1);
+    expect(gl.uniform2f).toHaveBeenCalledWith(renderer.uniforms.comparisonViewport, 2, canvas.height);
+    renderer.prepareLayer({ __owner: { value: undefined } } as any);
+    expect(gl.uniform4f).toHaveBeenLastCalledWith(renderer.uniforms.comparison, 0, 0, 0, 0);
+    renderer.reset();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
